@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<kml xmlns="http://earth.google.com/kml/2.2">
+<Document>
+<name>Lake BT</name>
+<Style id="controlPoint">
+<IconStyle>
+<scale>0.5</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/pal4/icon49.png</href>
+</Icon>
+</IconStyle>
+<LabelStyle><color>ff0000ff</color>
+<colorMode>normal</colorMode>
+<scale>0.6</scale>
+</LabelStyle>
+<BalloonStyle>
+<text><![CDATA[
+Point: <b><font color="#ff0000">$[name]</font></b>
+<br/>
+Code: $[description]
+]]></text>
+</BalloonStyle>
+</Style>
+<Style id="standardPoint">
+<IconStyle>
+<scale>0.5</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/pal4/icon57.png</href>
+</Icon>
+</IconStyle>
+<LabelStyle><color>ff0000ff</color>
+<colorMode>normal</colorMode>
+<scale>0.6</scale>
+</LabelStyle>
+<BalloonStyle>
+<text><![CDATA[
+Point: <b><font color="#ff0000">$[name]</font></b>
+<br/>
+Code: $[description]
+]]></text>
+</BalloonStyle>
+</Style>
+<Placemark>
+<name>461861</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.047759281744,63.770988571907,86.790728733727</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461367</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.047350166782,63.771001220505,87.256532797442</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461571</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.047555182994,63.770775435588,86.759114094862</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461577</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.047197597636,63.77072880868,87.062332901025</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat1</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.047174142372,63.77079327593,87.561793001221</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat2</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.047355965997,63.770843761023,87.636053591819</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat3</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.04750478733,63.770906846924,87.683387184368</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat4</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.0476464156,63.770965089963,87.307491816433</coordinates>
+</Point>
+</Placemark>
+</Document>
+</kml>
+

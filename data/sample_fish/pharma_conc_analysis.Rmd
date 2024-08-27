@@ -1,0 +1,722 @@
+---
+output: html_document
+---
+
+```{r setup, include = FALSE}
+#Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(flextable)
+library(officer)
+library(ggplot2)
+library(patchwork)
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.height=11, fig.width=7)
+fpp <- fp_par(text.align = "left", padding = 3)
+Johnson = c("#f6c200","#a00e00","#0086a8","#d04e00","#132b69")
+graph_theme_wlegend <- theme(
+    strip.background = element_rect(fill = "grey80"),
+    strip.text = element_text(face = "bold", size = 12),
+    legend.position = c(0.85, 0.8),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10, color = 'black'))
+
+graph_theme_nolegend <- theme(
+    strip.background = element_rect(fill = "grey80"),
+    strip.text = element_text(face = "bold", size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10, color = 'black'))
+```
+
+```{r load datasets, include = FALSE}
+data_path = "./data/Sample_fish/"
+save_tables_path = "./data/Sample_fish/sum_tables/" 
+save_fig_path = "./data/Sample_fish/figures/" 
+
+#load datasets
+sample_wghts = read.csv(paste0(data_path, "sample_fish_weights.csv"))
+pharma_conc = read.csv(paste0(data_path, "pharma_conc.csv"))
+```
+
+```{r set table plotting parameters, include = FALSE}
+#set table plotting parameters
+set_flextable_defaults(
+  font.color = "black",
+  border.color = "black",
+  font.family = 'Arial',
+  line_spacing = 1
+  )
+```
+
+```{r summary stats function, include = FALSE}
+summary_stats <- function(df, col, group_vars = NULL) {
+  
+  if (is.null(group_vars)) {
+    # calculate statistics for the entire column
+    stats <- c(mean(df[[col]], na.rm = TRUE), 
+               sd(df[[col]], na.rm = TRUE), 
+               sum(!is.na(df[[col]])), 
+               sd(df[[col]], na.rm = TRUE) / sqrt(sum(!is.na(df[[col]]))), 
+               min(df[[col]], na.rm = TRUE), 
+               max(df[[col]], na.rm = TRUE))
+    colnames(stats) <- c("Mean", "SD", "Sample Size", "SE", "Min", "Max")
+    return(stats)
+  }
+  
+  # group by one or more variables
+  group_df <- df %>% group_by(across(all_of(group_vars)))
+  
+  stats <- group_df %>% 
+    summarize(Mean = mean(!!sym(col), na.rm = TRUE), 
+              SD = sd(!!sym(col), na.rm = TRUE), 
+              Sample_Size = sum(!is.na(!!sym(col))), 
+              SE = SD / sqrt(Sample_Size),
+              Min = min(!!sym(col), na.rm = TRUE),
+              Max = max(!!sym(col), na.rm = TRUE))
+  
+  return(stats)
+}
+```
+
+```{r length measurements, include = FALSE}
+summary_stats(sample_wghts, "LENGTH", "SPECIES")
+```
+
+```{r weight measurements, include = FALSE}
+summary_stats(sample_wghts, "WEIGHT", "SPECIES")
+```
+
+## Detected phamaceutical concentrations
+
+```{r data cleaning, include = FALSE}
+str(pharma_conc)
+#make date column a date column
+pharma_conc$SAMPLE_DATE <- as.Date(pharma_conc$SAMPLE_DATE, format = "%d/%m/%Y")
+#days after implantation
+pharma_conc <- pharma_conc %>% 
+  mutate(days_since_implant = as.numeric(
+    difftime(SAMPLE_DATE, min(SAMPLE_DATE), units = "days")) + 1)
+
+#rename tissue levels
+pharma_conc <- pharma_conc %>%
+  mutate(TISSUE = recode(TISSUE, B = "Brain", M = "Muscle", L = "Liver"))
+
+#Make LOQ's NAs
+#make flx_ng numeric and change <LOQ to NA for coding purposes
+pharma_conc <- pharma_conc %>% 
+  dplyr::mutate(
+    VENLA_ng_g = as.numeric(
+      ifelse(VENLA_ng_g == "<LOQ", 'NA', VENLA_ng_g)),
+    DESVENLA_ng_g = as.numeric(
+      ifelse(DESVENLA_ng_g == "<LOQ", 'NA', DESVENLA_ng_g)),
+    FLX_ng_g = as.numeric(
+      ifelse(FLX_ng_g == "<LOQ", 'NA', FLX_ng_g)),
+    SERTRA_ng_g = as.numeric(
+      ifelse(SERTRA_ng_g == "<LOQ", 'NA', SERTRA_ng_g)),
+    NOSERTRA_ng_g = as.numeric(
+      ifelse(NOSERTRA_ng_g == "<LOQ", 'NA', NOSERTRA_ng_g))
+         )
+
+#How many LOQs were detected and what percentage samples had LOQs
+loq_summary <- pharma_conc %>%
+  pivot_longer(cols = c(8:12), names_to = "pharmaceutical", values_to = "concentration") %>%
+  group_by(pharmaceutical, TISSUE, SPECIES, days_since_implant) %>%
+  summarise(
+    total_samples = n(),
+    loq_count = sum(is.na(concentration)),
+    loq_percentage = (loq_count / total_samples) * 100,
+    detections = total_samples - loq_count
+  )
+```
+
+```{r detection sum stats, ft.align = "left"}
+(loq_sum_table <- qflextable(loq_summary) %>% 
+   fontsize(part = "all", size = 11) %>% 
+   bold(part = 'header')  %>% 
+   set_header_labels(TISSUE = "tissue") %>% 
+   set_caption(
+     caption = as_paragraph(
+       as_chunk("Detected samples containing quantifiable concentrations of pharmaceuticals in fish tissues",
+                props = fp_text(font.size = 12, bold = FALSE))),
+     align_with_table = FALSE,
+     word_stylename = "Table Caption",
+     fp_p = fpp) %>% 
+  flextable::compose(i = c(1:3), j = 1, 
+                     as_paragraph(as_chunk('Desvenlafaxine'))) %>% 
+  flextable::compose(i = c(4:6), j = 1, 
+                     as_paragraph(as_chunk('Fluoxetine'))) %>% 
+  flextable::compose(i = c(7:9), j = 1, 
+                     as_paragraph(as_chunk('Nosertraline'))) %>% 
+  flextable::compose(i = c(10:12), j = 1, 
+                     as_paragraph(as_chunk('Sertraline'))) %>% 
+  flextable::compose(i = c(13:15), j = 1, 
+                     as_paragraph(as_chunk('Venlafaxine'))))
+```
+
+```{r save detection table, include=FALSE}
+save_as_docx(loq_sum_table, 
+             path = paste0(save_tables_path, "loq_summary.docx"))
+```
+
+## Summary statistics for detected pharmaceutical concentration in fish tissues
+
+### Venlafaxine
+
+```{r sum stats venla & desvenla, include = FALSE}
+venla_sum_stats <- 
+  summary_stats(pharma_conc, "VENLA_ng_g", c("SPECIES", "TISSUE")) %>% 
+  mutate_if(is.numeric, round, 1) 
+
+desvenla_sum_stats <- 
+  summary_stats(pharma_conc, "DESVENLA_ng_g", c("SPECIES", "TISSUE")) %>% 
+  mutate_if(is.numeric, round, 1) 
+```
+
+```{r venla table, ft.align = "left"}
+(venla_table <- 
+  qflextable(venla_sum_stats) %>% 
+  set_header_labels(TISSUE = "Tissue", SPECIES = "Species", Sample_Size = "N") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected venlafaxine concentrations (ng/g) in fish tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+
+```
+
+```{r save venlafaxine table, include = FALSE}
+save_as_docx(venla_table, 
+             path = paste0(save_tables_path, "venlafaxine_summary.docx"))
+```
+
+
+### Desvenlafaxine
+
+```{r desvenla table, ft.align = "left"}
+(dsvenla_table <- 
+  qflextable(desvenla_sum_stats) %>% 
+  set_header_labels(TISSUE = "Tissue", SPECIES = "Species", Sample_Size = "N") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected dsvenlafaxine concentrations (ng/g) in fish tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+
+```
+
+```{r save desvenlafaxine table, include = FALSE}
+save_as_docx(dsvenla_table, 
+             path = paste0(save_tables_path, "dsvenlafaxine_summary.docx"))
+```
+
+### Sertraline
+
+```{r sum stats sertra & nosertra, include = FALSE}
+sertra_sum_stats <- summary_stats(pharma_conc, "SERTRA_ng_g", c("SPECIES", "TISSUE")) %>% 
+  mutate_if(is.numeric, round, 1) 
+norsertra_sum_stats <- summary_stats(pharma_conc, "NOSERTRA_ng_g", c("SPECIES", "TISSUE")) %>% 
+  mutate_if(is.numeric, round, 1) 
+```
+
+```{r sertra table,  ft.align = "left"}
+(sertra_table <- 
+  qflextable(sertra_sum_stats) %>% 
+  set_header_labels(TISSUE = "Tissue", SPECIES = "Species", Sample_Size = "N") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected sertraline concentrations (ng/g) in fish tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+```
+
+```{r save sertraline table, include = FALSE}
+save_as_docx(sertra_table, 
+             path = paste0(save_tables_path, "sertraline_summary.docx"))
+```
+
+### Norsertraline
+
+```{r norsertra table, ft.align = "left"}
+(norsertra_table <- 
+  qflextable(norsertra_sum_stats) %>% 
+  set_header_labels(TISSUE = "Tissue", SPECIES = "Species", Sample_Size = "N") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected norsertraline concentrations (ng/g) in fish tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+```
+
+```{r save norsertraline table, include = FALSE}
+save_as_docx(norsertra_table, 
+             path = paste0(save_tables_path, "norsertraline_summary.docx"))
+```
+
+### Fluoxetine
+
+```{r sum stats fluoxetine,  include = FALSE}
+flx_sum_stats <- summary_stats(pharma_conc, "FLX_ng_g", c("SPECIES", "TISSUE")) %>%  
+  mutate_if(is.numeric, round, 1) 
+```
+
+```{r flx table, ft.align = "left"}
+(flx_table <- 
+  qflextable(flx_sum_stats) %>% 
+  set_header_labels(TISSUE = "Tissue", SPECIES = "Species", Sample_Size = "N") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected fluoxetine concentrations (ng/g) in fish tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+```
+
+```{r save flx table, include = FALSE}
+save_as_docx(flx_table, 
+             path = paste0(save_tables_path, "fluoxetine_summary.docx"))
+```
+
+## Figures illustrating detected concentrations in each species
+
+### Roach
+
+```{r roach filter, include = FALSE}
+roach_conc <- pharma_conc %>% 
+  filter(SPECIES == 'Roach')
+
+str(roach_conc)
+
+#For each pharmaceutical and tissue group, I need a mean and se concentration for each timepoint
+#FLX
+roach_flx_stats <- summary_stats(roach_conc, "FLX_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Fluoxetine") %>% 
+  ungroup()
+
+#VENLA & DESEVLA (combine to create 1 figure)
+roach_venla_stats <- summary_stats(roach_conc, "VENLA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Venlafaxine") %>% 
+  ungroup()
+
+roach_desvenla_stats <- summary_stats(roach_conc, "DESVENLA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Desvenlafaxine") %>% 
+  ungroup()
+
+roach_venla_stats <- rbind(roach_venla_stats, roach_desvenla_stats)
+
+#SERTR & NORSERTRA
+roach_sertra_stats <- summary_stats(roach_conc, "SERTRA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Sertraline") %>% 
+  ungroup()
+
+roach_norsertra_stats <- summary_stats(roach_conc, "NOSERTRA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Norsertraline") %>% 
+  ungroup()
+
+roach_sertra_stats <- rbind(roach_sertra_stats, roach_norsertra_stats)
+
+```
+
+```{r create roach table, include = FALSE}
+roach_pharma_stats <- 
+  rbind(roach_flx_stats,
+        roach_venla_stats,
+        roach_sertra_stats) %>%
+  mutate_if(is.numeric, round, 1) %>% 
+  dplyr::select(Pharmaceutical, everything()) %>% 
+  mutate(days_since_implant = as.factor(days_since_implant),
+         Mean_SE = paste0(Mean, " ± ", SE)) %>% 
+  select(-Mean, -SE) %>% 
+  pivot_wider(names_from = days_since_implant, 
+              values_from = Mean_SE)
+```
+
+```{r roach table for MS, ft.align = 'left'}
+(roach_table <- 
+  qflextable(roach_pharma_stats) %>% 
+  set_header_labels(TISSUE = "Tissue") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected fluoxetine concentrations (ng/g) in roach tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+```
+
+```{r save roach table, include = FALSE}
+save_as_docx(roach_table, 
+             path = paste0(save_tables_path, "sample_roach_pharm_conc_summary.docx"))
+```
+
+```{r flx roach figure, include = FALSE}
+(
+  flx_roach_fig <- 
+    ggplot(roach_flx_stats, aes(x = days_since_implant, y = Mean)) +
+    geom_point() + 
+    geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
+    ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+    theme_bw() +
+    ylab(expression("Fluoxetine" ~ (ng/g^-1)))+
+    xlab("Exposure duration (days)") +
+    scale_x_continuous(breaks = unique(roach_flx_stats$days_since_implant)) +
+    graph_theme_nolegend)
+    
+```
+
+```{r sertra roach figure, include = FALSE}
+(
+  sertra_roach_fig <- 
+  ggplot(roach_sertra_stats, aes(x = days_since_implant, y = Mean, color = Pharmaceutical)) +
+  geom_jitter(position = position_dodge(1.2), size = 1.5) + 
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), 
+                width = 0.2, 
+                position = position_dodge(1.2)) +
+  ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+  theme_bw() +
+  ylab(expression("Concentration" ~ (ng/g^-1)))+
+  xlab("Exposure duration (days)") +
+    scale_x_continuous(breaks = unique(roach_sertra_stats$days_since_implant))+
+    scale_color_manual(values = c(Johnson[4], Johnson[3]))+
+    graph_theme_wlegend
+  )
+```
+
+```{r venla roach figure, include = FALSE}
+(
+  venla_roach_fig <- 
+  ggplot(roach_venla_stats, aes(x = days_since_implant, y = Mean, color = Pharmaceutical)) +
+  geom_jitter(position = position_dodge(1.2), size = 1.5) + 
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), 
+                width = 0.2, 
+                position = position_dodge(1.2)) +
+  ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+  theme_bw() +
+  ylab(expression("Concentration" ~ (ng/g^-1)))+
+  xlab("Exposure duration (days)") +
+    scale_x_continuous(breaks = unique(roach_venla_stats$days_since_implant))+
+    scale_color_manual(values = c(Johnson[4], Johnson[3]))+
+    graph_theme_wlegend
+  )
+
+```
+
+```{r roach figure for MS, fig.align = 'left'}
+(
+  roach_pharma_conc_fig <- (flx_roach_fig + theme(axis.title.x = element_blank())) / 
+  (sertra_roach_fig + theme(axis.title.x = element_blank())) / 
+  venla_roach_fig
+  )
+```
+
+```{r save roach figure, include = FALSE}
+ggsave(filename = paste0(save_fig_path, "sample_roach_pharma_conc.tiff"), plot = roach_pharma_conc_fig, height = 20, width = 15, unit = 'cm', dpi = 300)
+```
+
+### Perch 
+
+```{r perch filter, include = FALSE}
+perch_conc <- pharma_conc %>% 
+  filter(SPECIES == 'Perch')
+
+str(perch_conc)
+
+#For each pharmaceutical and tissue group, I need a mean and se concentration for each timepoint
+
+#FLX
+perch_flx_stats <- 
+  summary_stats(perch_conc, "FLX_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  dplyr::mutate(Pharmaceutical = "Fluoxetine")
+
+#VENLA & DESEVLA (combine to create 1 figure)
+perch_venla_stats <- summary_stats(perch_conc, "VENLA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Venlafaxine") 
+
+perch_desvenla_stats <- summary_stats(perch_conc, "DESVENLA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Desvenlafaxine")
+
+perch_venla_stats <- rbind(perch_venla_stats, perch_desvenla_stats)
+
+#SERTR & NORSERTRA
+perch_sertra_stats <- summary_stats(perch_conc, "SERTRA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Sertraline") 
+
+perch_norsertra_stats <- summary_stats(perch_conc, "NOSERTRA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Norsertraline") 
+
+
+perch_sertra_stats <- rbind(perch_sertra_stats, perch_norsertra_stats)
+```
+
+```{r create perch table, include = FALSE}
+perch_pharma_stats <- 
+  rbind(perch_flx_stats,
+        perch_venla_stats,
+        perch_sertra_stats) %>%
+  mutate_if(is.numeric, round, 1) %>% 
+  dplyr::select(Pharmaceutical, everything()) %>% 
+  mutate(days_since_implant = as.factor(days_since_implant),
+         Mean_SE = paste0(Mean, " ± ", SE)) %>% 
+  select(-Mean, -SE) %>% 
+  pivot_wider(names_from = days_since_implant, 
+              values_from = Mean_SE)
+```
+
+```{r perch table for MS, ft.align = 'left'}
+(perch_table <- 
+  qflextable(perch_pharma_stats) %>% 
+  set_header_labels(TISSUE = "Tissue") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected fluoxetine concentrations (ng/g) in perch tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+```
+
+```{r save perch table, include = FALSE}
+save_as_docx(perch_table, 
+             path = paste0(save_tables_path, "sample_perch_pharm_conc_summary.docx"))
+```
+
+```{r flx perch figure, include = FALSE}
+(
+  flx_perch_fig <- 
+    ggplot(perch_flx_stats, aes(x = days_since_implant, y = Mean)) +
+    geom_point() + 
+    geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
+    ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+    theme_bw() +
+    ylab(expression("Fluoxetine" ~ (ng/g^-1)))+
+    xlab("Exposure duration (days)") +
+    scale_x_continuous(breaks = unique(perch_flx_stats$days_since_implant)) +
+    graph_theme_nolegend)
+    
+```
+
+```{r sertra perch figure, include = FALSE}
+(
+  sertra_perch_fig <- 
+  ggplot(perch_sertra_stats, aes(x = days_since_implant, y = Mean, color = Pharmaceutical)) +
+  geom_jitter(position = position_dodge(1.2), size = 1.5) + 
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), 
+                width = 0.2, 
+                position = position_dodge(1.2)) +
+  ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+  theme_bw() +
+  ylab(expression("Concentration" ~ (ng/g^-1)))+
+  xlab("Exposure duration (days)") +
+    scale_x_continuous(breaks = unique(perch_sertra_stats$days_since_implant))+
+    scale_color_manual(values = c(Johnson[4], Johnson[3]))+
+    graph_theme_wlegend
+  )
+
+```
+
+```{r venla perch figure, include = FALSE}
+(
+  venla_perch_fig <- 
+  ggplot(perch_venla_stats, aes(x = days_since_implant, y = Mean, color = Pharmaceutical)) +
+  geom_jitter(position = position_dodge(1.2), size = 1.5) + 
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), 
+                width = 0.2, 
+                position = position_dodge(1.2)) +
+  ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+  theme_bw() +
+  ylab(expression("Concentration" ~ (ng/g^-1)))+
+  xlab("Exposure duration (days)") +
+    scale_x_continuous(breaks = unique(perch_venla_stats$days_since_implant))+
+    scale_color_manual(values = c(Johnson[4], Johnson[3]))+
+    graph_theme_wlegend
+  )
+
+```
+
+```{r perch figure for MS, fig.align = 'left'}
+(
+  perch_pharma_conc_fig <- (flx_perch_fig + theme(axis.title.x = element_blank())) / 
+  (sertra_perch_fig + theme(axis.title.x = element_blank())) / 
+  venla_perch_fig
+  )
+```
+
+```{r save perch figure, include = FALSE}
+ggsave(filename = paste0(save_fig_path, "sample_perch_pharma_conc.tiff"), plot = perch_pharma_conc_fig, height = 20, width = 15, unit = 'cm', dpi = 300)
+```
+
+### Pike
+
+```{r pike filter, include = FALSE}
+pike_conc <- pharma_conc %>% 
+  filter(SPECIES == 'Pike')
+
+pike_conc$days_since_implant <- as.factor(pike_conc$days_since_implant) 
+levels(pike_conc$days_since_implant) <- c("1", "24")
+
+str(pike_conc)
+
+#For each pharmaceutical and tissue group, I need a mean and se concentration for each timepoint
+#FLX
+pike_flx_stats <- 
+  summary_stats(pike_conc, "FLX_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Fluoxetine") %>%
+  ungroup()
+
+#VENLA & DESEVLA (combine to create 1 figure)
+pike_venla_stats <- summary_stats(pike_conc, "VENLA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Venlafaxine") %>% 
+  ungroup()
+
+pike_desvenla_stats <- summary_stats(pike_conc, "DESVENLA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Desvenlafaxine") %>% 
+  ungroup()
+
+
+#SERTR & NORSERTRA
+pike_sertra_stats <- summary_stats(pike_conc, "SERTRA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Sertraline") %>% 
+  ungroup()
+
+pike_norsertra_stats <- summary_stats(pike_conc, "NOSERTRA_ng_g", c("TISSUE", "days_since_implant")) %>% 
+  select(TISSUE, days_since_implant, Mean, SE) %>% 
+  mutate(Pharmaceutical = "Norsertraline") %>% 
+  ungroup()
+
+pike_sertra_stats <- rbind(pike_sertra_stats, pike_norsertra_stats)
+
+```
+
+```{r create pike table, include = FALSE}
+pike_pharma_stats <- 
+  rbind(pike_flx_stats,
+        pike_venla_stats,
+        pike_sertra_stats) %>%
+  mutate_if(is.numeric, round, 1) %>% 
+  dplyr::select(Pharmaceutical, everything()) %>% 
+  mutate(days_since_implant = as.factor(days_since_implant),
+         Mean_SE = paste0(Mean, " ± ", SE)) %>% 
+  select(-Mean, -SE) %>% 
+  pivot_wider(names_from = days_since_implant, 
+              values_from = Mean_SE)
+```
+
+```{r pike table for MS, ft.align = 'left'}
+(pike_table <- 
+  qflextable(pike_pharma_stats) %>% 
+  set_header_labels(TISSUE = "Tissue") %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_caption(
+    caption = as_paragraph(
+      as_chunk("Summary statistics for detected fluoxetine concentrations (ng/g) in pike tissues",
+               props = fp_text(font.size = 12, bold = FALSE))),
+    align_with_table = FALSE,
+    word_stylename = "Table Caption",
+    fp_p = fpp))
+```
+
+```{r save pike table, include = FALSE}
+save_as_docx(pike_table, 
+             path = paste0(save_tables_path, "sample_pike_pharm_conc_summary.docx"))
+```
+
+```{r flx pike figure, include = FALSE}
+(
+  flx_pike_fig <- 
+    ggplot(pike_flx_stats, aes(x = days_since_implant, y = Mean)) +
+    geom_point() + 
+    geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
+    ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+    theme_bw() +
+    ylab(expression("Fluoxetine" ~ (ng/g^-1)))+
+    xlab("Exposure duration (days)")  +
+    graph_theme_nolegend)
+    
+```
+
+```{r sertra pike figure, include = FALSE}
+(
+  sertra_pike_fig <- 
+  ggplot(pike_sertra_stats, aes(x = days_since_implant, y = Mean, color = Pharmaceutical)) +
+  geom_jitter(position = position_dodge(0.5), size = 1.5) + 
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), 
+                width = 0.2, 
+                position = position_dodge(0.5)) +
+  ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+  theme_bw() +
+  ylab(expression("Concentration" ~ (ng/g^-1)))+
+  xlab("Exposure duration (days)") +
+    scale_color_manual(values = c(Johnson[4], Johnson[3]))+
+    graph_theme_wlegend
+  )
+```
+
+```{r venla pike figure, include = FALSE}
+(
+  venla_pike_fig <- 
+  ggplot(pike_venla_stats, aes(x = days_since_implant, y = Mean)) +
+  geom_jitter(position = position_dodge(0.5), size = 1.5) + 
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), 
+                width = 0.2, 
+                position = position_dodge(0.5)) +
+  ggplot2::facet_grid(~ TISSUE, scales = "free_y") +
+  theme_bw() +
+  ylab(expression("Concentration" ~ (ng/g^-1)))+
+  xlab("Exposure duration (days)") +
+    scale_color_manual(values = c(Johnson[4], Johnson[3]))+
+    graph_theme_nolegend
+  )
+```
+
+```{r pike figure for MS, fig.align = 'left'}
+(
+  pike_pharma_conc_fig <- (flx_pike_fig + theme(axis.title.x = element_blank())) / 
+  (sertra_pike_fig + theme(axis.title.x = element_blank())) / 
+  venla_pike_fig
+  )
+```
+
+```{r save pike figure, include = FALSE}
+ggsave(filename = paste0(save_fig_path, "sample_pike_pharma_conc.tiff"), plot = pike_pharma_conc_fig, height = 20, width = 15, unit = 'cm', dpi = 300)
+```
