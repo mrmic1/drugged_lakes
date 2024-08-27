@@ -2,3 +2,13 @@
 .Rhistory
 .RData
 .Ruserdata
+./data/tracks_filtered/muddyfoot_sub.rds
+./data/tracks_filtered/lake_BT_sub.rds
+./data
+./data/telem_obj/pike_muddyfoot_tel.rds
+./r_scripts/lake_maps.R
+*.tiff
+*.ai
+*.png
+*.jpg
+other_scripts
