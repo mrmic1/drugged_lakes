@@ -1,1 +1,2 @@
 *.rds filter=lfs diff=lfs merge=lfs -text
+data/akdes/muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds filter=lfs diff=lfs merge=lfs -text
