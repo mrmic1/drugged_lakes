@@ -231,7 +231,75 @@ summary(roach_akdes_cg)
 
 # Separating into 'control' and 'mix'
 #telemetry objects
-pike_control <- pike_muddyfoot_tel[1:3]
-pike_mix <- pike_muddyfoot_tel[4:6]
+pike_control_tel <- pike_muddyfoot_tel[1:3]
+pike_mix_tel <- pike_muddyfoot_tel[4:6]
 
-#akdes
+#ctmms
+pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
+pike_control_akdes <- pike_akdes_cg_list[1:3]
+pike_mix_akdes <- pike_akdes_cg_list[4:6]
+
+#calculate population-level autocorrelated kernel desnity home range estimates
+pike_control_PKDE <- pkde(pike_control_tel,
+                          pike_control_akdes, 
+                          sp = muddyfoot_polygon)
+
+saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
+
+pike_mix_PKDE <- pkde(pike_mix_tel,
+                      pike_mix_akdes, 
+                      sp = muddyfoot_polygon)
+
+saveRDS(pike_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/pike_mix_PKDE.rds"))
+
+### Perch population akdes ###
+
+# Separating into 'control' and 'mix'
+#telemetry objects
+perch_control_tel <- perch_muddyfoot_tel[1:3]
+perch_mix_tel <- perch_muddyfoot_tel[4:6]
+
+#ctmms
+perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+perch_control_akdes <- perch_akdes_cg_list[1:3]
+perch_mix_akdes <- perch_akdes_cg_list[4:6]
+
+#calculate population-level autocorrelated kernel desnity home range estimates
+perch_control_PKDE <- pkde(perch_control_tel,
+                          perch_control_akdes, 
+                          sp = muddyfoot_polygon)
+
+saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+
+perch_mix_PKDE <- pkde(perch_mix_tel,
+                      perch_mix_akdes, 
+                      sp = muddyfoot_polygon)
+
+saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
+
+### roach population akdes ###
+
+# Separating into 'control' and 'mix'
+#telemetry objects
+roach_control_tel <- roach_muddyfoot_tel[1:3]
+roach_mix_tel <- roach_muddyfoot_tel[4:6]
+
+#ctmms
+roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+roach_control_akdes <- roach_akdes_cg_list[1:3]
+roach_mix_akdes <- roach_akdes_cg_list[4:6]
+
+#calculate population-level autocorrelated kernel desnity home range estimates
+roach_control_PKDE <- pkde(roach_control_tel,
+                          roach_control_akdes, 
+                          sp = muddyfoot_polygon)
+
+saveRDS(roach_control_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
+
+roach_mix_PKDE <- pkde(roach_mix_tel,
+                      roach_mix_akdes, 
+                      sp = muddyfoot_polygon)
+
+#saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+
+
