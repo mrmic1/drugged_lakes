@@ -8,22 +8,20 @@ library(dplyr)
 library(parallel)
 library(foreach)
 library(doParallel)
+library(ggplot2)
+library(sf)
+library(terra)
+library(raster)
 
-
-#DIRECTORIES
+#DIRECTOsfheaders#DIRECTORIES
 ctmm_path = "./data/ctmm_fits/"
 data_filter_path = "./data/tracks_filtered/"
 telem_path = "./data/telem_obj/"
 save_tables_path = "./data/tracks_filtered/sum_tables/" 
 akde_path = "./data/akdes/" 
 lake_polygon_path = "./data/lake_coords/"
-
-
-#Need to make akde_cgs
-#population akdes
-#change projection of ctmms objects
-#Add LFS to github repository
-#Create raster maps
+rec_data_path = "./data/lake_coords/reciever_and_habitat_locations/"
+save_ud_plots = "./lakes_images_traces/ud_plots/"
 
 #>>> 1. Setup ####
 
@@ -226,6 +224,8 @@ summary(roach_akdes_cg)
 #-------------------------------------#
 
 #make sure muddyfoot polygon is loaded
+#may need to convert to spatial polygon dataframe
+muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
 
 ### Pike population akdes ###
 
@@ -242,13 +242,15 @@ pike_mix_akdes <- pike_akdes_cg_list[4:6]
 #calculate population-level autocorrelated kernel desnity home range estimates
 pike_control_PKDE <- pkde(pike_control_tel,
                           pike_control_akdes, 
-                          sp = muddyfoot_polygon)
+                          SP = muddyfoot_sp_data,
+                          SP.in = TRUE)
 
 saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
 
 pike_mix_PKDE <- pkde(pike_mix_tel,
                       pike_mix_akdes, 
-                      sp = muddyfoot_polygon)
+                      SP = muddyfoot_sp_data,
+                      SP.in = TRUE)
 
 saveRDS(pike_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/pike_mix_PKDE.rds"))
 
@@ -267,15 +269,17 @@ perch_mix_akdes <- perch_akdes_cg_list[4:6]
 #calculate population-level autocorrelated kernel desnity home range estimates
 perch_control_PKDE <- pkde(perch_control_tel,
                           perch_control_akdes, 
-                          sp = muddyfoot_polygon)
+                          SP = muddyfoot_sp_data,
+                          SP.in = TRUE)
 
-saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+#saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
 
 perch_mix_PKDE <- pkde(perch_mix_tel,
                       perch_mix_akdes, 
-                      sp = muddyfoot_polygon)
+                      SP = muddyfoot_sp_data,
+                      SP.in = TRUE)
 
-saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
+#saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
 
 ### roach population akdes ###
 
@@ -291,15 +295,88 @@ roach_mix_akdes <- roach_akdes_cg_list[4:6]
 
 #calculate population-level autocorrelated kernel desnity home range estimates
 roach_control_PKDE <- pkde(roach_control_tel,
-                          roach_control_akdes, 
-                          sp = muddyfoot_polygon)
+                          roach_control_akdes,
+                          SP = muddyfoot_sp_data,
+                          SP.in = TRUE)
 
-saveRDS(roach_control_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
+#saveRDS(roach_control_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
 
 roach_mix_PKDE <- pkde(roach_mix_tel,
                       roach_mix_akdes, 
-                      sp = muddyfoot_polygon)
+                      SP = muddyfoot_sp_data,
+                      SP.in = TRUE)
 
 #saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
 
+
+#-------------------------------------#
+#>>> 4. PLOT POPULATION AKDES -------- ####
+#-------------------------------------#
+
+# #load in rasters
+# mud_hab_raster <- terra::rast(paste0(lake_polygon_path, "muddyfoot/muddyfoot_habitat_raster.grd"))
+# terra::plot(mud_hab_raster)
+# mud_lakeonly_raster <- terra::rast(paste0(lake_polygon_path, "muddyfoot_lakeonly_raster.grd"))
+# mud_raster <- terra::rast(paste0(lake_polygon_path, "muddyfoot_raster.grd"))
+# mud_shape_vector <- terra::vect(paste0(lake_polygon_path, "muddyfoot/mud_shape_vect.gpkg"))
+
+#receiver and habitat locations
+mud_rec_locs_kml <- paste0(rec_data_path, "muddyfoot_rec_hab_locations.kml")
+mud_rec_locs <- st_read(mud_rec_locs_kml)[1:5,]
+mud_hab_locs <- st_read(mud_rec_locs_kml)[6:7,]
+
+#load pkdes if necessary
+perch_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+perch_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
+roach_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
+roach_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+
+
+### Perch ###
+
+# Function to generate the plot with a title
+generate_ud_plot <- function(pkde_data, bbox, hab_locs, plot_title) {
+  ud_raster <- raster(pkde_data)
+  masked_ud_raster <- mask(ud_raster, bbox)
+  ud_df <- as.data.frame(as(masked_ud_raster, "SpatialPixelsDataFrame"))
+  colnames(ud_df) <- c("value", "x", "y")
+  
+  ggplot() +
+    geom_sf(data = bbox, color = "black") +
+    geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
+    geom_sf(data = hab_locs, color = "green", size = 3, fill = NA, shape = 3, stroke = 2) + 
+    scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
+    coord_sf() +
+    theme_minimal() +
+    labs(fill = "Utilization Distribution") +
+    ggtitle(plot_title)
+}
+
+
+# Transform bbox
+muddyfoot_bbox_perch <- st_transform(muddyfoot_polygon, crs(raster(perch_control_PKDE)))
+muddyfoot_bbox_roach <- st_transform(muddyfoot_polygon, crs(raster(roach_control_PKDE)))
+
+
+# Generate the plots
+#Perch
+perch_control_plot <- generate_ud_plot(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs, "Perch control")
+perch_mix_plot <- generate_ud_plot(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs, "Perch exposed")
+
+#Roach
+roach_control_plot <- generate_ud_plot(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach control")
+roach_mix_plot <- generate_ud_plot(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach exposed")
+
+
+# Display the plots side by side
+library(patchwork)
+prey_habitat_overlap_muddyfoot_fig <- perch_control_plot + roach_control_plot + perch_mix_plot +  roach_mix_plot + plot_layout(nrow = 2, ncol = 2)
+ggsave(file = paste0(save_ud_plots, "prey_UDs_habitat_muddyfoot.png"), 
+       plot = prey_habitat_overlap_muddyfoot_fig, 
+       width = 30, 
+       height = 30,
+       units = 'cm',
+       dpi = 300)
+
+#Control
 
