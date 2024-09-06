@@ -41,7 +41,9 @@ perch_muddyfoot_ctmm_fits = readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/mudd
 roach_muddyfoot_ctmm_fits = readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds")) 
 
 #load in muddyfoot polygon
-muddyfoot_polygon = sf::st_read(paste0(lake_polygon_path, "lake_muddyfoot_polygon.gpkg"))
+muddyfoot_polygon = sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddyfoot_polygon.gpkg"))
+muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
+
 
 #-------------------------------------------------------------------------------------------------------
 
@@ -82,6 +84,8 @@ pike_akdes_cg <- foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %
     pike_muddyfoot_tel[[i]],
     pike_muddyfoot_ctmm_fits[[i]], 
     weights = FALSE,
+    SP = muddyfoot_sp_data,
+    SP.in = TRUE,
     grid = list(dr = akde_ref$dr,
                 align.to.origin = T))
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/", names(pike_muddyfoot_tel)[i], "_akde_cg.rds"))
@@ -143,6 +147,8 @@ perch_akdes_cg <- foreach(i = 1:length(perch_muddyfoot_tel), .packages = 'ctmm')
     perch_muddyfoot_tel[[i]],
     perch_muddyfoot_ctmm_fits[[i]], 
     weights = FALSE,
+    SP = muddyfoot_sp_data,
+    SP.in = TRUE,
     grid = list(dr = akde_ref$dr,
                 align.to.origin = T))
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/", names(perch_muddyfoot_tel)[i], "_akde_cg.rds"))
@@ -202,6 +208,8 @@ roach_akdes_cg <- foreach(i = 1:length(roach_muddyfoot_tel), .packages = 'ctmm')
     roach_muddyfoot_tel[[i]],
     roach_muddyfoot_ctmm_fits[[i]], 
     weights = FALSE,
+    SP = muddyfoot_sp_data,
+    SP.in = TRUE,
     grid = list(dr = akde_ref$dr,
                 align.to.origin = T))
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/", names(roach_muddyfoot_tel)[i], "_akde_cg.rds"))
@@ -245,7 +253,7 @@ pike_control_PKDE <- pkde(pike_control_tel,
                           SP = muddyfoot_sp_data,
                           SP.in = TRUE)
 
-saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
+#saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
 
 pike_mix_PKDE <- pkde(pike_mix_tel,
                       pike_mix_akdes, 
@@ -330,9 +338,9 @@ perch_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/populatio
 perch_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
 roach_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
 roach_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+pike_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
+pike_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_mix_PKDE.rds"))
 
-
-### Perch ###
 
 # Function to generate the plot with a title
 generate_ud_plot <- function(pkde_data, bbox, hab_locs, plot_title) {
@@ -356,7 +364,7 @@ generate_ud_plot <- function(pkde_data, bbox, hab_locs, plot_title) {
 # Transform bbox
 muddyfoot_bbox_perch <- st_transform(muddyfoot_polygon, crs(raster(perch_control_PKDE)))
 muddyfoot_bbox_roach <- st_transform(muddyfoot_polygon, crs(raster(roach_control_PKDE)))
-
+muddyfoot_bbox_pike <- st_transform(muddyfoot_polygon, crs(raster(pike_control_PKDE)))
 
 # Generate the plots
 #Perch
@@ -367,10 +375,20 @@ perch_mix_plot <- generate_ud_plot(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab
 roach_control_plot <- generate_ud_plot(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach control")
 roach_mix_plot <- generate_ud_plot(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach exposed")
 
+#Pike
+pike_control_plot <- generate_ud_plot(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs, "pike control")
+pike_mix_plot <- generate_ud_plot(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs, "pike exposed")
 
 # Display the plots side by side
 library(patchwork)
-prey_habitat_overlap_muddyfoot_fig <- perch_control_plot + roach_control_plot + perch_mix_plot +  roach_mix_plot + plot_layout(nrow = 2, ncol = 2)
+prey_habitat_overlap_muddyfoot_fig <- 
+  perch_control_plot + roach_control_plot + 
+  perch_mix_plot +  roach_mix_plot +  plot_layout(nrow = 2, ncol = 2)
+
+pred_habitat_overlap_muddyfoot_fig <- pike_control_plot + pike_mix_plot + plot_layout(nrow = 2)
+
+
+#Save
 ggsave(file = paste0(save_ud_plots, "prey_UDs_habitat_muddyfoot.png"), 
        plot = prey_habitat_overlap_muddyfoot_fig, 
        width = 30, 
@@ -378,5 +396,5 @@ ggsave(file = paste0(save_ud_plots, "prey_UDs_habitat_muddyfoot.png"),
        units = 'cm',
        dpi = 300)
 
-#Control
+
 
