@@ -43,7 +43,7 @@ roach_muddyfoot_ctmm_fits = readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/mudd
 #load in muddyfoot polygon
 muddyfoot_polygon = sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddyfoot_polygon.gpkg"))
 muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
-
+mud_hab_raster <- raster::raster(paste0(lake_polygon_path, "muddyfoot/muddyfoot_habitat_raster.grd"))
 
 #-------------------------------------------------------------------------------------------------------
 
@@ -53,15 +53,19 @@ muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
 
 ### Pike HR analysis ###
 
-pike_akdes <- list()
-cl <- makeCluster(6)
-doParallel::registerDoParallel(cl)
-pike_akdes <- 
-  foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-    akde_fit = akde(pike_muddyfoot_tel[[i]],pike_muddyfoot_ctmm_fits[[i]], weights = FALSE, sp = muddyfoot_polygon)
-    saveRDS(akde_fit, file = paste0(save_akde_path, "muddyfoot_pike_akdes/", names(pike_muddyfoot_tel)[i], "_akde.rds"))
-    akde_fit
-  }
+# pike_akdes <- list()
+# cl <- makeCluster(6)
+# doParallel::registerDoParallel(cl)
+# pike_akdes <- 
+#   foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %dopar% {
+#     akde_fit = akde(pike_muddyfoot_tel[[i]],
+#                     pike_muddyfoot_ctmm_fits[[i]], 
+#                     weights = FALSE, 
+#                     SP = muddyfoot_polygon,
+#                     SP.in = TRUE)
+#     saveRDS(akde_fit, file = paste0(save_akde_path, "muddyfoot_pike_akdes/", names(pike_muddyfoot_tel)[i], "_akde.rds"))
+#     akde_fit
+#   }
 
 
 #add ID to lists
@@ -94,9 +98,10 @@ pike_akdes_cg <- foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %
 
 stopCluster(cl)
 
+
 #add ID to lists
 names(pike_akdes_cg) <- names(pike_muddyfoot_tel)
-summary(pike_akdes_cg)  
+summary(pike_akdes_cg$F59880)  
 
 #save
 saveRDS(pike_akdes_cg, paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
@@ -105,31 +110,32 @@ saveRDS(pike_akdes_cg, paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akde
 
 ### Perch HR analysis ###
 
-perch_akdes <- list()
-cl <- makeCluster(20)
-doParallel::registerDoParallel(cl)
-perch_akdes <- 
-  foreach(i = 1:length(perch_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-    akde_fit = akde(perch_muddyfoot_tel[[i]], 
-                    perch_muddyfoot_ctmm_fits[[i]], 
-                    weights = FALSE, 
-                    sp = muddyfoot_polygon)
-    saveRDS(akde_fit, 
-            file = paste0(save_akde_path, 
-                          "muddyfoot_perch_akdes/", 
-                          names(perch_muddyfoot_tel)[i], 
-                          "_akde.rds"))
-    akde_fit
-  }
-
-stopCluster(cl)
-
-#add ID to lists
-names(perch_akdes ) <- names(perch_muddyfoot_tel)
-summary(perch_akdes$F59682)  
-
-#save
-saveRDS(perch_akdes, paste0(save_akde_path, "muddyfoot_perch_akdes/perch_akdes_list.rds"))
+# perch_akdes <- list()
+# cl <- makeCluster(20)
+# doParallel::registerDoParallel(cl)
+# perch_akdes <- 
+#   foreach(i = 1:length(perch_muddyfoot_tel), .packages = 'ctmm') %dopar% {
+#     akde_fit = akde(perch_muddyfoot_tel[[i]], 
+#                     perch_muddyfoot_ctmm_fits[[i]], 
+#                     weights = FALSE, 
+#                     SP = muddyfoot_sp_data,
+#                     SP.in = TRUE,)
+#     saveRDS(akde_fit, 
+#             file = paste0(save_akde_path, 
+#                           "muddyfoot_perch_akdes/", 
+#                           names(perch_muddyfoot_tel)[i], 
+#                           "_akde.rds"))
+#     akde_fit
+#   }
+# 
+# stopCluster(cl)
+# 
+# #add ID to lists
+# names(perch_akdes ) <- names(perch_muddyfoot_tel)
+# summary(perch_akdes$F59682)  
+# 
+# #save
+# saveRDS(perch_akdes, paste0(save_akde_path, "muddyfoot_perch_akdes/perch_akdes_list.rds"))
 
 
 # calculate AKDES on a consistent grid
@@ -162,7 +168,7 @@ names(perch_akdes_cg) <- names(perch_muddyfoot_tel)
 summary(perch_akdes_cg)  
 
 #save
-#saveRDS(perch_akdes_cg, paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+saveRDS(perch_akdes_cg, paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
 
 #----------------------------------------------------------#
 
@@ -223,7 +229,7 @@ names(roach_akdes_cg) <- names(roach_muddyfoot_tel)
 summary(roach_akdes_cg)  
 
 #save
-#saveRDS(roach_akdes_cg, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+saveRDS(roach_akdes_cg, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
 #------------------------------------------------------------------------------------------------#
 
@@ -253,7 +259,7 @@ pike_control_PKDE <- pkde(pike_control_tel,
                           SP = muddyfoot_sp_data,
                           SP.in = TRUE)
 
-#saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
+saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
 
 pike_mix_PKDE <- pkde(pike_mix_tel,
                       pike_mix_akdes, 
@@ -280,14 +286,14 @@ perch_control_PKDE <- pkde(perch_control_tel,
                           SP = muddyfoot_sp_data,
                           SP.in = TRUE)
 
-#saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
 
 perch_mix_PKDE <- pkde(perch_mix_tel,
                       perch_mix_akdes, 
                       SP = muddyfoot_sp_data,
                       SP.in = TRUE)
 
-#saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
+saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
 
 ### roach population akdes ###
 
@@ -307,14 +313,14 @@ roach_control_PKDE <- pkde(roach_control_tel,
                           SP = muddyfoot_sp_data,
                           SP.in = TRUE)
 
-#saveRDS(roach_control_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
+saveRDS(roach_control_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
 
 roach_mix_PKDE <- pkde(roach_mix_tel,
                       roach_mix_akdes, 
                       SP = muddyfoot_sp_data,
                       SP.in = TRUE)
 
-#saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
 
 
 #-------------------------------------#
