@@ -1,6 +1,6 @@
-# -------------------------------------------- #
-# RESOURCE SELECTION FUNCTIONS - MUDDYFOOT ####
-# -------------------------------------------- #
+# --------------------------------------------------------- #
+# RESOURCE SELECTION FOR ARTIFICIAL HABITATS - MUDDYFOOT ####
+# --------------------------------------------------------- #
 
 library(ctmm)
 library(tidyverse)
