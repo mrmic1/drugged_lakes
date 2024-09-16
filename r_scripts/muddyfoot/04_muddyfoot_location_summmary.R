@@ -25,15 +25,12 @@ set_flextable_defaults(
 ### DIRECTORIES ###
 # Define paths to various datasets and save locations for tables.
 ctmm_path <- "./data/ctmm_fits/"  # Path for ctmm model fits.
-data_filter_path <- "./data/tracks_filtered/"  # Path for filtered tracking data.
+data_filter_path <- "./data/tracks_filtered/muddyfoot/"  # Path for filtered tracking data.
 telem_path <- "./data/telem_obj/"  # Path for telemetry object files.
 save_tables_path <- "./data/tracks_filtered/sum_tables/"  # Path to save summary tables.
 enc_path <- "./data/encounters/"
 
 ### LOAD DATA ###
-# Load filtered data for the 'muddyfoot' dataset.
-muddyfoot_sub <- readRDS(paste0(data_filter_path, 'muddyfoot_sub.rds'))
-
 # Load telemetry objects for different species.
 pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
 perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
@@ -67,12 +64,14 @@ perch_data <- extract_data(perch_muddyfoot_tel)
 roach_data <- extract_data(roach_muddyfoot_tel)
 
 # Combine all dataframes into one, with a species label added.
-muddyfoot_filt_data <- 
+muddyfoot_telem_data <- 
   rbind(
     cbind(pike_data, Species = 'Pike'), 
     cbind(perch_data, Species = 'Perch'),
     cbind(roach_data, Species = 'Roach')
   )
+
+#saveRDS(muddyfoot_telem_data, paste0(data_filter_path, "02_muddyfoot_sub.rds"))
 
 #------------------------------------------------------------------------------------------------------------#
 
@@ -92,14 +91,14 @@ pred_cols <- mud_pred_events %>%
 
 # Filter out data after the predation event for each individual.
 muddyfoot_filt_data <- 
-  muddyfoot_tracking_data %>%
+  muddyfoot_telem_data %>%
   left_join(pred_cols, by = c("individual_id" = "individual_ID")) %>%
   filter(is.na(first_date_over_50) | date <= first_date_over_50)  # Keep only pre-predation data
 
 # Check how many rows were removed during filtering (optional).
 # For example, 293,214 rows were removed, as indicated in the comment.
 
-print(paste0("Rows removed after predation filtering: ", nrow(muddyfoot_tracking_data) - nrow(muddyfoot_filt_data)))
+print(paste0("Rows removed after predation filtering: ", nrow(muddyfoot_telem_data) - nrow(muddyfoot_filt_data)))
 
 # #check filtering worked
 # # Filter data for individual 'F59709'
@@ -107,6 +106,8 @@ print(paste0("Rows removed after predation filtering: ", nrow(muddyfoot_tracking
 # filtered_muddyfoot <- muddyfoot_filt_data %>% filter(individual_id == 'F59709')
 # # Calculate the difference in the number of rows
 # abs(nrow(filtered_test) - nrow(filtered_muddyfoot))
+
+#saveRDS(muddyfoot_filt_data, paste0(data_filter_path, "03_muddyfoot_sub.rds"))
 
 #-------------------------------------------------------------------------------------------------------------#
 
@@ -167,7 +168,7 @@ muddyfoot_filt_data$Date <- format(with_tz(ymd_hms(muddyfoot_filt_data$timestamp
                                            tzone = "Europe/Stockholm"), "%Y/%m/%d")
 muddyfoot_filt_data$Date <- as.POSIXct(muddyfoot_filt_data$Date, tz = "Europe/Stockholm")
 
-#check
+#check time
 tz(muddyfoot_filt_data$Date) #Europe/Stockholm
 tz(muddyfoot_filt_data$date) #UTC
 tz(muddyfoot_filt_data$timestamp) #Europe/Stockholm
@@ -189,14 +190,6 @@ print(muddyfoot_filt_data %>%
         distinct(), 
       n = 65)
 
-# Calculate the number of positions per day, hour, and minute.
-muddyfoot_filt_data <- 
-  muddyfoot_filt_data %>%
-  group_by(individual_id) %>% 
-  mutate(n_positions_per_day = n_positions / n_days_mon,
-         n_positions_per_hour = n_positions_per_day / 24,
-         n_positions_per_min = n_positions_per_hour / 60) %>% 
-  ungroup()
 
 # Create a summary table of the calculated metrics.
 positions_sum <- 
@@ -204,9 +197,6 @@ positions_sum <-
   dplyr::select(individual_id, treatment, Species,
                 n_positions, 
                 n_days_mon, 
-                n_positions_per_day,
-                n_positions_per_hour,
-                n_positions_per_min,
                 mean_time_diff) %>% 
   distinct()
 
@@ -281,7 +271,7 @@ cor(positions_sum$n_positions, positions_sum$effective_n, method = 'spearman', u
 muddyfoot_filt_data <- 
   muddyfoot_filt_data %>%
   group_by(individual_id, Date) %>% 
-  mutate(n_day_positions = n(),  # Number of positions per day.
+  mutate(n_positions_day = n(),
          median_day_time_diff = median(time_diff, na.rm = TRUE)) %>%  # Median time difference per day.
   ungroup()
 
@@ -289,15 +279,15 @@ muddyfoot_filt_data <-
 muddyfoot_filt_data <- 
   muddyfoot_filt_data %>%
   group_by(individual_id, Date) %>% 
-  mutate(n_day_positions_per_hour = n_day_positions / 24,  # Average number of positions per hour.
-         n_day_positions_per_min = n_day_positions_per_hour / 60) %>%  # Average number of positions per minute.
+  mutate(n_positions_hourly = n_positions_day / 24,  # Average number of positions per hour.
+         n_positions_per_min = n_positions_hourly / 60) %>%  # Average number of positions per minute.
   ungroup()
 
 # Optional: Check a specific individual for daily tracking stats.
 print(
   muddyfoot_filt_data %>% 
     filter(individual_id == 'F59704') %>%  # Example individual ID.
-    dplyr::select(individual_id, Species, Date, n_day_positions, median_day_time_diff, n_day_positions_per_hour, n_day_positions_per_min) %>% 
+    dplyr::select(individual_id, Species, Date, n_positions_day, median_day_time_diff, n_positions_hourly, n_positions_per_min) %>% 
     distinct(), n = 36
 )
 
@@ -379,7 +369,6 @@ positions_sum <-
   left_join(summary_missing_dates[, c('individual_id', 'n', 'n_breaks')], by = "individual_id") %>%
   mutate(n_missing_dates = ifelse(is.na(n), 0, n),  # If no missing dates, set to 0.
          n_breaks = ifelse(is.na(n_breaks), 0, n_breaks)) %>% 
-  dplyr::select(-n, -n_positions_per_day, -n_positions_per_hour, -n_positions_per_min) %>%  # Drop redundant columns.
   mutate_if(is.numeric, round, 1)  # Round all numeric columns.
 
 # Create a summary table of positions using flextable.
@@ -440,20 +429,20 @@ daily_pos_irreg_ind <-
   group_by(Species) %>% 
   mutate(avg_median_time_diff = mean(median_time_diff, na.rm = TRUE),
          std_median_time_diff = sd(median_time_diff, na.rm = TRUE),
-         avg_daily_positions = mean(n_day_positions, na.rm = TRUE),
-         std_daily_positions = sd(n_day_positions, na.rm = TRUE),
-         avg_daily_hour_positions = mean(n_day_positions_per_hour, na.rm = TRUE),
-         std_daily_hour_positions = sd(n_day_positions_per_hour, na.rm = TRUE)
+         avg_daily_positions = mean(n_positions_day, na.rm = TRUE),
+         std_daily_positions = sd(n_positions_day, na.rm = TRUE),
+         avg_daily_hour_positions = mean(n_positions_hourly, na.rm = TRUE),
+         std_daily_hour_positions = sd(n_positions_hourly, na.rm = TRUE)
   ) %>% 
   # Identify days where tracking is below thresholds for irregular sampling.
   filter((median_day_time_diff <= (avg_median_time_diff - 3 * std_median_time_diff)) |
-           (n_day_positions <= (avg_daily_positions - 1 * std_daily_positions)) |
-           (n_day_positions_per_hour <= (avg_daily_hour_positions - 1 * std_daily_hour_positions))) %>%
-  dplyr::select(Species, individual_id, Date, median_day_time_diff, n_day_positions, n_day_positions_per_hour) %>% 
+           (n_positions_day <= (avg_daily_positions - 1 * std_daily_positions)) |
+           (n_positions_hourly <= (avg_daily_hour_positions - 1 * std_daily_hour_positions))) %>%
+  dplyr::select(Species, individual_id, Date, median_day_time_diff, n_positions_day, n_positions_hourly) %>% 
   mutate_if(is.numeric, round, 1) %>% 
-  filter((n_day_positions <= 1000)) %>%  # Remove individuals with very low positions.
+  filter((n_positions_day <= 1000)) %>%  # Remove individuals with very low positions.
   filter((median_day_time_diff > 5)) %>%  # Remove very short time gaps.
-  filter((n_day_positions_per_hour < 30)) %>% 
+  filter((n_positions_hourly < 30)) %>% 
   distinct(individual_id, Date, .keep_all = TRUE) %>% 
   ungroup()
 
@@ -467,7 +456,7 @@ muddyfoot_filt_data <-
 check <- print(
   muddyfoot_filt_data %>% 
     filter(irreg_sample_day == 1) %>% 
-    dplyr::select(individual_id, Date, n_day_positions, median_day_time_diff, n_day_positions_per_hour) %>% 
+    dplyr::select(individual_id, Date, n_positions_day, median_day_time_diff, n_positions_hourly) %>% 
     mutate_if(is.numeric, round, 1) %>% 
     distinct()
 )
@@ -479,9 +468,9 @@ individual_irregular_sample_table <-
   bold(part = 'header') %>% 
   set_header_labels("individual_id" = 'Fish ID', 
                     "Date" = "Date",
-                    "n_day_positions" = "Number of positions",
+                    "n_positions_day" = "Number of positions",
                     "median_day_time_diff" = "Median location frequency (s)",
-                    "n_day_positions_per_hour" = "Hourly positions") %>% 
+                    "n_positions_hourly" = "Hourly positions") %>% 
   width(j = c(3:5), width = 4, unit = 'cm')
 
 # Optional: Save the irregular sampling table as a Word document.
@@ -595,4 +584,6 @@ save_as_docx(muddyfoot_species_positions_sum,
              path = paste0(save_tables_path, "muddyfoot_species_location_summary_MS.docx"))
 
 # Optional: Save the filtered dataset for future use.
-# saveRDS(muddyfoot_filt_data, paste0(data_filter_path, "muddyfoot_final_filt_data.rds"))
+saveRDS(muddyfoot_filt_data, paste0(data_filter_path, "04_muddyfoot_sub.rds"))
+saveRDS(positions_sum, paste0(data_filter_path, "muddyfoot_daily_location_sum.rds"))
+

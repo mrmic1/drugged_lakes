@@ -15,9 +15,7 @@ library(raster)      # Legacy package for raster data manipulation
 
 # Define paths to directories for loading/saving data
 ctmm_path <- "./data/ctmm_fits/"                  # Directory for ctmm model fits
-data_filter_path <- "./data/tracks_filtered/"     # Directory for filtered telemetry data
 telem_path <- "./data/telem_obj/"                 # Directory for telemetry objects
-save_tables_path <- "./data/tracks_filtered/sum_tables/"  # Directory to save summary tables
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
 rec_data_path <- "./data/lake_coords/reciever_and_habitat_locations/"  # Directory for receiver and habitat location data
@@ -232,7 +230,7 @@ perch_ids_remove <- mud_pred_events %>%
 perch_akdes_cg_list <- perch_akdes_cg_list[!(names(perch_akdes_cg_list) %in% perch_ids_remove)]
 perch_muddyfoot_tel <- perch_muddyfoot_tel[!(names(perch_muddyfoot_tel) %in% perch_ids_remove)]
 
-#> 2.2. Pike Population AKDE Estimation ####
+#> 2.2. Pike  ####
 
 # Separating Pike data into two groups: 'control' and 'mix'
 # 'control' refers to the first three individuals, 'mix' refers to the next three
@@ -260,8 +258,17 @@ pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed gro
                       SP = muddyfoot_sp_data, # Spatial polygon for the lake boundary
                       SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
+saveRDS(pike_mix_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_mix_PKDE.rds"))
+
+# Calculate population-level AKDE for all pike - to be used as probability distribution raster
+pike_total_PKDE <- pkde(pike_muddyfoot_tel,           # Telemetry data for individuals
+                        pike_akdes_cg_list,         # AKDEs for all individuals
+                        SP = muddyfoot_sp_data, # Spatial polygon for the lake boundary
+                        SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
+
 # Save the population-level AKDE for the mixed group
-saveRDS(pike_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/pike_mix_PKDE.rds"))
+saveRDS(pike_total_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_total_PKDE.rds"))
+
 
 
 #> 2.3. Perch ####
@@ -288,9 +295,9 @@ perch_mix_PKDE <- pkde(perch_mix_tel,
                       SP = muddyfoot_sp_data,
                       SP.in = TRUE)
 
-#saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
+saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
 
-### roach population akdes ###
+# > 2.4. Roach ####
 
 # Separating into 'control' and 'mix'
 #telemetry objects
