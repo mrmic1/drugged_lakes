@@ -4,4 +4,14 @@ muddyfoot_sub.rds
 muddyfoot_final_filt_data.rds
 lake_BT_final_filt_data.rds
 cow_paradise_sub.rds
+<<<<<<< HEAD
+lake_cow_final_filt_data.rds
+=======
 cow_paradise_final_filt_data.rds
+>>>>>>> bcda71b3939d48bad092194a291d154ff0ace440
+lake_cow_sub.rds
+01_muddyfoot_sub.rds
+02_muddyfoot_sub.rds
+03_muddyfoot_sub.rds
+04_muddyfoot_sub.rds
+05_muddyfoot_sub.rds
