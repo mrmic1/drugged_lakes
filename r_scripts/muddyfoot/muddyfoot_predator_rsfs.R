@@ -77,13 +77,14 @@ plot(lake_raster, main = "Lake Raster")
 #---------------------------------------#
 
 predator_ud_raster <- raster(pike_total_PKDE)
+plot(predator_ud_raster) #not bounded
+
+#raster values
+pred_raster_values <- values(predator_ud_raster)
+value_matrix <- as.matrix(pred_raster_values) 
+
+predator_ud_raster <- rast(predator_ud_raster, lake_raster, background = 0, res = 0.1)
 plot(predator_ud_raster)
-
-predator_ud_raster <- terra::project(predator_ud_raster, "EPSG:4326")
-
-
-# Assign a value of 1 to the habitat patches and leave other areas as 0 or NA
-predator_ud_raster <- rast(predator_ud_raster, lake_raster, background = 0)
 predator_ud_raster <- terra::project(predator_ud_raster, "EPSG:4326")
 
 
@@ -99,7 +100,8 @@ predator_ud_raster <- raster::raster(predator_ud_raster)
 plot(predator_ud_raster)
 
 #save masked raster
-writeRaster(predator_ud_raster, paste0(rsf_path, "muddyfoot_predator_ud_raster.tif", overwrite = TRUE))
+writeRaster(predator_ud_raster, paste0(rsf_path, "muddyfoot_predator_ud_raster.tif"), overwrite = TRUE)
+)
 
 #---------------------------------------------#
 #> 3. Split telemetry objects by treatment ####
