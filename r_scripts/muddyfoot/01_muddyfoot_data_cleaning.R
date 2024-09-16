@@ -104,11 +104,6 @@ muddyfoot_sub <- muddyfoot_sub %>%
 # Round the time difference to 3 decimal places for clarity
 muddyfoot_sub$time_diff <- round(as.numeric(muddyfoot_sub$time_diff), 3)
 
-# Create additional columns to track the date, week, and day of the year
-muddyfoot_sub$date <- strftime(muddyfoot_sub$timestamp, format = "%Y/%m/%d")
-muddyfoot_sub$week <- strftime(muddyfoot_sub$timestamp, format = "%W")
-muddyfoot_sub$day <- strftime(muddyfoot_sub$timestamp, format = "%j")
-
 # Create a unique ID for each individual on each day
 muddyfoot_sub <- muddyfoot_sub %>%
   mutate(individual_day = paste(individual_ID, day, sep = "_"))

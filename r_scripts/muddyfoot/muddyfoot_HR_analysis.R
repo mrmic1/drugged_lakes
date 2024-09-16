@@ -2,312 +2,306 @@
 # HOME RANGE ANALYSIS - MUDDYFOOT
 # -------------------------------------------#
 
-#LIBRARIES
-library(ctmm)
-library(dplyr)
-library(parallel)
-library(foreach)
-library(doParallel)
-library(ggplot2)
-library(sf)
-library(terra)
-library(raster)
+# Load necessary libraries
+library(ctmm)        # Continuous-Time Movement Models for animal telemetry data analysis
+library(dplyr)       # Data manipulation and pipeline functions
+library(parallel)    # Parallel computing support
+library(foreach)     # Looping construct for parallel execution
+library(doParallel)  # Parallel backend for foreach loops
+library(ggplot2)     # Visualization package for creating plots
+library(sf)          # Handling spatial vector data (Simple Features)
+library(terra)       # Handling raster and vector data in a modern framework
+library(raster)      # Legacy package for raster data manipulation
 
-#DIRECTOsfheaders#DIRECTORIES
-ctmm_path = "./data/ctmm_fits/"
-data_filter_path = "./data/tracks_filtered/"
-telem_path = "./data/telem_obj/"
-save_tables_path = "./data/tracks_filtered/sum_tables/" 
-akde_path = "./data/akdes/" 
-lake_polygon_path = "./data/lake_coords/"
-rec_data_path = "./data/lake_coords/reciever_and_habitat_locations/"
-save_ud_plots = "./lakes_images_traces/ud_plots/"
-
-#>>> 1. Setup ####
+# Define paths to directories for loading/saving data
+ctmm_path <- "./data/ctmm_fits/"                  # Directory for ctmm model fits
+data_filter_path <- "./data/tracks_filtered/"     # Directory for filtered telemetry data
+telem_path <- "./data/telem_obj/"                 # Directory for telemetry objects
+save_tables_path <- "./data/tracks_filtered/sum_tables/"  # Directory to save summary tables
+akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
+lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
+rec_data_path <- "./data/lake_coords/reciever_and_habitat_locations/"  # Directory for receiver and habitat location data
+save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
+enc_path <- "./data/encounters/"                  # Directory for encounter data
 
 ### LOAD DATA ###
 
-#muddyfoot filtered dataframe
-muddyfoot_filt_data <-  readRDS(paste0(data_filter_path, "muddyfoot_final_filt_data.rds"))
+# Load telemetry objects for pike, perch, and roach species in Muddyfoot lake
+pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
+perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
+roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
 
-#telemetry objects
-pike_muddyfoot_tel = readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
-perch_muddyfoot_tel = readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
-roach_muddyfoot_tel = readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
+# Load ctmm model fits for pike, perch, and roach in Muddyfoot lake
+# The models include continuous-time movement fits using the Ornstein-Uhlenbeck Foraging (OUF) model
+pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
+perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
+roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
 
-#ctmm models
-pike_muddyfoot_ctmm_fits = readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
-perch_muddyfoot_ctmm_fits = readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
-roach_muddyfoot_ctmm_fits = readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds")) 
+# Load the polygon representing the boundary of Muddyfoot lake, in the form of a GeoPackage file
+muddyfoot_polygon <- sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddyfoot_polygon.gpkg"))
 
-#load in muddyfoot polygon
-muddyfoot_polygon = sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddyfoot_polygon.gpkg"))
+# Convert the simple features (sf) polygon data into a Spatial object for compatibility with other functions
 muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
-mud_hab_raster <- raster::raster(paste0(lake_polygon_path, "muddyfoot/muddyfoot_habitat_raster.grd"))
 
-#-------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------#
 
 #--------------------------#                 
-#>>> 2. AKDE ESTIMATION ####
+# 1. AKDE ESTIMATION ####
 #--------------------------#
 
-### Pike HR analysis ###
+# This script estimates the Autocorrelated Kernel Density Estimates (AKDEs)
+# for three fish species: Pike, Perch, and Roach, from telemetry data. 
+# We first estimate AKDEs on a consistent grid for each species, 
+# using one individual's home range (HR) as a reference to standardize grid size.
+#--------------------------#
 
-# pike_akdes <- list()
-# cl <- makeCluster(6)
-# doParallel::registerDoParallel(cl)
-# pike_akdes <- 
-#   foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-#     akde_fit = akde(pike_muddyfoot_tel[[i]],
-#                     pike_muddyfoot_ctmm_fits[[i]], 
-#                     weights = FALSE, 
-#                     SP = muddyfoot_polygon,
-#                     SP.in = TRUE)
-#     saveRDS(akde_fit, file = paste0(save_akde_path, "muddyfoot_pike_akdes/", names(pike_muddyfoot_tel)[i], "_akde.rds"))
-#     akde_fit
-#   }
+#> 1.1. Pike ####
 
+# Pike AKDE estimation with parallel processing
 
-#add ID to lists
-names(pike_akdes ) <- names(pike_muddyfoot_tel)
-summary(pike_akdes$F59880)
+# Load necessary libraries
+library(ctmm)
+library(doParallel)
 
-
-# calculate AKDES on a consistent grid
-# first estimate aKDE for one individual whose HR is representative enough to use as a reference for the grid size
-# load pike akde list
+# Load pike AKDE list from saved RDS
 pike_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/pike_akdes_list.rds"))
-names(pike_akdes_list)
+
+# Use the first individual's AKDE to set a reference grid size
 akde_ref <- pike_akdes_list[[1]]
 
+# Initialize the list to store AKDEs with consistent grid
 pike_akdes_cg <- list()
+
+# Set up parallel processing using 3 cores
 cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
+
+# Estimate AKDE for each individual pike using the reference grid
 pike_akdes_cg <- foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-  akde_fit_cg = akde(
-    pike_muddyfoot_tel[[i]],
-    pike_muddyfoot_ctmm_fits[[i]], 
-    weights = FALSE,
-    SP = muddyfoot_sp_data,
-    SP.in = TRUE,
-    grid = list(dr = akde_ref$dr,
-                align.to.origin = T))
+  akde_fit_cg <- akde(
+    pike_muddyfoot_tel[[i]],                  # Telemetry data for the i-th pike
+    pike_muddyfoot_ctmm_fits[[i]],            # Corresponding CTMM fit
+    weights = FALSE,                          # No weighting
+    SP = muddyfoot_sp_data,                   # Spatial polygon for the lake boundary
+    SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
+    grid = list(dr = akde_ref$dr,             # Use reference grid resolution
+                align.to.origin = TRUE))      # Align the grid to the origin
+  # Save the AKDE result for each individual pike
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/", names(pike_muddyfoot_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
 }
 
+# Stop parallel cluster after computations
 stopCluster(cl)
 
-
-#add ID to lists
+# Assign individual IDs to the AKDE list
 names(pike_akdes_cg) <- names(pike_muddyfoot_tel)
-summary(pike_akdes_cg$F59880)  
 
-#save
+# View summary of a specific individual's AKDE (e.g., F59880)
+summary(pike_akdes_cg$F59880)
+
+# Save the complete list of Pike AKDEs with consistent grid
 saveRDS(pike_akdes_cg, paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
 
 #------------------------------------------------#
 
-### Perch HR analysis ###
+#> 1.2. Perch ####
 
-# perch_akdes <- list()
-# cl <- makeCluster(20)
-# doParallel::registerDoParallel(cl)
-# perch_akdes <- 
-#   foreach(i = 1:length(perch_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-#     akde_fit = akde(perch_muddyfoot_tel[[i]], 
-#                     perch_muddyfoot_ctmm_fits[[i]], 
-#                     weights = FALSE, 
-#                     SP = muddyfoot_sp_data,
-#                     SP.in = TRUE,)
-#     saveRDS(akde_fit, 
-#             file = paste0(save_akde_path, 
-#                           "muddyfoot_perch_akdes/", 
-#                           names(perch_muddyfoot_tel)[i], 
-#                           "_akde.rds"))
-#     akde_fit
-#   }
-# 
-# stopCluster(cl)
-# 
-# #add ID to lists
-# names(perch_akdes ) <- names(perch_muddyfoot_tel)
-# summary(perch_akdes$F59682)  
-# 
-# #save
-# saveRDS(perch_akdes, paste0(save_akde_path, "muddyfoot_perch_akdes/perch_akdes_list.rds"))
+# Perch AKDE estimation with parallel processing
 
-
-# calculate AKDES on a consistent grid
-# first estimate aKDE for one individual whose HR is representative enough to use as a reference for the grid size
-# load perch akde list
+# Load perch AKDE list from saved RDS
 perch_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/perch_akdes_list.rds"))
-names(perch_akdes_list)
+
+# Use an individual's AKDE (e.g., 9th perch) as a reference for grid size
 akde_ref <- perch_akdes_list[[9]]
 
+# Initialize the list to store AKDEs with consistent grid for Perch
 perch_akdes_cg <- list()
+
+# Set up parallel processing using 3 cores
 cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
+
+# Estimate AKDE for each individual perch using the reference grid
 perch_akdes_cg <- foreach(i = 1:length(perch_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-  akde_fit_cg = akde(
-    perch_muddyfoot_tel[[i]],
-    perch_muddyfoot_ctmm_fits[[i]], 
-    weights = FALSE,
-    SP = muddyfoot_sp_data,
-    SP.in = TRUE,
-    grid = list(dr = akde_ref$dr,
-                align.to.origin = T))
+  akde_fit_cg <- akde(
+    perch_muddyfoot_tel[[i]],                 # Telemetry data for the i-th perch
+    perch_muddyfoot_ctmm_fits[[i]],           # Corresponding CTMM fit
+    weights = FALSE,                          # No weighting
+    SP = muddyfoot_sp_data,                   # Spatial polygon for the lake boundary
+    SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
+    grid = list(dr = akde_ref$dr,             # Use reference grid resolution
+                align.to.origin = TRUE))      # Align the grid to the origin
+  # Save the AKDE result for each individual perch
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/", names(perch_muddyfoot_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
 }
 
+# Stop parallel cluster after computations
 stopCluster(cl)
 
-#add ID to lists
+# Assign individual IDs to the AKDE list
 names(perch_akdes_cg) <- names(perch_muddyfoot_tel)
-summary(perch_akdes_cg)  
 
-#save
+# View summary of all perch AKDEs
+summary(perch_akdes_cg)
+
+# Save the complete list of Perch AKDEs with consistent grid
 saveRDS(perch_akdes_cg, paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
 
 #----------------------------------------------------------#
 
-### Roach HR analysis ###
+#> 1.3. Roach ####
 
-roach_akdes <- list()
-cl <- makeCluster(20)
-doParallel::registerDoParallel(cl)
-roach_akdes <- 
-  foreach(i = 1:length(roach_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-    akde_fit = akde(roach_muddyfoot_tel[[i]], 
-                    roach_muddyfoot_ctmm_fits[[i]], 
-                    weights = FALSE, 
-                    sp = muddyfoot_polygon)
-    saveRDS(akde_fit, 
-            file = paste0(save_akde_path, 
-                          "muddyfoot_roach_akdes/", 
-                          names(roach_muddyfoot_tel)[i], 
-                          "_akde.rds"))
-    akde_fit
-  }
+# Roach AKDE estimation with parallel processing
 
-stopCluster(cl)
-
-#add ID to lists
-names(roach_akdes ) <- names(roach_muddyfoot_tel)
-
-#save
-saveRDS(roach_akdes, paste0(save_akde_path, "muddyfoot_roach_akdes/roach_akdes_list.rds"))
-
-# calculate AKDES on a consistent grid
-# first estimate aKDE for one individual whose HR is representative enough to use as a reference for the grid size
-# load perch akde list
+# Load roach AKDE list from saved RDS
 roach_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/roach_akdes_list.rds"))
-names(roach_akdes_list)
+
+# Use an individual's AKDE (e.g., 7th roach) as a reference for grid size
 akde_ref <- roach_akdes_list[[7]]
 
+# Initialize the list to store AKDEs with consistent grid for Roach
 roach_akdes_cg <- list()
+
+# Set up parallel processing using 3 cores
 cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
+
+# Estimate AKDE for each individual roach using the reference grid
 roach_akdes_cg <- foreach(i = 1:length(roach_muddyfoot_tel), .packages = 'ctmm') %dopar% {
-  akde_fit_cg = akde(
-    roach_muddyfoot_tel[[i]],
-    roach_muddyfoot_ctmm_fits[[i]], 
-    weights = FALSE,
-    SP = muddyfoot_sp_data,
-    SP.in = TRUE,
-    grid = list(dr = akde_ref$dr,
-                align.to.origin = T))
+  akde_fit_cg <- akde(
+    roach_muddyfoot_tel[[i]],                 # Telemetry data for the i-th roach
+    roach_muddyfoot_ctmm_fits[[i]],           # Corresponding CTMM fit
+    weights = FALSE,                          # No weighting
+    SP = muddyfoot_sp_data,                   # Spatial polygon for the lake boundary
+    SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
+    grid = list(dr = akde_ref$dr,             # Use reference grid resolution
+                align.to.origin = TRUE))      # Align the grid to the origin
+  # Save the AKDE result for each individual roach
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/", names(roach_muddyfoot_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
 }
 
+# Stop parallel cluster after computations
 stopCluster(cl)
 
-#add ID to lists
+# Assign individual IDs to the AKDE list
 names(roach_akdes_cg) <- names(roach_muddyfoot_tel)
-summary(roach_akdes_cg)  
 
-#save
+# View summary of all roach AKDEs
+summary(roach_akdes_cg)
+
+# Save the complete list of Roach AKDEs with consistent grid
 saveRDS(roach_akdes_cg, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
-#------------------------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------#
 
 #-------------------------------------#
-#>>> 3. POPULATION AKDE ESTIMATION ####
+# 2. POPULATION AKDE ESTIMATION ####
 #-------------------------------------#
 
-#make sure muddyfoot polygon is loaded
-#may need to convert to spatial polygon dataframe
-muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
+# This script estimates population-level Autocorrelated Kernel Density Estimates (AKDEs)
+# for Pike, Perch, and Roach species, excluding individuals that were predated.
 
-### Pike population akdes ###
+#> 2.1. Remove predated individuals from population AKDE estimation ####
 
-# Separating into 'control' and 'mix'
-#telemetry objects
-pike_control_tel <- pike_muddyfoot_tel[1:3]
-pike_mix_tel <- pike_muddyfoot_tel[4:6]
-
-#ctmms
+# Load AKDEs for each species from previously saved files
 pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
+perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+
+# Load predation event data (pre-identified predation events)
+mud_pred_events <- readRDS(paste0(enc_path, "muddyfoot_pred_events.rds"))
+
+# Remove Roach individuals that were predated based on predation events
+roach_ids_remove <- mud_pred_events %>%
+  filter(Species == "Roach") %>%    # Filter for Roach species
+  pull(individual_ID)               # Extract IDs of predated Roach
+
+# Update the Roach AKDE list and telemetry data, removing predated individuals
+roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
+roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
+
+# Remove Perch individuals that were predated based on predation events
+perch_ids_remove <- mud_pred_events %>%
+  filter(Species == "Perch") %>%    # Filter for Perch species
+  pull(individual_ID)               # Extract IDs of predated Perch
+
+# Update the Perch AKDE list and telemetry data, removing predated individuals
+perch_akdes_cg_list <- perch_akdes_cg_list[!(names(perch_akdes_cg_list) %in% perch_ids_remove)]
+perch_muddyfoot_tel <- perch_muddyfoot_tel[!(names(perch_muddyfoot_tel) %in% perch_ids_remove)]
+
+#> 2.2. Pike Population AKDE Estimation ####
+
+# Separating Pike data into two groups: 'control' and 'mix'
+# 'control' refers to the first three individuals, 'mix' refers to the next three
+
+# Separate telemetry objects
+pike_control_tel <- pike_muddyfoot_tel[1:3]   # Control group
+pike_mix_tel <- pike_muddyfoot_tel[4:6]       # Mixed group
+
+# Separate AKDEs for the two groups
 pike_control_akdes <- pike_akdes_cg_list[1:3]
 pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
-#calculate population-level autocorrelated kernel desnity home range estimates
-pike_control_PKDE <- pkde(pike_control_tel,
-                          pike_control_akdes, 
-                          SP = muddyfoot_sp_data,
-                          SP.in = TRUE)
+# Calculate population-level AKDE for the control group
+pike_control_PKDE <- pkde(pike_control_tel,   # Telemetry data for the control group
+                          pike_control_akdes, # AKDEs for the control group
+                          SP = muddyfoot_sp_data,  # Spatial polygon for the lake boundary
+                          SP.in = TRUE)       # Ensure the PKDE confines the movements within the polygon
 
+# Save the population-level AKDE for the control group
 saveRDS(pike_control_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
 
-pike_mix_PKDE <- pkde(pike_mix_tel,
-                      pike_mix_akdes, 
-                      SP = muddyfoot_sp_data,
-                      SP.in = TRUE)
+# Calculate population-level AKDE for the mixed group
+pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed group
+                      pike_mix_akdes,         # AKDEs for the mixed group
+                      SP = muddyfoot_sp_data, # Spatial polygon for the lake boundary
+                      SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
+# Save the population-level AKDE for the mixed group
 saveRDS(pike_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/pike_mix_PKDE.rds"))
 
-### Perch population akdes ###
+
+#> 2.3. Perch ####
 
 # Separating into 'control' and 'mix'
 #telemetry objects
-perch_control_tel <- perch_muddyfoot_tel[1:3]
-perch_mix_tel <- perch_muddyfoot_tel[4:6]
+perch_control_tel <- perch_muddyfoot_tel[1:14]
+perch_mix_tel <- perch_muddyfoot_tel[15:29]
 
-#ctmms
-perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
-perch_control_akdes <- perch_akdes_cg_list[1:3]
-perch_mix_akdes <- perch_akdes_cg_list[4:6]
+#akdes
+perch_control_akdes <- perch_akdes_cg_list[1:14]
+perch_mix_akdes <- perch_akdes_cg_list[15:29]
 
-#calculate population-level autocorrelated kernel desnity home range estimates
+#calculate population-level autocorrelated kernel density home range estimates for each treatment
 perch_control_PKDE <- pkde(perch_control_tel,
                           perch_control_akdes, 
                           SP = muddyfoot_sp_data,
                           SP.in = TRUE)
 
-saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+#saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
 
 perch_mix_PKDE <- pkde(perch_mix_tel,
                       perch_mix_akdes, 
                       SP = muddyfoot_sp_data,
                       SP.in = TRUE)
 
-saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
+#saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/perch_mix_PKDE.rds"))
 
 ### roach population akdes ###
 
 # Separating into 'control' and 'mix'
 #telemetry objects
-roach_control_tel <- roach_muddyfoot_tel[1:3]
-roach_mix_tel <- roach_muddyfoot_tel[4:6]
+roach_control_tel <- roach_muddyfoot_tel[1:11]
+roach_mix_tel <- roach_muddyfoot_tel[12:24]
 
-#ctmms
-roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
-roach_control_akdes <- roach_akdes_cg_list[1:3]
-roach_mix_akdes <- roach_akdes_cg_list[4:6]
+#akdes
+roach_control_akdes <- roach_akdes_cg_list[1:11]
+roach_mix_akdes <- roach_akdes_cg_list[12:24]
 
-#calculate population-level autocorrelated kernel desnity home range estimates
+#calculate population-level autocorrelated kernel density home range estimates
 roach_control_PKDE <- pkde(roach_control_tel,
                           roach_control_akdes,
                           SP = muddyfoot_sp_data,
@@ -326,13 +320,6 @@ saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde
 #-------------------------------------#
 #>>> 4. PLOT POPULATION AKDES -------- ####
 #-------------------------------------#
-
-# #load in rasters
-# mud_hab_raster <- terra::rast(paste0(lake_polygon_path, "muddyfoot/muddyfoot_habitat_raster.grd"))
-# terra::plot(mud_hab_raster)
-# mud_lakeonly_raster <- terra::rast(paste0(lake_polygon_path, "muddyfoot_lakeonly_raster.grd"))
-# mud_raster <- terra::rast(paste0(lake_polygon_path, "muddyfoot_raster.grd"))
-# mud_shape_vector <- terra::vect(paste0(lake_polygon_path, "muddyfoot/mud_shape_vect.gpkg"))
 
 #receiver and habitat locations
 mud_rec_locs_kml <- paste0(rec_data_path, "muddyfoot_rec_hab_locations.kml")
