@@ -13,7 +13,7 @@ library(foreach)     # Looping construct for parallel execution
 library(doParallel)  # Parallel backend for foreach loops
 
 ### DIRECTORIES ###
-polygon_path = "./data/lake_coords/muddyfoot/"
+polygon_path = "./data/lake_coords/"
 ctmm_path = "./data/ctmm_fits/"
 data_filter_path = "./data/tracks_filtered/"
 telem_path = "./data/telem_obj/"
@@ -83,7 +83,7 @@ plot(predator_ud_raster) #not bounded
 pred_raster_values <- values(predator_ud_raster)
 value_matrix <- as.matrix(pred_raster_values) 
 
-predator_ud_raster <- rast(predator_ud_raster, lake_raster, background = 0, res = 0.1)
+predator_ud_raster <- rast(predator_ud_raster, lake_raster, background = 0, res = 0.5)
 plot(predator_ud_raster)
 predator_ud_raster <- terra::project(predator_ud_raster, "EPSG:4326")
 
@@ -100,7 +100,7 @@ predator_ud_raster <- raster::raster(predator_ud_raster)
 plot(predator_ud_raster)
 
 #save masked raster
-writeRaster(predator_ud_raster, paste0(rsf_path, "muddyfoot_predator_ud_raster.tif"), overwrite = TRUE)
+#writeRaster(predator_ud_raster, paste0(rsf_path, "muddyfoot_predator_ud_raster.tif"), overwrite = TRUE)
 )
 
 #---------------------------------------------#
@@ -147,13 +147,6 @@ roach_mix_tel <- roach_muddyfoot_tel[12:24]
 roach_control_akdes <- roach_akdes_cg_list[1:11]
 roach_mix_akdes <- roach_akdes_cg_list[12:24]
 
-# Separate telemetry objects
-pike_control_tel <- pike_muddyfoot_tel[1:3]   # Control group
-pike_mix_tel <- pike_muddyfoot_tel[4:6]       # Mixed group
-
-# Separate AKDEs for the two groups
-pike_control_akdes <- pike_akdes_cg_list[1:3]
-pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
 
 #-----------------------#
@@ -180,7 +173,7 @@ rsf_perch_control_list <- foreach(i = seq_along(perch_control_tel), .packages = 
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_control_model, 
-          file = paste0(rsf_path, "predators/muddyfoot_perch/", names(perch_control_tel)[i], "_predator_rsf.rds"))
+          file = paste0(rsf_path, "muddyfoot_perch/", names(perch_control_tel)[i], "_predator_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_control_model
@@ -191,17 +184,13 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_perch_control_list) <- names(perch_control_tel)
 
-#check
-summary(rsf_perch_control_list$F59702)
-summary(rsf_perch_control_list$F59697)
-
-#saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
+saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/pred_rsf_perch_control_list.rds"))
 
 
 
 ### EXPOSED ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 rsf_perch_mix_list <- list()
 
@@ -212,12 +201,12 @@ rsf_perch_mix_list <- foreach(i = seq_along(perch_mix_tel), .packages = "ctmm") 
   rsf_mix_model <- rsf.fit(
     perch_mix_tel[[i]], 
     perch_mix_akdes[[i]], 
-    R=list(habitat1=habitat_raster)
+    R=list(habitat1=predator_ud_raster)
   )
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_mix_model, 
-          file = paste0(rsf_path, "predators/muddyfoot_perch/", names(perch_mix_tel)[i], "_predator_rsf.rds"))
+          file = paste0(rsf_path, "muddyfoot_perch/", names(perch_mix_tel)[i], "_predator_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_mix_model
@@ -228,14 +217,14 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_perch_mix_list) <- names(perch_mix_tel)
 
-saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
+saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/pred_rsf_perch_mix_list.rds"))
 
 
 #>>> 4.2 Roach ########################
 
 ### CONTROL ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 rsf_roach_control_list <- list()
 
@@ -246,12 +235,12 @@ rsf_roach_control_list <- foreach(i = seq_along(roach_control_tel), .packages = 
   rsf_control_model <- rsf.fit(
     roach_control_tel[[i]], 
     roach_control_akdes[[i]], 
-    R=list(habitat1=habitat_raster)
+    R=list(habitat1=predator_ud_raster)
   )
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_control_model, 
-          file = paste0(rsf_path, "predators/muddyfoot_roach/", names(roach_control_tel)[i], "_predator_rsf.rds"))
+          file = paste0(rsf_path, "muddyfoot_roach/", names(roach_control_tel)[i], "_predator_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_control_model
@@ -262,17 +251,13 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_roach_control_list) <- names(roach_control_tel)
 
-#check
-summary(rsf_roach_control_list$F59702)
-summary(rsf_roach_control_list$F59697)
-
-saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
+saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/pred_rsf_roach_control_list.rds"))
 
 
 
 ### EXPOSED ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 rsf_roach_mix_list <- list()
 
@@ -283,12 +268,12 @@ rsf_roach_mix_list <- foreach(i = seq_along(roach_mix_tel), .packages = "ctmm") 
   rsf_mix_model <- rsf.fit(
     roach_mix_tel[[i]], 
     roach_mix_akdes[[i]], 
-    R=list(habitat1=habitat_raster)
+    R=list(habitat1=predator_ud_raster)
   )
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_mix_model, 
-          file = paste0(rsf_path, "predators/muddyfoot_roach/", names(roach_mix_tel)[i], "_predator_rsf.rds"))
+          file = paste0(rsf_path, "muddyfoot_roach/", names(roach_mix_tel)[i], "_predator_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_mix_model
@@ -299,8 +284,15 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_roach_mix_list) <- names(roach_mix_tel)
 
-saveRDS(rsf_roach_mix_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
+saveRDS(rsf_roach_mix_list, paste0(rsf_path, "muddyfoot_roach/pred_rsf_roach_mix_list.rds"))
 
+summary(mean(rsf_roach_mix_list))
+summary(mean(rsf_roach_control_list))
+summary(mean(pred_rsf_perch_control_list))
+summary(mean(pred_rsf_perch_mix_list))
+
+#weird error with F59736
+summary(mean(pred_rsf_perch_mix_list))
 
 #>>> 4.3. Pike ########################
 
