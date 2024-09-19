@@ -9,7 +9,7 @@
 
 ### LIBRARIES ###
 # Loading required packages
-`library(dplyr)
+library(dplyr)
 library(move)
 library(move2)
 library(ctmm)
@@ -30,7 +30,7 @@ size_path <- "./data/fish_size/"
 
 ### DATA LOADING ###
 # Load preprocessed telemetry and model fit data for Roach, Perch, and Pike species
-muddyfoot_filt_data <-  readRDS(paste0(data_filter_path, "muddyfoot_final_filt_data.rds"))
+muddyfoot_filt_data <-  readRDS(paste0(data_filter_path, "02_muddyfoot_sub.rds"))
 
 pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
 perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
@@ -138,7 +138,7 @@ if ("timestamp" %in% colnames(perch_pike_distances_df)) {
 head(perch_pike_distances_df)
 
 # Save the distance data for future analysis
-saveRDS(perch_pike_distances_df, paste0(enc_path, "muddyfoot_pike_perch_distances_df.rds"))
+# saveRDS(perch_pike_distances_df, paste0(enc_path, "muddyfoot_pike_perch_distances_df.rds"))
 
 #----------------------------------------------------------------------------------------------------#
 
@@ -526,8 +526,38 @@ saveRDS(muddyfoot_pred_encounter_summary, paste0(enc_path, "muddyfoot_pred_encou
 
 #----------------------------------------------------------------------------------------------------------#
 
+#------------------------------------------------#
+######## 4. Proximity calculation ################
+#------------------------------------------------#
+
+#proximity function
+#Outputs a ratio estimate with confidence intervals
+#Value <1 indicate that the two individuals are closer on average than expected for independent movement
+#1 is consistent with independent movement
+#>1 individuals are farther from each other on average than expect for independent movement
+
+#Test proximity function
+#roach F59701 and  pike F59885
+
+
+# Reproject Roach telemetry objects to match the Pike projection
+projection(roach_muddyfoot_tel) <- projection(pike_muddyfoot_tel)
+projection(roach_muddyfoot_ctmm_fits) <- projection(pike_muddyfoot_ctmm_fits)
+
+
+combined_telemetry <- c(roach_muddyfoot_tel["F59701"], pike_muddyfoot_tel["F59885"])
+combined_ctmm <- c(roach_muddyfoot_ctmm_fits["F59701"], pike_muddyfoot_ctmm_fits["F59885"])
+
+
+#Pairwise separation distances
+PROX <- proximity(combined_telemetry,
+                  combined_ctmm)
+
+
+
+
 #---------------------------------------------------#
-######### 4. Visualise predator encounters #########
+######### 5. Visualise predator encounters #########
 #--------------------------------------------------#
 
 
