@@ -19,7 +19,7 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 ### DIRECTORIES ###
 # Define paths to directories for loading/saving data
 ctmm_path <- "./data/ctmm_fits/"                  # Directory for ctmm model fits
-data_filter_path <- "./data/tracks_filtered/"     # Directory for filtered telemetry data
+data_filter_path <- "./data/tracks_filtered/muddyfoot/"     # Directory for filtered telemetry data
 telem_path <- "./data/telem_obj/"                 # Directory for telemetry objects
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
@@ -29,7 +29,7 @@ enc_path <- "./data/encounters/"                  # Directory for encounter data
 ### LOADING DATA ###
 
 # Load pre-filter muddyfoot tracking data
-muddyfoot_track_data <-  readRDS(paste0(data_filter_path, "muddyfoot_final_filt_data.rds"))
+muddyfoot_track_data <-  readRDS(paste0(data_filter_path, "04_muddyfoot_sub.rds"))
 
 # Load telemetry objects for pike, perch, and roach species in Muddyfoot lake
 pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
@@ -77,9 +77,9 @@ perch_muddyfoot_tel <- perch_muddyfoot_tel[!(names(perch_muddyfoot_tel) %in% per
 
 #----------------------------------------------------------------------------------------------------------------#
 
-#----------------------------#
-#> 1. Trajectory analysis ####
-#---------------------------#
+#-------------------------------------------#
+#> 1. Calculating daily movement metrics ####
+#-------------------------------------------#
 
 #create a move2 object from a data.frame
 muddyfoot_mv <- mt_as_move2(muddyfoot_track_data,
@@ -101,32 +101,123 @@ muddyfoot_mv <- muddyfoot_mv %>%
 
 
 # Change units
-muddyfoot_mv$speed <- units::set_units(muddyfoot_mv$speed, cm/s)
-muddyfoot_mv$distance <- units::set_units(muddyfoot_mv$distance, cm)
-str(muddyfoot_mv$speed)
+muddyfoot_mv$speed_cm_s <- units::set_units(muddyfoot_mv$speed, cm/s)
+muddyfoot_mv$distance_m <- units::set_units(muddyfoot_mv$distance, m)
+str(muddyfoot_mv$speed_cm_s)
+str(muddyfoot_mv$distance_m)
+
+
+
+#-------------------------------------------#
+#> 2. Data wrangling ####
+#-------------------------------------------#
 
 #convert back to dataframe
 muddyfoot_track_data <- as.data.frame(muddyfoot_mv)
 
-#Get the date
+#cleaning up
+#some of these columns are redundant and relics from previous code
+muddyfoot_track_data <- 
+  muddyfoot_track_data %>% 
+  dplyr::select(-speed, -distance, -first_date_over_50, -week, -individual_day, -VAR.xy)
 
-muddyfoot_track_data$new_date <- strftime(muddyfoot_track_data$timestamp, format="%Y/%m/%d")
+#create lat and long column
+# Extract the longitude and latitude columns from the geometry column
+coords <- st_coordinates(muddyfoot_track_data$geometry)
+muddyfoot_track_data$Long <- coords[, 1]
+muddyfoot_track_data$Lat <- coords[, 2]
 
-tz(muddyfoot_track_data$new_date)
-tz(muddyfoot_track_data$timestamp)
-tz(muddyfoot_track_data$Date)
+# Convert the dataframe to an sf object with the WGS84 CRS
+data_sf <- st_as_sf(muddyfoot_track_data, coords = c("Long", "Lat"), crs = 4326)
+
+# Define the UTM CRS (using zone 34 for this specific location)
+utm_crs <- st_crs("+proj=utm +zone=34 +datum=WGS84 +units=m +no_defs")
+
+# Transform the coordinates to UTM
+data_sf_utm <- st_transform(data_sf, crs = utm_crs)
+
+# Extract the UTM coordinates
+utm_coords <- st_coordinates(data_sf_utm$geometry)
+muddyfoot_track_data$Long_utm <- utm_coords[, 1]
+muddyfoot_track_data$Lat_utm <- utm_coords[, 2]
+
+#Add fish size information
+# Load biometric data
+biometrics <- data.table::fread( "./data/fish_size/biometric_data.csv")
+
+# Extract the last numeric part of 'Tag Number' to create a matching 'individual_id' column
+biometrics <- biometrics %>%
+  mutate(individual_id = paste0("F", sub(".*-.*-(\\d+)", "\\1", `Tag Number`)))
+
+# Join fish size data with the detection data on 'individual_id'
+muddyfoot_track_data <- left_join(muddyfoot_track_data, 
+                  biometrics %>% select(individual_id, Weight, Total_length, Std_length), 
+                  by = "individual_id")
+
+
+#Now I want to arrange the data in a more logical way
+muddyfoot_track_data <- 
+  muddyfoot_track_data %>% 
+  select(individual_id, Species, treatment, Weight, Total_length, Std_length, timestamp, Date, Long, Lat, time_diff, 
+         distance_m, speed_cm_s, turnangle, azimuth, everything())
+
+
+#save
+saveRDS(muddyfoot_track_data, paste0(data_filter_path, "05_muddyfoot_sub.rds"))
+
+### Create a dataframe for daily summary info ###
 
 #Summarise per day
-muddyfoot_daily_tracks <- 
+muddyfoot_daily_track_data <- 
   muddyfoot_track_data %>%
   dplyr::group_by(individual_id, Date) %>%
   dplyr::mutate(
-    avg_daily_speed = mean(speed),
-    total_distance = sum(distance)) %>% 
+    avg_daily_speed_cm_s = mean(speed_cm_s),
+    total_daily_distance_m = sum(distance_m)) %>% 
   dplyr::distinct(individual_id, Date, .keep_all = TRUE) %>%
+  dplyr::select(individual_id, Species, treatment, Weight, Total_length, Std_length, Date, total_daily_distance_m,
+                avg_daily_speed_cm_s, irreg_sample_day, n_positions_day, median_day_time_diff, n_positions_hourly,
+                n_positions_per_min, n_missing_dates) %>% 
   ungroup()
 
+saveRDS(muddyfoot_daily_track_data, paste0(data_filter_path, "muddyfoot_daily_movement_data.rds"))
 #-----------------------------------------------------------------------------------------#
+
+# PREDATOR ENCOUNTERS
+pred_encounters_data <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary.rds"))
+
+#summary
+pred_encounters_data %>% 
+  group_by(Species, treatment) %>% 
+  summarise(mean_encounters = mean(total_pike_encounters, na.rm = TRUE),
+            mean_avg_dist = mean(avg_dist_from_pike, na.rm = TRUE))
+
+
+perch_encounters <- pred_encounters_data %>% 
+  filter(Species == 'Perch')
+
+
+#brms
+# Specify the model
+library(brms)
+brms_model <- brm(
+  total_pike_encounters ~ treatment + days_tracked,  # Include interaction term for Species and Treatment
+  data = perch_encounters,
+  family = negbinomial(),  # Assuming encounters are count data (Poisson distribution)
+  chains = 4,         # Number of chains for MCMC
+  cores = 4,          # Number of cores to run in parallel
+  iter = 2000)
+
+summary(brms_model)
+
+
+
+
+
+
+#Note that these movement metrics have not been calculated from the ctmm movement models
+#Speed and distance may be misleading and do not consider autocorrelation
+
 
 
 analyze_movement <- function(species_name, response_var, muddyfoot_daily_tracks) {

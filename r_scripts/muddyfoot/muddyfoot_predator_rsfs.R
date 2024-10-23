@@ -21,6 +21,8 @@ rec_data_path = "./data/lake_coords/reciever_and_habitat_locations/"
 enc_path <- "./data/encounters/"                  # Directory for encounter data
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 rsf_path <- "./data/rsfs/predators/"
+save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
+
 
 ### LOAD DATA ###
 #receiver and habitat locations
@@ -102,6 +104,14 @@ plot(predator_ud_raster)
 #save masked raster
 #writeRaster(predator_ud_raster, paste0(rsf_path, "muddyfoot_predator_ud_raster.tif"), overwrite = TRUE)
 )
+
+ggsave(file = paste0(save_ud_plots, "predator_ud_raster.png"), 
+       plot = predator_ud_raster, 
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
 
 #---------------------------------------------#
 #> 3. Split telemetry objects by treatment ####
@@ -286,84 +296,121 @@ names(rsf_roach_mix_list) <- names(roach_mix_tel)
 
 saveRDS(rsf_roach_mix_list, paste0(rsf_path, "muddyfoot_roach/pred_rsf_roach_mix_list.rds"))
 
-summary(mean(rsf_roach_mix_list))
-summary(mean(rsf_roach_control_list))
-summary(mean(pred_rsf_perch_control_list))
-summary(mean(pred_rsf_perch_mix_list))
+#----------------------------------------------------------------------------------------------------------------#
 
-#weird error with F59736
-summary(mean(pred_rsf_perch_mix_list))
+#-----------------------------------------#
+# > 5. Explore RSF model results ####
+#-----------------------------------------#
 
-#>>> 4.3. Pike ########################
+#>>> 5.1. Perch ####
 
-### CONTROL ###
+# Load the RSF (Resource Selection Function) results for control and exposed perch
+rsf_perch_control_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/pred_rsf_perch_control_list.rds"))
+rsf_perch_exposed_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/pred_rsf_perch_mix_list.rds"))
 
-cl <- makeCluster(3)
-doParallel::registerDoParallel(cl)
-rsf_pike_control_list <- list()
+summary(rsf_perch_exposed_list) #weird value for F59736 (remove for the time being)
+rsf_perch_exposed_list <- rsf_perch_exposed_list[-14]
 
-# Assuming pike_control_tel and pike_control_akdes are lists of corresponding elements
-rsf_pike_control_list <- foreach(i = seq_along(pike_control_tel), .packages = "ctmm") %dopar% {
-  
-  # Run the rsf.select model
-  rsf_control_model <- rsf.fit(
-    pike_control_tel[[i]], 
-    pike_control_akdes[[i]], 
-    R=list(habitat1=habitat_raster)
-  )
-  
-  # Save the model to the 'rsfs' folder with an appropriate name
-  saveRDS(rsf_control_model, 
-          file = paste0(rsf_path, "muddyfoot_pike/", names(pike_control_tel)[i], "_habitat_rsf.rds"))
-  
-  # Return the model in case you want to store it in a list
-  rsf_control_model
-}
+# Calculate the mean of the RSF lists (assuming that each list is a collection of model objects)
+rsf_perch_control_mean <- mean(rsf_perch_control_list)
+rsf_perch_exposed_mean <- mean(rsf_perch_exposed_list)
 
-stopCluster(cl)
+# Extract coefficients' confidence intervals from the RSF summaries
+# Convert the first confidence interval (CI) row to a data frame for each treatment
+rsf_coef_control_perch <- as.data.frame(t(summary(rsf_perch_control_mean)$CI[1,]))
+rsf_coef_exposed_perch <- as.data.frame(t(summary(rsf_perch_exposed_mean)$CI[1,]))
 
-# Assign individual IDs to the AKDE list
-names(rsf_pike_control_list) <- names(pike_control_tel)
+# Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
+rsf_coef_control_perch$treatment <- "Control"
+rsf_coef_exposed_perch$treatment <- "Exposed"
 
+# Combine the coefficients for both treatments into one data frame
+perch_predator_rsf_coefs <- rbind(rsf_coef_control_perch, rsf_coef_exposed_perch)
 
-saveRDS(rsf_pike_control_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_control_list.rds"))
+# Create the ggplot visualization of RSF coefficient estimates for perch habitats
+(perch_predator_rsf_plot <- 
+    ggplot(perch_predator_rsf_coefs, 
+           aes(x = treatment, y = est)) +  # Aesthetic mapping: treatment on x-axis, estimate (est) on y-axis
+    geom_errorbar(aes(ymin = low, ymax = high), 
+                  width = 0.1,  # Width of error bars
+                  size = 1,       # Thickness of error bars
+                  color = "black") +  # Error bars in black
+    geom_point(aes(shape = treatment, fill = treatment), 
+               size = 4,  # Point size
+               color = "black") +  # Outline of points in black
+    scale_shape_manual(values = c(21, 21)) +  # Use the same shape (circle) for both treatments
+    scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +  # White fill for Control, black fill for Exposed
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +  # Add a dashed horizontal line at y=0
+    coord_cartesian(ylim = c(-2, 2)) +  # Set y-axis limits from -2 to 2
+    labs(y = "Selection coefficient") +  # Label for the y-axis
+    theme_classic() +  # Use a clean classic theme for the plot
+    theme(legend.position = "none",  # Remove the legend as it's not necessary
+          axis.title.x = element_blank(),  # Remove the x-axis title for simplicity
+          axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),  # Bold y-axis title with larger font
+          axis.text = element_text(size = 12, color = 'black'),
+          panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
+)
 
-
-
-### EXPOSED ###
-
-cl <- makeCluster(3)
-doParallel::registerDoParallel(cl)
-rsf_pike_mix_list <- list()
-
-# Assuming pike_control_tel and pike_control_akdes are lists of corresponding elements
-rsf_pike_mix_list <- foreach(i = seq_along(pike_mix_tel), .packages = "ctmm") %dopar% {
-  
-  # Run the rsf.select model
-  rsf_mix_model <- rsf.fit(
-    pike_mix_tel[[i]], 
-    pike_mix_akdes[[i]], 
-    R=list(habitat1=habitat_raster)
-  )
-  
-  # Save the model to the 'rsfs' folder with an appropriate name
-  saveRDS(rsf_mix_model, 
-          file = paste0(rsf_path, "muddyfoot_pike/", names(pike_mix_tel)[i], "_habitat_rsf.rds"))
-  
-  # Return the model in case you want to store it in a list
-  rsf_mix_model
-}
-
-stopCluster(cl)
-
-# Assign individual IDs to the AKDE list
-names(rsf_pike_mix_list) <- names(pike_mix_tel)
-
-saveRDS(rsf_pike_mix_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_mix_list.rds"))
+ggsave(file = paste0(save_ud_plots, "perch_predator_rsf_muddyfoot.png"), 
+       plot = perch_predator_rsf_plot, 
+       device = 'png',
+       width = 8, 
+       height = 8,
+       units = 'cm',
+       dpi = 300)
 
 
 
+#>>> 5.2. Roach ####
 
+# Load the RSF (Resource Selection Function) results for control and exposed roach
+rsf_roach_control_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/pred_rsf_roach_control_list.rds"))
+rsf_roach_exposed_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/pred_rsf_roach_mix_list.rds"))
 
+# Calculate the mean of the RSF lists (assuming that each list is a collection of model objects)
+rsf_roach_control_mean <- mean(rsf_roach_control_list)
+rsf_roach_exposed_mean <- mean(rsf_roach_exposed_list)
 
+# Extract coefficients' confidence intervals from the RSF summaries
+# Convert the first confidence interval (CI) row to a data frame for each treatment
+rsf_coef_control_roach <- as.data.frame(t(summary(rsf_roach_control_mean)$CI[1,]))
+rsf_coef_exposed_roach <- as.data.frame(t(summary(rsf_roach_exposed_mean)$CI[1,]))
 
+# Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
+rsf_coef_control_roach$treatment <- "Control"
+rsf_coef_exposed_roach$treatment <- "Exposed"
+
+# Combine the coefficients for both treatments into one data frame
+roach_predator_rsf_coefs <- rbind(rsf_coef_control_roach, rsf_coef_exposed_roach)
+
+# Create the ggplot visualization of RSF coefficient estimates for roach habitats
+(roach_predator_rsf_plot <- 
+    ggplot(roach_predator_rsf_coefs, 
+           aes(x = treatment, y = est)) +  # Aesthetic mapping: treatment on x-axis, estimate (est) on y-axis
+    geom_errorbar(aes(ymin = low, ymax = high), 
+                  width = 0.1,  # Width of error bars
+                  size = 1,       # Thickness of error bars
+                  color = "black") +  # Error bars in black
+    geom_point(aes(shape = treatment, fill = treatment), 
+               size = 4,  # Point size
+               color = "black") +  # Outline of points in black
+    scale_shape_manual(values = c(21, 21)) +  # Use the same shape (circle) for both treatments
+    scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +  # White fill for Control, black fill for Exposed
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +  # Add a dashed horizontal line at y=0
+    coord_cartesian(ylim = c(-2, 2)) +  # Set y-axis limits from -2 to 2
+    labs(y = "Selection coefficient") +  # Label for the y-axis
+    theme_classic() +  # Use a clean classic theme for the plot
+    theme(legend.position = "none",  # Remove the legend as it's not necessary
+          axis.title.x = element_blank(),  # Remove the x-axis title for simplicity
+          axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),  # Bold y-axis title with larger font
+          axis.text = element_text(size = 12, color = 'black'),
+          panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
+)
+
+ggsave(file = paste0(save_ud_plots, "roach_predator_rsf_muddyfoot.png"), 
+       plot = roach_predator_rsf_plot, 
+       device = 'png',
+       width = 8, 
+       height = 8,
+       units = 'cm',
+       dpi = 300)

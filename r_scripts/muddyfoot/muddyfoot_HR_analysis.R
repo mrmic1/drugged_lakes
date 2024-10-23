@@ -21,6 +21,8 @@ lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (
 rec_data_path <- "./data/lake_coords/reciever_and_habitat_locations/"  # Directory for receiver and habitat location data
 save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
 enc_path <- "./data/encounters/"                  # Directory for encounter data
+track_data_path <- "./data/tracks_filtered/muddyfoot/"
+
 
 ### LOAD DATA ###
 
@@ -56,10 +58,6 @@ muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
 #> 1.1. Pike ####
 
 # Pike AKDE estimation with parallel processing
-
-# Load necessary libraries
-library(ctmm)
-library(doParallel)
 
 # Load pike AKDE list from saved RDS
 pike_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/pike_akdes_list.rds"))
@@ -325,76 +323,70 @@ saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde
 
 
 #-------------------------------------#
-#>>> 4. PLOT POPULATION AKDES -------- ####
+# >3. Compare home range size --------#
 #-------------------------------------#
 
-#receiver and habitat locations
-mud_rec_locs_kml <- paste0(rec_data_path, "muddyfoot_rec_hab_locations.kml")
-mud_rec_locs <- st_read(mud_rec_locs_kml)[1:5,]
-mud_hab_locs <- st_read(mud_rec_locs_kml)[6:7,]
+#> 3.1. Pike ####
 
-#load pkdes if necessary
-perch_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
-perch_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
-roach_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
-roach_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
-pike_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
-pike_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_mix_PKDE.rds"))
-
-
-# Function to generate the plot with a title
-generate_ud_plot <- function(pkde_data, bbox, hab_locs, plot_title) {
-  ud_raster <- raster(pkde_data)
-  masked_ud_raster <- mask(ud_raster, bbox)
-  ud_df <- as.data.frame(as(masked_ud_raster, "SpatialPixelsDataFrame"))
-  colnames(ud_df) <- c("value", "x", "y")
+# Combining 'control' and 'mix' back into a 'total' list
+pike_akde_total <- list(Control = pike_control_akdes, Exposed = pike_mix_akdes)
+pike_akde_meta_data <- ctmm::meta(pike_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
+pike_HR_control <- as.data.frame(t(pike_akde_meta_data$Control[1,]))
+pike_HR_exposed <- as.data.frame(t(pike_akde_meta_data$Exposed[1,]))
   
-  ggplot() +
-    geom_sf(data = bbox, color = "black") +
-    geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
-    geom_sf(data = hab_locs, color = "green", size = 3, fill = NA, shape = 3, stroke = 2) + 
-    scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
-    coord_sf() +
-    theme_minimal() +
-    labs(fill = "Utilization Distribution") +
-    ggtitle(plot_title)
-}
+# Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
+pike_HR_control$treatment <- "Control"
+pike_HR_exposed$treatment <- "Exposed"
 
 
-# Transform bbox
-muddyfoot_bbox_perch <- st_transform(muddyfoot_polygon, crs(raster(perch_control_PKDE)))
-muddyfoot_bbox_roach <- st_transform(muddyfoot_polygon, crs(raster(roach_control_PKDE)))
-muddyfoot_bbox_pike <- st_transform(muddyfoot_polygon, crs(raster(pike_control_PKDE)))
+# Combine the coefficients for both treatments into one data frame
+pike_HR_coefs <- rbind(pike_HR_control, pike_HR_exposed)
 
-# Generate the plots
-#Perch
-perch_control_plot <- generate_ud_plot(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs, "Perch control")
-perch_mix_plot <- generate_ud_plot(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs, "Perch exposed")
+# Create the ggplot visualization of RSF coefficient estimates for perch habitats
+(pike_HR_coefs_plot <- 
+    ggplot(pike_HR_coefs, 
+           aes(x = treatment, y = est)) +  # Aesthetic mapping: treatment on x-axis, estimate (est) on y-axis
+    geom_errorbar(aes(ymin = low, ymax = high), 
+                  width = 0.1,  # Width of error bars
+                  size = 1,       # Thickness of error bars
+                  color = "black") +  # Error bars in black
+    geom_point(aes(shape = treatment, fill = treatment), 
+               size = 4,  # Point size
+               color = "black") +  # Outline of points in black
+    scale_shape_manual(values = c(21, 21)) +  # Use the same shape (circle) for both treatments
+    scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +  # White fill for Control, black fill for Exposed
+    labs(y = "Home range size (m^2)") +  # Label for the y-axis
+    theme_classic() +  # Use a clean classic theme for the plot
+    theme(legend.position = "none",  # Remove the legend as it's not necessary
+          axis.title.x = element_blank(),  # Remove the x-axis title for simplicity
+          axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),  # Bold y-axis title with larger font
+          axis.text = element_text(size = 12, color = 'black'),
+          panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
+)
 
-#Roach
-roach_control_plot <- generate_ud_plot(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach control")
-roach_mix_plot <- generate_ud_plot(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach exposed")
 
-#Pike
-pike_control_plot <- generate_ud_plot(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs, "pike control")
-pike_mix_plot <- generate_ud_plot(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs, "pike exposed")
+#Plotting AKDEs by treatment
 
-# Display the plots side by side
-library(patchwork)
-prey_habitat_overlap_muddyfoot_fig <- 
-  perch_control_plot + roach_control_plot + 
-  perch_mix_plot +  roach_mix_plot +  plot_layout(nrow = 2, ncol = 2)
+COL <- color(pike_akdes_cg_list, by='individual')
+COL_control <- COL[1:3]
+COL_mix <- COL[4:6]
 
-pred_habitat_overlap_muddyfoot_fig <- pike_control_plot + pike_mix_plot + plot_layout(nrow = 2)
+#Calculate extent
+EXT <- as.data.frame(t(as.matrix(extent(muddyfoot_sp_data))))
+
+# plot AKDEs
+plot(pike_control_akdes,
+     col.UD = COL_control,
+     col.DF = COL_control,
+     col.level =COL_control, 
+     col.grid = NA,
+     SP = muddyfoot_sp_data,
+     level.UD = 0.5,
+     xlim = EXT$x,
+     ylim = EXT$y)
 
 
-#Save
-ggsave(file = paste0(save_ud_plots, "prey_UDs_habitat_muddyfoot.png"), 
-       plot = prey_habitat_overlap_muddyfoot_fig, 
-       width = 30, 
-       height = 30,
-       units = 'cm',
-       dpi = 300)
+plot(mix_AKDES,col.DF=COL_mix,col.level=COL_mix,col.grid=NA,level=NA,main="Mix AKDE", level.UD = 0.95,xlim=EXT$x,ylim=EXT$y)
 
 
 
