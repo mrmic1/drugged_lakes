@@ -1,4 +1,4 @@
-Date,Lake,Serial Number,Tag Number,Species,Treatment,Weight,Total_length,Std_length,Sample_num,Samples_taken,Found,Known_predated,Notes
+Date,Lake,Serial Number,Tag_Number,Species,Treatment,Weight,Total_length,Std_length,Sample_num,Samples_taken,Found,Known_predated,Notes
 10/31/2022,Muddyfoot,1533581,H170-1802-59682,Perch,Control,NA,NA,NA,,NA,0,0,
 10/31/2022,Muddyfoot,1533582,H170-1802-59683,Roach,Control,NA,NA,NA,,NA,0,0,
 10/31/2022,Muddyfoot,1533583,H170-1802-59684,Roach,Control,72.5,19.5,16.3,15,"m,b,g",1,0,
