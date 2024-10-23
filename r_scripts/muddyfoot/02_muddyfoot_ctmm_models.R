@@ -16,53 +16,61 @@ library(doParallel)   # For registering parallel backend
 Sys.setenv(TZ = 'Europe/Stockholm')
 
 # Define file paths for reading and saving filtered telemetry and ctmm model results
-data_filter_path <- "./data/tracks_filtered/"
+filtered_data_path <- "./data/tracks_filtered/"
 save_ctmm_path <- "./data/ctmm_fits/"
 save_telem_path <- "./data/telem_obj/"
 
 #-------------------------------------------------------------------------------#
 
 #-------------------------------------------------------------------------------#
-# >1. Northern Pike CTMM's ####
+# > 1. Northern Pike CTMM's ####
 #-------------------------------------------------------------------------------#
 
-# Load the dataset containing telemetry data for various species (previously filtered and pre-processed)
-muddyfoot_sub <- readRDS(paste0(data_filter_path, 'muddyfoot_sub.rds'))
+# Load the dataset pre-processed in script 01_muddyfoot_data_cleaning.R
+muddyfoot_sub <- readRDS(paste0(filtered_data_path, 'muddyfoot/01_muddyfoot_sub.rds'))
 
 # Filter the data to isolate Northern Pike and the reference individual
 # The reference individual is used for estimating location error (UERE)
 pike_muddyfoot <- muddyfoot_sub %>%
-  dplyr::filter(Species == 'Northern Pike' | individual_ID == 'Reference')
+  dplyr::filter(Species == 'Northern Pike' | individual_ID == 'FReference')
+#1868158 rows
+
 
 # Prepare a dataframe for conversion to a telemetry object
 # This format is compatible with the movebank telemetry format
-pike_movebank <- with(pike_muddyfoot, data.frame(
-  "timestamp" = timestamp,                        # Timestamps for each recorded position
-  "location.long" = Long,                         # Longitude coordinate
-  "location.lat" = Lat,                           # Latitude coordinate
-  "GPS.HDOP" = HPE,                               # Horizontal precision error from GPS
-  "individual-local-identifier" = Fish_ID,        # Fish ID to identify individual fish
-  "treatment" = Treatment,                        # Experimental treatment for each fish
-  "date" = date,                                  # Date of observation
-  "week" = week,                                  # Week number (useful for time-based grouping)
-  "individual_day" = individual_day               # Unique day identifier for each individual
+pike_movebank <- 
+  with(pike_muddyfoot, 
+       data.frame(
+         "timestamp" = timestamp_cest,                        
+         "location.long" = Long,                         
+         "location.lat" = Lat, 
+         "GPS.HDOP" = HPE,                               
+         "individual-local-identifier" = individual_ID, 
+         "Weight" = Weight,
+         "Total_length" = Total_length,
+         "Std_length" = Std_length,
+         "Treatment" = Treatment,                        
+         "Date" = date_cest,
+         "Exp_Stage" = Stage,
+         "Time_Of_Day" = time_of_day
 ))
 
 # Convert the dataframe to a telemetry object using the ctmm package's as.telemetry function
 # No projection is applied here, and the WGS84 datum is used (common geographic coordinate system)
 pike_muddyfoot_tel_tpeqd <- as.telemetry(pike_movebank, 
                                          timezone = "Europe/Stockholm",   # Set time zone
-                                         timeformat = "%Y-%m-%d %H:%M:%S", # Specify timestamp format
+                                         timeformat = "%Y-%m-%d %H:%M:%S",# Specify timestamp format
                                          projection = NULL,               # No projection
                                          datum = "WGS84",                 # World Geodetic System 1984
-                                         keep = c("treatment", "date", "week", "individual_day")  # Retain extra columns
-)
+                                         keep = c("Weight","Total_length", "Std_length", "Treatment", 
+                                                  "Date", "Exp_Stage", "Time_Of_Day"))  # Retain extra columns
+
 
 # Check the structure of the telemetry object for one individual
 # This helps ensure the conversion worked as expected
 head(pike_muddyfoot_tel_tpeqd$F59880)
 
-# Check the projection of the telemetry object (should be unprojected initially)
+# Check the projection of the telemetry object 
 ctmm::projection(pike_muddyfoot_tel_tpeqd$F59880)
 
 # Check the time zone of the timestamps (to confirm it's correctly set to Europe/Stockholm)
@@ -79,6 +87,7 @@ ctmm::projection(pike_muddyfoot_tel_tpeqd) <- ctmm::median(pike_muddyfoot_tel_tp
 UERE_tpeqd <- uere.fit(pike_muddyfoot_tel_tpeqd$FReference)
 
 # Summarize the UERE to inspect the location error estimates
+
 summary(UERE_tpeqd)
 
 # Apply the UERE model to the entire pike telemetry dataset
@@ -99,6 +108,7 @@ head(out_pike[[1]])
 
 # Summarize the number of speed outliers across all pike (speeds greater than 0.823 m/s)
 sum(sapply(out_pike, function(x) sum(x$speed > 0.823)))
+#123469
 
 # Filter out observations with speeds greater than 0.823 m/s (Ucrit for Northern Pike)
 # Create a logical vector indicating which speed values are below this threshold
@@ -148,80 +158,68 @@ for (i in 1:length(muddyfoot_pike_ctmm_fits)) {
 }
 
 #-------------------------------------------------------------------------------#
-# >2. Perch CTMM's ####
+# > 2. Perch CTMM's ####
 #-------------------------------------------------------------------------------#
 
-# 1. Isolate data for Perch species and a reference individual
+# Isolate data for Perch species and a reference individual
 # We are filtering the dataset 'muddyfoot_sub' to only keep rows where the species is Perch or the individual ID is 'Reference'
 perch_muddyfoot <- muddyfoot_sub %>% 
-  dplyr::filter(Species == 'Perch' | individual_ID == 'Reference')
+  dplyr::filter(Species == 'Perch' | individual_ID == 'FReference')
 
 # 2. Prepare data for as.telemetry function (Movebank method)
 # Create a data frame with the necessary column names for Movebank telemetry processing.
 # These columns will be used by the `as.telemetry` function to convert the dataset into a telemetry object.
-perch_movebank <- with(perch_muddyfoot, data.frame(
-  "timestamp" = timestamp,                     # Timestamp of each observation
-  "location.long" = Long,                      # Longitude of fish location
-  "location.lat" = Lat,                        # Latitude of fish location
-  "GPS.HDOP" = HPE,                            # Horizontal Dilution of Precision (accuracy)
-  "individual-local-identifier" = Fish_ID,     # Unique identifier for each fish
-  "treatment" = Treatment,                     # Treatment group
-  "date" = date,                               # Date of observation
-  "week" = week,                               # Week of observation
-  "individual_day" = individual_day            # Individual fish day identifier
-))
+perch_movebank <-   with(perch_muddyfoot, 
+                         data.frame(
+                           "timestamp" = timestamp_cest,                        
+                           "location.long" = Long,                         
+                           "location.lat" = Lat, 
+                           "GPS.HDOP" = HPE,                               
+                           "individual-local-identifier" = individual_ID, 
+                           "Weight" = Weight,
+                           "Total_length" = Total_length,
+                           "Std_length" = Std_length,
+                           "Treatment" = Treatment,                        
+                           "Date" = date_cest,
+                           "Exp_Stage" = Stage,
+                           "Time_Of_Day" = time_of_day
+                         ))
 
-# 3. Convert the dataframe into a telemetry object (using equal-area projection)
-# Using 'as.telemetry' without projection (TPEQD projection is set to NULL).
-# Additional metadata such as 'treatment', 'date', etc., are retained.
 perch_muddyfoot_tel_tpeqd <- as.telemetry(perch_movebank, 
                                           timezone = "Europe/Stockholm", 
                                           timeformat = "%Y-%m-%d %H:%M:%S", 
-                                          projection = NULL,         # Projection is null since TPEQD projection is used
-                                          datum = "WGS84",           # The datum is WGS84, a common standard for geographical data
-                                          keep = c("treatment", "date", "week", "individual_day")  # Keep additional attributes
-)
+                                          projection = NULL,         
+                                          datum = "WGS84",           
+                                          keep = c("Weight","Total_length", "Std_length", "Treatment", 
+                                                   "Date", "Exp_Stage", "Time_Of_Day"))
 
-# 4. Inspect the telemetry object parameters for a specific fish
-# Checking the telemetry object for the individual 'F59682'
+
+# Inspect the telemetry object parameters for a specific fish
 head(perch_muddyfoot_tel_tpeqd$F59682)
 ctmm::projection(perch_muddyfoot_tel_tpeqd$F59682)  # Check projection of the object
 tz(perch_muddyfoot_tel_tpeqd$F59682$timestamp)      # Check timezone of timestamps
 
-# 5. Set the projection to the geometric median of the data
 # Centering the projection of all telemetry data on the geometric median of the data to avoid projection bias.
 ctmm::projection(perch_muddyfoot_tel_tpeqd) <- ctmm::median(perch_muddyfoot_tel_tpeqd)
 
-### INCORPORATING LOCATION ERROR ###
-
-# 6. Fit UERE (User Equivalent Range Error) to reference individual
+# Fit UERE (User Equivalent Range Error) to reference individual
 # Using reference data to estimate the error model and apply it to the telemetry data.
 UERE_tpeqd <- uere.fit(perch_muddyfoot_tel_tpeqd$FReference)
-
-# 7. Summarize and apply the UERE model
 summary(UERE_tpeqd)  # Review the fitted UERE model parameters
 uere(perch_muddyfoot_tel_tpeqd) <- UERE_tpeqd  # Apply the error model to the telemetry data
 
-# 8. Remove the reference individual from the telemetry data
 # Keeping only the first 30 individuals (excluding the reference individual).
 perch_muddyfoot_tel <- perch_muddyfoot_tel_tpeqd[1:30]
 
-# 9. Filter out unrealistic speeds (speeds higher than 0.977 m/s)
-# 'outlie' detects possible outliers based on unrealistic speeds.
+#Filter out unrealistic speeds (speeds higher than 0.977 m/s)
 out_perch <- outlie(perch_muddyfoot_tel, plot = FALSE)
 sum(sapply(out_perch, function(x) sum(x$speed > 0.977)))  # Count observations exceeding 0.977 m/s
-
-# 10. Create a logical vector for filtering out these high-speed observations
-# Retain only those observations where speed is below the critical speed threshold.
+#156265
 which_lowSp <- lapply(out_perch, function(x) x$speed <= 0.977)
 perch_muddyfoot_tel <- Map(function(x, y) x[y, ], perch_muddyfoot_tel, which_lowSp)
 
-# 11. Save the cleaned telemetry object
-# Save the processed telemetry data to an RDS file for future use.
-# saveRDS(perch_muddyfoot_tel, paste0(save_telem_path, "perch_muddyfoot_tel.rds")) 
-
-# 12. Load telemetry object (if needed)
-# perch_muddyfoot_tel <- readRDS(paste0(save_telem_path, "perch_muddyfoot_tel.rds"))
+# Save the cleaned telemetry object
+saveRDS(perch_muddyfoot_tel, paste0(save_telem_path, "perch_muddyfoot_tel.rds")) 
 
 ### MODEL FITTING ###
 
@@ -267,80 +265,63 @@ for (i in 1:length(muddyfoot_perch_select_fits)) {
 }
 
 #-------------------------------------------------------------------------------#
-# >3. Roach CTMM's ####
+# > 3. Roach CTMM's ####
 #-------------------------------------------------------------------------------#
 
 # Isolate Roach data from the muddyfoot_sub dataset, including reference individuals
 roach_muddyfoot <- muddyfoot_sub %>% 
-  dplyr::filter(Species == 'Roach' | individual_ID == 'Reference')
+  dplyr::filter(Species == 'Roach' | individual_ID == 'FReference')
 
-# Eric's note: Movebank method. Providing as.telemetry with explicit column names makes it more efficient.
-# There’s no need to coerce it into a move object first.
-roach_movebank <- with(roach_muddyfoot, data.frame(
-  "timestamp" = timestamp,            # Renaming to match the expected Movebank format
-  "location.long" = Long,             # Longitude
-  "location.lat" = Lat,               # Latitude
-  "GPS.HDOP" = HPE,                   # Horizontal dilution of precision (error estimate)
-  "individual-local-identifier" = Fish_ID,  # Fish ID
-  "treatment" = Treatment,            # Experimental treatment
-  "date" = date,                      # Date of observation
-  "week" = week,                      # Week number
-  "individual_day" = individual_day   # Day-specific identifier for the individual
-))
+roach_movebank <- with(roach_muddyfoot, 
+                       data.frame(
+                         "timestamp" = timestamp_cest,                        
+                         "location.long" = Long,                         
+                         "location.lat" = Lat, 
+                         "GPS.HDOP" = HPE,                               
+                         "individual-local-identifier" = individual_ID, 
+                         "Weight" = Weight,
+                         "Total_length" = Total_length,
+                         "Std_length" = Std_length,
+                         "Treatment" = Treatment,                        
+                         "Date" = date_cest,
+                         "Exp_Stage" = Stage,
+                         "Time_Of_Day" = time_of_day
+                       ))
 
-# Transform the data into a telemetry object for analysis.
-# Removed UTM projection for now, using TPEQD (Transverse Equidistant Projection).
 roach_muddyfoot_tel_tpeqd <- as.telemetry(
   roach_movebank, 
   timezone = "Europe/Stockholm", 
   timeformat="%Y-%m-%d %H:%M:%S", 
-  projection= NULL,    # No explicit projection
-  datum="WGS84",       # World Geodetic System for consistency
-  keep = c("treatment", "date", "week", "individual_day")  # Keeping additional columns for later use
-)
+  projection= NULL,    
+  datum="WGS84",       
+  keep = c("Weight","Total_length", "Std_length", "Treatment", 
+           "Date", "Exp_Stage", "Time_Of_Day"))
+
 
 # Check the contents of the telemetry object.
-head(roach_muddyfoot_tel_tpeqd$F59880)   # Preview the data for Fish F59880
-
-# Ensure the projection is properly defined (TPEQD).
-ctmm::projection(roach_muddyfoot_tel_tpeqd$F59880)
-
-# Check the timestamp timezone to ensure it's correctly set to Europe/Stockholm.
-tz(roach_muddyfoot_tel_tpeqd$F59880$timestamp)
-
-# Check column names of the telemetry object to confirm structure
-names(roach_muddyfoot_tel_tpeqd)
+head(roach_muddyfoot_tel_tpeqd$F59683)
+ctmm::projection(roach_muddyfoot_tel_tpeqd$F59683)
+tz(roach_muddyfoot_tel_tpeqd$F59683$timestamp)
 
 # Center the projection on the geometric median of the data (for better alignment of coordinates).
 ctmm::projection(roach_muddyfoot_tel_tpeqd) <- ctmm::median(roach_muddyfoot_tel_tpeqd)
 
-### Incorporating location error ###
+# Fit error parameters using calibration data from reference tag.
+UERE_tpeqd <- uere.fit(roach_muddyfoot_tel_tpeqd$FReference)
 
-# Fit error parameters using calibration data from reference individuals.
-UERE_tpeqd <- uere.fit(roach_muddyfoot_tel_tpeqd$FReference)   # FReference contains known error data
-
-# Summarize the UERE model to inspect error estimates.
+# Summarise the UERE model to inspect error estimates.
 summary(UERE_tpeqd)
 
 # Apply the error model to the entire telemetry dataset.
 uere(roach_muddyfoot_tel_tpeqd) <- UERE_tpeqd
 
-# New column `VAR.xy` added to represent error variance in x and y coordinates.
-head(roach_muddyfoot_tel_tpeqd$F59684)  # Preview data after error incorporation
-names(roach_muddyfoot_tel_tpeqd)
-
-# Remove reference individuals from the list, focusing only on tracked individuals.
+# Remove reference tag from the list, focusing only on tracked individuals.
 roach_muddyfoot_tel <- roach_muddyfoot_tel_tpeqd[1:29]
-
-### Filtering out outliers based on unrealistic movement speeds ###
 
 # Identify potential outliers based on fish speed (m/s). Fish swimming speeds greater than 0.841 m/s are considered outliers.
 out_roach <- outlie(roach_muddyfoot_tel, plot = FALSE)
 
-# View the speed distribution for the first individual.
-head(out_roach[[1]])
-
-# Count the number of speeds that exceed 0.841 m/s, using a review paper as reference for critical swimming speed.
+# Count the number of speeds that exceed 0.841 m/s.
 sum(sapply(out_roach, function(x) sum(x$speed > 0.841)))
 # 336192 observations exceed the threshold of 0.841 m/s.
 
@@ -384,5 +365,33 @@ saveRDS(muddyfoot_roach_select_fits, file = paste0(save_ctmm_path, "muddyfoot_ro
 # mud_roach_fits <- readRDS(paste0(save_ctmm_path, "muddyfoot_roach_ctmm_fits.rds"))
 
 
+#---------------------------------------------------------------#####
+# Make combined dataframe with outliers for each species removed ####
+#---------------------------------------------------------------#####
 
+# Create a function to extract the data and add the individual_id column
+# This function merges telemetry data from different individuals into a single dataframe.
+extract_data <- function(list_data) {
+  data_combined <- do.call(rbind, lapply(names(list_data), function(id) {
+    df <- list_data[[id]]
+    df$individual_ID <- id  # Add individual ID to each dataframe.
+    return(df)
+  }))
+  return(data_combined)
+}
+
+# Apply the function to each species' telemetry data and combine them into a single dataframe.
+pike_data <- extract_data(pike_muddyfoot_tel)
+perch_data <- extract_data(perch_muddyfoot_tel)
+roach_data <- extract_data(roach_muddyfoot_tel)
+
+# Combine all dataframes into one, with a species label added.
+muddyfoot_telem_data <- 
+  rbind(
+    cbind(pike_data, Species = 'Pike'), 
+    cbind(perch_data, Species = 'Perch'),
+    cbind(roach_data, Species = 'Roach')
+  )
+
+saveRDS(muddyfoot_telem_data, paste0(filtered_data_path, "muddyfoot/02_muddyfoot_sub.rds"))
 
