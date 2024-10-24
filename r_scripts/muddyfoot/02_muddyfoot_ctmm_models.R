@@ -128,10 +128,10 @@ doParallel::registerDoParallel(cl)  # Register the parallel backend
 # Fit ctmm models in parallel for each pike
 muddyfoot_pike_ctmm_fits <- foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %dopar% {
   # Generate an initial guess for the model parameters, incorporating location error
-  lake_BT_pike_guess <- ctmm.guess(pike_muddyfoot_tel[[i]], CTMM = ctmm(error = TRUE), interactive = FALSE)
+ muddyfoot_pike_guess <- ctmm.guess(pike_muddyfoot_tel[[i]], CTMM = ctmm(error = TRUE), interactive = FALSE)
   
   # Fit the ctmm model to the telemetry data using model selection
-  model_fit <- ctmm.select(pike_muddyfoot_tel[[i]], lake_BT_pike_guess, verbose = TRUE)
+  model_fit <- ctmm.select(pike_muddyfoot_tel[[i]], muddyfoot_pike_guess, verbose = TRUE)
   
   # Save the fitted model for each fish individually
   saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_pike_fits/", names(pike_muddyfoot_tel)[i], ".rds"))
