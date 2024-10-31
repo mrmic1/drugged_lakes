@@ -7,5 +7,7 @@
 #Locations that fell outside of a species critical speed limit filtered from the dateframe
 
 #03_muddyfoot_sub.rds
-#Locations where prey were tracked after being predated filtered from the dataframe.
+#Column added on number of location, frequency of locations and irregular tracking for each ID
 
+#04_muddyfoot_sub.rds
+#Locations where prey were tracked after being predated filtered from the dataframe.
