@@ -1,5 +1,5 @@
 # -----------------------------------------------# 
-# Exploring interspecific interactions - Muddyfoot 
+# Exploring predator-prey interactions 
 # ------------------------------------------------#
 
 # This script analyses telemetry data of prey (Roach, Perch) and predators (Pike)
