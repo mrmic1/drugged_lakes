@@ -31,7 +31,8 @@ muddyfoot_sub <- readRDS(paste0(filtered_data_path, 'muddyfoot/01_muddyfoot_sub.
 
 # Filter the data to isolate Northern Pike and the reference individual
 # The reference individual is used for estimating location error (UERE)
-pike_muddyfoot <- muddyfoot_sub %>%
+pike_muddyfoot <- 
+  muddyfoot_sub %>%
   dplyr::filter(Species == 'Northern Pike' | individual_ID == 'FReference')
 #1868158 rows
 
@@ -163,7 +164,8 @@ for (i in 1:length(muddyfoot_pike_ctmm_fits)) {
 
 # Isolate data for Perch species and a reference individual
 # We are filtering the dataset 'muddyfoot_sub' to only keep rows where the species is Perch or the individual ID is 'Reference'
-perch_muddyfoot <- muddyfoot_sub %>% 
+perch_muddyfoot <- 
+  muddyfoot_sub %>% 
   dplyr::filter(Species == 'Perch' | individual_ID == 'FReference')
 
 # 2. Prepare data for as.telemetry function (Movebank method)
@@ -255,7 +257,7 @@ names(muddyfoot_perch_ctmm_fits_OUF) <- names(filtered_list)
 # Save the OUF model fits for future analysis.
 saveRDS(muddyfoot_perch_ctmm_fits_OUF, paste0(save_ctmm_path, "muddyfoot_perch_ctmm_fits_OUF.rds")) 
 
-# 17. Check model outputs
+# Check model outputs
 # Loop through each model fit and print a summary for review.
 for (i in 1:length(muddyfoot_perch_select_fits)) {
   element_name <- names(muddyfoot_perch_select_fits)[i]
@@ -269,7 +271,8 @@ for (i in 1:length(muddyfoot_perch_select_fits)) {
 #-------------------------------------------------------------------------------#
 
 # Isolate Roach data from the muddyfoot_sub dataset, including reference individuals
-roach_muddyfoot <- muddyfoot_sub %>% 
+roach_muddyfoot <- 
+  muddyfoot_sub %>% 
   dplyr::filter(Species == 'Roach' | individual_ID == 'FReference')
 
 roach_movebank <- with(roach_muddyfoot, 
