@@ -666,44 +666,13 @@ muddyfoot_pred_encounter_summary <-
 saveRDS(muddyfoot_pred_encounter_summary, paste0(enc_path, "muddyfoot_pred_encounter_summary.rds"))
 
 #----------------------------------------------------------------------------------------------------------#
-
-#------------------------------------------------#
-######## 5. Proximity calculation ################
-#------------------------------------------------#
-
-#proximity function
-#Outputs a ratio estimate with confidence intervals
-#Value <1 indicate that the two individuals are closer on average than expected for independent movement
-#1 is consistent with independent movement
-#>1 individuals are farther from each other on average than expect for independent movement
-#TAKES A VERY LONG TIME TO RUN. 
-#Test proximity function
-#roach F59701 and  pike F59885
-
-
-# Reproject Roach telemetry objects to match the Pike projection
-projection(roach_muddyfoot_tel) <- projection(pike_muddyfoot_tel)
-projection(roach_muddyfoot_ctmm_fits) <- projection(pike_muddyfoot_ctmm_fits)
-
-
-combined_telemetry <- c(roach_muddyfoot_tel["F59701"], pike_muddyfoot_tel["F59885"])
-combined_ctmm <- c(roach_muddyfoot_ctmm_fits["F59701"], pike_muddyfoot_ctmm_fits["F59885"])
-
-
-#Pairwise separation distances
-PROX <- proximity(combined_telemetry,
-                  combined_ctmm)
-
-
-
-
 #---------------------------------------------------#
 ######### 5. Visualise predator encounters #########
 #--------------------------------------------------#
 
 #Filter IDs that have been identified as being predated
 pred_id_dist <- muddyfoot_pike_roach_distances_df %>% 
-  filter(Roach_ID %in% c("F59683", "F59687", "F59701", "F59709", "F59729"))
+  filter(Roach_ID %in% c("F59731", "F59719", "F59701", "F59738", "F59729"))
 
 #make a date column
 pred_id_dist <- pred_id_dist %>% 
@@ -715,8 +684,8 @@ pred_id_dist$encounter <- ifelse(pred_id_dist$est <= 0.45, 1, 0)
 
 
 #extract identified pred interactions
-F59709_dist <- pred_id_dist %>% 
-  filter(Roach_ID == 'F59709', Pike_ID == 'F59885') %>% 
+F59719_dist <- pred_id_dist %>% 
+  filter(Roach_ID == 'F59719', Pike_ID == 'F59885') %>% 
   filter(date <= "2022-10-21") #for graphing purposes only
 
 F59701_dist <- pred_id_dist %>% 
@@ -726,7 +695,7 @@ F59701_dist <- pred_id_dist %>%
 
 
 #calculate average dist per date
-F59709_dist_avg <- F59709_dist %>% 
+F59719_dist_avg <- F59719_dist %>% 
   group_by(date) %>% 
   summarise(avg_dist = mean(est, na.rm = TRUE),
             encounters = sum(encounter))
@@ -743,10 +712,10 @@ F59701_dist_avg <- F59701_dist %>%
 library(ggplot2)
 
 # Calculate scaling factor
-scale_factor <- max(F59709_dist_avg$avg_dist, na.rm = TRUE) / max(F59709_dist_avg$encounters, na.rm = TRUE)
+scale_factor <- max(F59719_dist_avg$avg_dist, na.rm = TRUE) / max(F59719_dist_avg$encounters, na.rm = TRUE)
 
 
-roach_pike_dist_plot <- ggplot(F59709_dist_avg, aes(x = date)) +
+roach_pike_dist_plot <- ggplot(F59719_dist_avg, aes(x = date)) +
   # Bar chart for encounters, scaled and made semi-transparent
   geom_bar(aes(y = encounters * scale_factor), 
            stat = "identity", 
@@ -771,7 +740,7 @@ roach_pike_dist_plot <- ggplot(F59709_dist_avg, aes(x = date)) +
   scale_y_continuous(
     name = "Average distance from pike (m)",
     # Adjust the limits if necessary
-    limits = c(0, max(c(F59709_dist_avg$avg_dist, F59709_dist_avg$encounters * scale_factor), na.rm = TRUE) * 1.1)
+    limits = c(0, max(c(F59719_dist_avg$avg_dist, F59719_dist_avg$encounters * scale_factor), na.rm = TRUE) * 1.1)
   ) +
   
   # Labels and theme
@@ -799,7 +768,7 @@ ggsave(file = paste0(enc_path, "encounter_plots/roach_pike_dist_plot.png"),
 
 #Extract data for individuals and dates
 F59709_pred_dat <- muddyfoot_filt_data %>% 
-  filter(individual_id %in% c('F59709','F59885')) %>%
+  filter(individual_id %in% c('F59719','F59885')) %>%
   mutate(date_utc2 = as.Date(timestamp, tz = "Europe/Stockholm")) %>% 
   filter(date_utc2 <= "2022-10-22")
 
@@ -912,7 +881,32 @@ anim_save(paste0(enc_path, "roach_pred_animation.gif"), animation = p_animate)
 
 
 
-
+# #------------------------------------------------#
+# ######## 5. Proximity calculation ################
+# #------------------------------------------------#
+# 
+# #proximity function
+# #Outputs a ratio estimate with confidence intervals
+# #Value <1 indicate that the two individuals are closer on average than expected for independent movement
+# #1 is consistent with independent movement
+# #>1 individuals are farther from each other on average than expect for independent movement
+# #TAKES A VERY LONG TIME TO RUN. 
+# #Test proximity function
+# #roach F59701 and  pike F59885
+# 
+# 
+# # Reproject Roach telemetry objects to match the Pike projection
+# projection(roach_muddyfoot_tel) <- projection(pike_muddyfoot_tel)
+# projection(roach_muddyfoot_ctmm_fits) <- projection(pike_muddyfoot_ctmm_fits)
+# 
+# 
+# combined_telemetry <- c(roach_muddyfoot_tel["F59701"], pike_muddyfoot_tel["F59885"])
+# combined_ctmm <- c(roach_muddyfoot_ctmm_fits["F59701"], pike_muddyfoot_ctmm_fits["F59885"])
+# 
+# 
+# #Pairwise separation distances
+# PROX <- proximity(combined_telemetry,
+#                   combined_ctmm)
 
 
 
