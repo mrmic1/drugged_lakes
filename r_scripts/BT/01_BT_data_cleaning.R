@@ -1,5 +1,5 @@
 #-------------------------------------------------------------#
-# Initial cleaning of the detection data in Lake Muddyfoot ####
+# Initial cleaning of the detection data in Lake BT 
 #-------------------------------------------------------------#
 
 # Load necessary libraries
@@ -11,89 +11,93 @@ library(mapedit)    # for interactive map editing
 library(sf)         # spatial data handling
 
 
-# Set the time zone environment to 'Europe/Stockholm' for consistent timestamp manipulation
+#set time zones to CEST (not CET because study was conducted in the summmer)
+#helpful timezone link: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 Sys.setenv(TZ = 'Europe/Stockholm')
+
 
 # Define file paths
 raw_tracking_data_path <- "./data/raw_tracking_data/"  # path to raw transmitter data
-save_filtered_data_path <- "./data/tracks_filtered/muddyfoot/"  # path to save subsampled data
+save_filtered_data_path <- "./data/tracks_filtered/lake_BT/"  # path to save subsampled data
 size_data_path <- "./data/fish_size/" 
 
-#------------------------------------------------------------------------------#
-#------------------------------------------------------------------------------#
+cat("\014")
 
-# Load detection data for Lake Muddyfoot
-muddyfoot <- fread(paste0(raw_tracking_data_path, "muddyfoot_A/results/animal/all.csv"))
+#----------------------------------------------------------------------------------------#
+#----------------------------------------------------------------------------------------#
 
-# Rename latitude and longitude columns for consistency with other datasets
-names(muddyfoot)[names(muddyfoot) == "Longitude"] <- "Long"
-names(muddyfoot)[names(muddyfoot) == "Latitude"] <- "Lat"
+#import BT data
+lake_BT = fread(paste0(raw_tracking_data_path, "BT_B/results/animal/all.csv"))
+
+#noticed that lat and long are in the wrong columns, need to rename them
+names(lake_BT)[names(lake_BT) == "Longitude"] <- "Lat"
+names(lake_BT)[names(lake_BT) == "Latitude"] <- "Long"
 
 #check time column
-tz(muddyfoot$Time) #timestamps are in UTC
+tz(lake_BT$Time) #timestamps are in UTC
 #rename time column to time_utc
-muddyfoot <- muddyfoot %>% 
+lake_BT <- lake_BT %>% 
   rename(timestamp_utc = Time)
 
 #add column for time in CEST
-muddyfoot$timestamp_cest <- with_tz(muddyfoot$timestamp_utc, tzone = "Europe/Stockholm" )
-tz(muddyfoot$timestamp_cest)
-head(muddyfoot %>% 
+lake_BT$timestamp_cest <- with_tz(lake_BT$timestamp_utc, tzone = "Europe/Stockholm" )
+tz(lake_BT$timestamp_cest)
+head(lake_BT %>% 
        dplyr::select(timestamp_utc, timestamp_cest), n = 20)
 
 #date column for both utc and cest
-muddyfoot$date_utc <- as.Date(muddyfoot$timestamp_utc)
-muddyfoot$date_cest <- as.Date(format(muddyfoot$timestamp_cest, tz = "Europe/Stockholm"))
+lake_BT$date_utc <- as.Date(lake_BT$timestamp_utc)
+lake_BT$date_cest <- as.Date(format(lake_BT$timestamp_cest, tz = "Europe/Stockholm"))
 
 #find rows where date_utc and date_cest do not align
-print(muddyfoot %>% 
+print(lake_BT %>% 
         filter(date_utc != date_cest))
 
 
-# Load fish biometric data
+#Load fish biometric data
 biometrics <- fread(paste0(size_data_path, "biometric_data.csv"))
 
 # Extract the last numeric part of 'Tag Number' to create a matching 'individual_ID' column
 biometrics <- biometrics %>%
   mutate(individual_ID = as.numeric(sub(".*-.*-(\\d+)", "\\1", `Tag Number`)))
 
-# Rename the 'Id' column in muddyfoot to 'individual_ID' for consistency in merging
-names(muddyfoot)[names(muddyfoot) == "Id"] <- "individual_ID"
+# Rename the 'Id' column in lake_BT to 'individual_ID' for consistency in merging
+names(lake_BT)[names(lake_BT) == "Id"] <- "individual_ID"
 
 # Join biometric data with the detection data on 'individual_ID'
-muddyfoot <- left_join(muddyfoot, biometrics, by = "individual_ID")
+lake_BT <- left_join(lake_BT, biometrics, by = "individual_ID")
 
-# Convert muddyfoot to a data frame (optional but useful for further manipulation)
-muddyfoot <- as.data.frame(muddyfoot)
+# Convert lake_BT to a data frame (optional but useful for further manipulation)
+lake_BT <- as.data.frame(lake_BT)
 
 # Identify and label the reference individual based on 'FullId' column
-muddyfoot$individual_ID <- ifelse(muddyfoot$FullId == 'H170-1802-65066', 'Reference', muddyfoot$individual_ID)
+lake_BT$individual_ID <- ifelse(lake_BT$FullId == 'H170-1802-65065', 'Reference', lake_BT$individual_ID)
 
-# Filter data to only include individuals within Lake Muddyfoot or the reference individual
-muddyfoot <- muddyfoot %>%
-  dplyr::filter(Lake == 'Muddyfoot' | individual_ID == 'Reference')
-#original rows: 13191157
-#after filtering: 13182431 
+# Filter data to only include individuals within Lake lake_BT or the reference individual
+lake_BT <- lake_BT %>%
+  dplyr::filter(Lake == 'BT' | individual_ID == 'Reference')
+#original rows: 22967436
+#after filtering: 22957599 
 
-# Filter for observations after pike were introduced (post 2022-09-25) and remove unnecessary columns
-muddyfoot <- muddyfoot %>%
-  filter(date_cest >= "2022-09-25") %>%
+# Filter for observations after pike were introduced (post 2022-09-26) and remove unnecessary columns
+lake_BT <- lake_BT %>%
+  filter(date_cest >= "2022-09-26") %>%
   dplyr::select(-ID, -Notes, -Transmitter, -`Tag Number`, -`PIT Number`, - `Tag Type`, - `Biologger Number`,
                 -Station, -HPEm, -TempData, -DepthData, -AccelData, 
                 -RxDetected, -nRxDetected, -`Serial Number`, -nRxUsed, -RxUsed,
                 -timestamp_utc, -date_utc, -Date, -Lake) # removing redundant columns
-#original rows: 13182431
-#after filtering cest: 11663216 
-#after filtering utc: 11663216
+#original rows: 22957599
+#after filtering cest: 20832375 
+
 
 
 #Change individual_ID to include F at the front
 #This will make it easier for analysis later
-muddyfoot$individual_ID <- paste0("F", muddyfoot$individual_ID)
+lake_BT$individual_ID <- paste0("F", lake_BT$individual_ID)
 
 
-# Convert muddyfoot to a move2 object for further spatial manipulation
-muddyfoot_mv <- mt_as_move2(muddyfoot, 
+# Convert lake_BT to a move2 object for further spatial manipulation
+lake_BT_mv <- mt_as_move2(lake_BT, 
                             coords = c("Long", "Lat"),  # specify coordinate columns
                             crs = "WGS84",  # use the WGS84 coordinate reference system
                             time_column = "timestamp_cest",  # specify the timestamp column
@@ -103,42 +107,42 @@ muddyfoot_mv <- mt_as_move2(muddyfoot,
 # Sort the data by individual ID and timestamp for chronological consistency
 # It is also important because it place individual_ID in numerical order which will be beneficial for 
 # later parts of the analysis
-muddyfoot_mv <- muddyfoot_mv %>%
+lake_BT_mv <- lake_BT_mv %>%
   dplyr::arrange(individual_ID, timestamp_cest)
 
-# Removing duplicates based on locations and timestamps (uncomment to activate if needed)
-# muddyfoot_mv <- muddyfoot_mv %>% mt_filter_unique(criterion = "first")
 
 #------------------------------------------------------------------------------#
+
+##------------------------------------------------------------------------------#
 # Handling spatial boundaries (polygon of Lake Muddyfoot) #
 #------------------------------------------------------------------------------#
 
-# Load the pre-drawn polygon representing Lake Muddyfoot's boundaries
-muddyfoot_lake_poly <- sf::st_read("./data/lake_coords/lake_muddyfoot_polygon.gpkg")
+# Load the pre-drawn polygon representing Lake lake_BT's boundaries
+lake_BT_poly <- sf::st_read("./data/lake_coords/lake_BT_polygon.gpkg")
 
 # Subset the data to include only points that fall within the lake's polygon
-muddyfoot_sub <- st_intersection(muddyfoot_mv, muddyfoot_lake_poly)
+lake_BT_sub <- st_intersection(lake_BT_mv, lake_BT_poly)
 
 # Save the subsampled data for future use
-# saveRDS(muddyfoot_sub, file = paste0(save_data_sub_path, "muddyfoot_sub_spatialfilt.rds"))
+# saveRDS(lake_BT_sub, file = paste0(save_data_sub_path, "lake_BT_sub_spatialfilt.rds"))
 
 # Optional: Thin the data to reduce size by filtering points that occur at least 25 seconds apart
-# muddyfoot_sub <- muddyfoot_sub %>% mt_filter_per_interval(unit = "25 seconds", criterion = "first")
+# lake_BT_sub <- lake_BT_sub %>% mt_filter_per_interval(unit = "25 seconds", criterion = "first")
 
 #Convert to dataframe
 
-muddyfoot_sub <- as.data.frame(muddyfoot_sub)
+lake_BT_sub <- as.data.frame(lake_BT_sub)
 
 #check time
-tz(muddyfoot_sub$timestamp_cest) #Europe/Stockholm
+tz(lake_BT_sub$timestamp_cest) #Europe/Stockholm
 
 # Extract the longitude and latitude columns from the geometry column
-coords <- st_coordinates(muddyfoot_sub$geometry)
-muddyfoot_sub$Long <- coords[, 1]
-muddyfoot_sub$Lat <- coords[, 2]
+coords <- st_coordinates(lake_BT_sub$geometry)
+lake_BT_sub$Long <- coords[, 1]
+lake_BT_sub$Lat <- coords[, 2]
 
 # # Convert the dataframe to an sf object with the WGS84 CRS
-# data_sf <- st_as_sf(muddyfoot_sub, coords = c("Long", "Lat"), crs = 4326)
+# data_sf <- st_as_sf(lake_BT_sub, coords = c("Long", "Lat"), crs = 4326)
 # 
 # # Define the UTM CRS (using zone 34 for this specific location)
 # utm_crs <- st_crs("+proj=utm +zone=34 +datum=WGS84 +units=m +no_defs")
@@ -148,25 +152,27 @@ muddyfoot_sub$Lat <- coords[, 2]
 # 
 # # Extract the UTM coordinates
 # utm_coords <- st_coordinates(data_sf_utm$geometry)
-# muddyfoot_sub$Long_utm <- utm_coords[, 1]
-# muddyfoot_sub$Lat_utm <- utm_coords[, 2]
+# lake_BT_sub$Long_utm <- utm_coords[, 1]
+# lake_BT_sub$Lat_utm <- utm_coords[, 2]
+
+
 
 #------------------------------------------------------------------------------#
 # Create temporal columns #
 #-------------------------------------------------------------------------------
 
 #Split data in half by date
-unique(muddyfoot_sub$date_cest) #36 unique dates
-class(muddyfoot_sub$date_cest)
+unique(lake_BT_sub$date_cest) #34 unique dates
+class(lake_BT_sub$date_cest)
 
 #Create column called stage to split dataset into 'early' and 'late'
-muddyfoot_sub <- 
-  muddyfoot_sub %>%
+lake_BT_sub <- 
+  lake_BT_sub %>%
   # Find the unique dates, arrange them, and assign 'Early' or 'Late'
-  mutate(Stage = if_else(date_cest %in% unique(sort(date_cest))[1:18], 'Early', 'Late'))
+  mutate(Stage = if_else(date_cest %in% unique(sort(date_cest))[1:17], 'Early', 'Late'))
 
 #check outcome
-muddyfoot_sub %>% 
+lake_BT_sub %>% 
   group_by(date_cest, Stage) %>% 
   summarise(n = n()) %>% 
   print(n = 36) #worked
@@ -188,28 +194,29 @@ sun_data$sunrise <- as.POSIXct(sun_data$sunrise, format = "%Y-%m-%d %H:%M:%S", t
 sun_data$sunset <- as.POSIXct(sun_data$sunset, format = "%Y-%m-%d %H:%M:%S", tz = "Europe/Stockholm")
 
 # Verify the timezone is consistent
-# attr(muddyfoot_sub$timestamp_cest, "tzone")
+# attr(lake_BT_sub$timestamp_cest, "tzone")
 # attr(sun_data$sunset, "tzone")
 
 #create date column in sun_data
 sun_data$date_cest <- as.Date(sun_data$sunset)
 
-# Merge the sun_data with muddyfoot_sub to get the sunrise and sunset times for each fish location timestamp
-muddyfoot_sub <- merge(muddyfoot_sub, sun_data, by = "date_cest", all.x = TRUE)
+# Merge the sun_data with lake_BT_sub to get the sunrise and sunset times for each fish location timestamp
+lake_BT_sub <- merge(lake_BT_sub, sun_data, by = "date_cest", all.x = TRUE)
 
 # Create the Day_time column based on the comparison of timestamp with sunrise and sunset
-muddyfoot_sub$time_of_day <- ifelse(
-  muddyfoot_sub$timestamp_cest >= muddyfoot_sub$sunrise & muddyfoot_sub$timestamp_cest <= muddyfoot_sub$sunset,
+lake_BT_sub$time_of_day <- 
+  ifelse(
+  lake_BT_sub$timestamp_cest >= lake_BT_sub$sunrise & lake_BT_sub$timestamp_cest <= lake_BT_sub$sunset,
   "Day", "Night"
 )
 
 # Check entries classified as 'Day'
-# day_entries <- muddyfoot_sub[muddyfoot_sub$time_of_day == "Day", ]
+# day_entries <- lake_BT_sub[lake_BT_sub$time_of_day == "Day", ]
 # head(day_entries[, c("timestamp_cest", "sunrise", "sunset", "time_of_day")], 20)
 
 
 # Check entries classified as 'Night'
-# night_entries <- muddyfoot_sub[muddyfoot_sub$time_of_day == "Night", ]
+# night_entries <- lake_BT_sub[lake_BT_sub$time_of_day == "Night", ]
 # head(night_entries[, c("timestamp_cest", "sunrise", "sunset", "time_of_day")], 10)
 
 #------------------------------------------------------------------------------#
@@ -217,4 +224,4 @@ muddyfoot_sub$time_of_day <- ifelse(
 #------------------------------------------------------------------------------#
 
 # Save the cleaned and filtered dataset
-saveRDS(muddyfoot_sub, file = paste0(save_filtered_data_path, "01_muddyfoot_sub.rds"))
+saveRDS(lake_BT_sub, file = paste0(save_filtered_data_path, "01_lake_BT_sub.rds"))

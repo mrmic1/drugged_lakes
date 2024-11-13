@@ -53,8 +53,8 @@ muddyfoot_polygon <- sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddy
 #### > 1.1. Roach ####
 
 # Reproject Roach telemetry objects to match the Pike projection
-projection(roach_muddyfoot_tel) <- projection(pike_muddyfoot_tel)
-projection(roach_muddyfoot_ctmm_fits) <- projection(pike_muddyfoot_ctmm_fits)
+ctmm::projection(roach_muddyfoot_tel) <- ctmm::projection(pike_muddyfoot_tel)
+ctmm::projection(roach_muddyfoot_ctmm_fits) <- ctmm::projection(pike_muddyfoot_ctmm_fits)
 
 # Check projections to ensure they match
 stopifnot(projection(roach_muddyfoot_tel) == projection(pike_muddyfoot_tel))

@@ -63,6 +63,13 @@ roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
 #- effective sample size for each individual used for calculating akdes
 #- daily location information
 
+#tracking date range
+date_range <- range(muddyfoot_filt_data$Date, na.rm = FALSE)
+date_range
+
+number_of_days <- as.integer(difftime(date_range[2], date_range[1], units = "days")) + 1
+number_of_days
+
 # > 1.1 Calculate time difference between positions ####
 
 # Calculate time differences between successive timestamps for each individual.
