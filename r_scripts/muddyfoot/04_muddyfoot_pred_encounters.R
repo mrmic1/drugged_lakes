@@ -219,8 +219,8 @@ post_biometrics <-
 
 post_biometrics %>% 
   filter(Lake == 'Muddyfoot') %>% 
-  dplyr::select(individual_ID, Species, Found) %>% 
-  group_by(Species) %>% 
+  dplyr::select(individual_ID, Species, Treatment, Found) %>% 
+  group_by(Species, Treatment) %>% 
   summarise(num_survive = sum(Found),
             num_died = length(unique(individual_ID)) - sum(Found),
             percent_survive = sum(Found)/length(unique(individual_ID)))

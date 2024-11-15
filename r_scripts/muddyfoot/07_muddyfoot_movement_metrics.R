@@ -16,7 +16,7 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 # Define paths to directories for loading/saving data
 ctmm_path <- "./data/ctmm_fits/"                  #
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"     
-telem_path <- "./data/telem_obj/muddyfoot"                 
+telem_path <- "./data/telem_obj/muddyfoot/"                 
 lake_polygon_path <- "./data/lake_coords/"        
 enc_path <- "./data/encounters/"                  
 
