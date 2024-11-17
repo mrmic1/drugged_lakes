@@ -111,6 +111,9 @@ saveRDS(roach_pike_distances_df, paste0(enc_path, "BT/BT_pike_roach_distances_df
 projection(perch_BT_tel) <- projection(pike_BT_tel)
 projection(perch_BT_ctmm_fits) <- projection(pike_BT_ctmm_fits)
 
+#ctmm's with same projections
+saveRDS(perch_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_perch_fits/lake_BT_perch_OUF_models.rds"))
+
 # Ensure projections are correctly matched
 stopifnot(projection(perch_BT_tel) == projection(pike_BT_tel))
 
