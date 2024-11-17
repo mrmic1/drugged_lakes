@@ -10,8 +10,6 @@
 ### LIBRARIES ###
 # Loading required packages
 library(dplyr)
-library(move)
-library(move2)
 library(ctmm)
 library(lubridate)
 library(data.table)
@@ -104,7 +102,7 @@ if ("timestamp" %in% colnames(roach_pike_distances_df)) {
 head(roach_pike_distances_df)
 
 # Save the distance data for future analysis
-saveRDS(roach_pike_distances_df, paste0(enc_path, "BT_pike_roach_distances_df.rds"))
+saveRDS(roach_pike_distances_df, paste0(enc_path, "BT/BT_pike_roach_distances_df.rds"))
 
 
 #### > 1.2. Perch ####
