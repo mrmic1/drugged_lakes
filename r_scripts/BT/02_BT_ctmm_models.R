@@ -20,12 +20,12 @@ filtered_data_path <- "./data/tracks_filtered/lake_BT/"
 save_ctmm_path <- "./data/ctmm_fits/"
 save_telem_path <- "./data/telem_obj/"
 
+#Load in the datasets
+lake_BT_sub <- readRDS(paste0(filtered_data_path, '01_lake_BT_sub.rds'))
+
 #-------------------------------------------------------------------------------#
 
 #### 1. Northern pike #####
-
-#Load in the datasets
-lake_BT_sub <- readRDS(paste0(filtered_data_path, '01_lake_BT_sub.rds'))
 
 # Filter the data to isolate Northern Pike and the reference individual
 # The reference individual is used for estimating location error (UERE)
@@ -431,6 +431,12 @@ saveRDS(BT_roach_select_fits, file = paste0(save_ctmm_path, "BT_roach_fits/", "B
 #-------------------------------------------------------------------------#
 #### 4. Make combined dataframe with outliers for each species removed ####
 #-------------------------------------------------------------------------#
+
+#If you need to reload the telemetry objects
+pike_BT_tel <- readRDS(paste0(save_telem_path, "BT/pike_BT_tel.rds"))
+perch_BT_tel <- readRDS(paste0(save_telem_path, "BT/perch_BT_tel.rds"))
+roach_BT_tel <- readRDS(paste0(save_telem_path, "BT/roach_BT_tel.rds"))
+
 
 # Create a function to extract the data and add the individual_id column
 # This function merges telemetry data from different individuals into a single dataframe.
