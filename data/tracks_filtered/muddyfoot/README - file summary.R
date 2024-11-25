@@ -11,3 +11,6 @@
 
 #04_muddyfoot_sub.rds
 #Locations where prey were tracked after being predated filtered from the dataframe.
+
+#05_muddyfoot_sub.rds
+#Add movement metrics to dataset (e.g. distance, speed)
