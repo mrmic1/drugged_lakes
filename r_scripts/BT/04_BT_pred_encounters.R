@@ -3,7 +3,7 @@
 # ------------------------------------------------#
 
 # This script analyses telemetry data of prey (Roach, Perch) and predators (Pike)
-# in the BT lake, including pairwise distances and encounter rates.
+# in BT, including pairwise distances and encounter rates.
 # The goal is to identify potential predation events based on close proximity and to create 
 # a dataframe that can be used for analysing potential treatment effects on predator encounters
 

@@ -47,7 +47,9 @@ head(lake_BT %>%
 
 #date column for both utc and cest
 lake_BT$date_utc <- as.Date(lake_BT$timestamp_utc)
+#this next bit of code takes some time to run
 lake_BT$date_cest <- as.Date(format(lake_BT$timestamp_cest, tz = "Europe/Stockholm"))
+
 
 #find rows where date_utc and date_cest do not align
 print(lake_BT %>% 
@@ -89,8 +91,6 @@ lake_BT <- lake_BT %>%
 #original rows: 22957599
 #after filtering cest: 20832375 
 
-
-
 #Change individual_ID to include F at the front
 #This will make it easier for analysis later
 lake_BT$individual_ID <- paste0("F", lake_BT$individual_ID)
@@ -110,8 +110,6 @@ lake_BT_mv <- mt_as_move2(lake_BT,
 lake_BT_mv <- lake_BT_mv %>%
   dplyr::arrange(individual_ID, timestamp_cest)
 
-
-#------------------------------------------------------------------------------#
 
 ##------------------------------------------------------------------------------#
 # Handling spatial boundaries (polygon of Lake Muddyfoot) #
@@ -154,8 +152,6 @@ lake_BT_sub$Lat <- coords[, 2]
 # utm_coords <- st_coordinates(data_sf_utm$geometry)
 # lake_BT_sub$Long_utm <- utm_coords[, 1]
 # lake_BT_sub$Lat_utm <- utm_coords[, 2]
-
-
 
 #------------------------------------------------------------------------------#
 # Create temporal columns #
