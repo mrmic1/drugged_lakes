@@ -2,16 +2,22 @@
 ### EXTRACTING TRACKING SUMMARY STATISTICS - LAKE COW PARADISE
 #------------------------------------------------------------#
 
-#LIBRARIES 
-library(tidyverse)
-library(sp)
-library(sf)
-library(flextable)
-library(kableExtra)
-library(officer)
-library(ctmm)
+# LIBRARIES
+# Loading essential libraries for data manipulation, spatial analysis, and formatting tables.
+library(tidyverse)  # For data manipulation and visualization.
+library(sp)  # For handling spatial data.
+library(sf)  # For handling spatial vector data using simple features.
+library(flextable)  # For creating and customizing tables.
+library(kableExtra)  # Additional table formatting options.
+library(officer)  # For exporting tables to Word documents.
+library(ctmm)  # For continuous-time movement modeling (ctmm) package.
+library(lubridate)  # For handling date-time data.
 
-#SET TABLE PLOTTING PARAMETERS
+# Set the time zone to ensure consistent time handling
+Sys.setenv(TZ = 'Europe/Stockholm')
+
+# SET TABLE PLOTTING PARAMETERS
+# Customize default settings for Flextable tables used later in the script.
 set_flextable_defaults(
   font.color = "black",
   border.color = "black",
@@ -20,524 +26,380 @@ set_flextable_defaults(
 )
 
 ### DIRECTORIES ###
-ctmm_path = "./data/ctmm_fits/"
-data_filter_path = "./data/tracks_filtered/"
-telem_path = "./data/telem_obj/"
-save_tables_path = "./data/tracks_filtered/sum_tables/" 
+# Define paths to various datasets and save locations for tables.
+ctmm_path <- "./data/ctmm_fits/"  # Path for ctmm model fits.
+filtered_data_path <- "./data/tracks_filtered/lake_cow_paradise/"  # Path for filtered tracking data.
+telem_path <- "./data/telem_obj/"  # Path for telemetry object files.
+save_tables_path <- "./tables/cow_paradise/"  # Path to save summary tables.
+enc_path <- "./data/encounters/"
 
-#---------------------------------------------#
-################# LAKE cow ###################
-#----------------------------------------------#
-
+### LOAD DATA ###
 ### Load pike lake_cow dataset and ctmm ###
-lake_cow_sub <- readRDS(paste0(data_filter_path, 'lake_cow_sub.rds'))
+lake_cow_filt_data <- readRDS(paste0(data_filter_path, 'lake_cow_paradise/02_lake_cow_sub.rds'))
 
 #telemetry objects
 pike_lake_cow_tel = readRDS(paste0(telem_path, 'pike_lake_cow_tel.rds'))
 perch_lake_cow_tel = readRDS(paste0(telem_path, 'perch_lake_cow_tel.rds'))
 roach_lake_cow_tel = readRDS(paste0(telem_path, 'roach_lake_cow_tel.rds'))
 
-#ctmm lists
-pike_lake_cow_ctmm_fits = readRDS(paste0(ctmm_path, "lake_cow_pike_fits/lake_cow_pike_OUF_models.rds"))
-perch_lake_cow_ctmm_fits = readRDS(paste0(ctmm_path, "lake_cow_perch_fits/lake_cow_perch_OUF_models.rds"))
-roach_lake_cow_ctmm_fits = readRDS(paste0(ctmm_path, "lake_cow_roach_fits/lake_cow_roach_OUF_models.rds")) 
-
-
-#> 1. Make combined dataframe to extract summary statistics ####
-
-# Create a function to extract the data and add the individual_id column
-extract_data <- function(list_data) {
-  data_combined <- do.call(rbind, lapply(names(list_data), function(id) {
-    df <- list_data[[id]]
-    df$individual_id <- id
-    return(df)
-  }))
-  return(data_combined)
-}
-
-# Apply the function to each list and combine them
-pike_data <- extract_data(pike_lake_cow_tel)
-perch_data <- extract_data(perch_lake_cow_tel)
-roach_data <- extract_data(roach_lake_cow_tel)
-
-# Combine all dataframes into one
-lake_cow_filt_data <- 
-  rbind(
-    cbind(pike_data, Species = 'Pike'), 
-    cbind(perch_data, Species = 'Perch'),
-    cbind(roach_data, Species = 'Roach'))
-
-#saveRDS(lake_cow_filt_data, paste0(data_filter_path, "lake_cow_final_filt_data.rds"))
-lake_cow_filt_data <-  readRDS(paste0(data_filter_path, "lake_cow_final_filt_data.rds"))
-#this is the filtered data including the removal of outliers using the out() function in ctmm
+# #ctmm lists
+# pike_lake_cow_ctmm_fits = readRDS(paste0(ctmm_path, "lake_cow_pike_fits/lake_cow_pike_OUF_models.rds"))
+# perch_lake_cow_ctmm_fits = readRDS(paste0(ctmm_path, "lake_cow_perch_fits/lake_cow_perch_OUF_models.rds"))
+# roach_lake_cow_ctmm_fits = readRDS(paste0(ctmm_path, "lake_cow_roach_fits/lake_cow_roach_OUF_models.rds")) 
 
 #---------------------------------------------------------------------------------#
 
-#> 2. Calculate time difference between positions ####
-lake_cow_filt_data <- 
+#Species name duplicated, fixing issue here
+lake_cow_filt_data <- lake_cow_filt_data[,-6]
+
+#--------------------------------------------------------#
+# 1. Calculate tracking summary metrics #################
+#--------------------------------------------------------#
+
+#Below we calculate the following metrics
+#- mean and median time difference between timestamps
+#- number of locations per individual
+#- number of days individuals were tracked for.
+#- number of locations per day, hour and min
+#- effective sample size for each individual used for calculating akdes
+#- daily location information
+
+#tracking date range
+date_range <- range(lake_cow_filt_data$Date, na.rm = FALSE)
+date_range
+
+number_of_days <- as.integer(difftime(date_range[2], date_range[1], units = "days")) + 1
+number_of_days
+
+# > 1.1 Calculate time difference between positions ####
+
+# Calculate time differences between successive timestamps for each individual.
+cow_filt_data <- 
   lake_cow_filt_data %>%
-  group_by(individual_id) %>% 
-  mutate(time_diff = c(NA, diff(timestamp)))
+  group_by(individual_ID) %>% 
+  mutate(time_diff = c(NA, diff(timestamp)))  # First difference is NA.
 
-lake_cow_filt_data$time_diff <- as.numeric(round(lake_cow_filt_data$time_diff, digits = 3))
+# Round the time differences to 3 decimal places for clarity.
+cow_filt_data$time_diff <- as.numeric(round(cow_filt_data$time_diff, digits = 3))
 
-#check time_diff
-head(lake_cow_filt_data %>% 
-       dplyr::select(timestamp, time_diff), n = 20)
+# Check the first 20 rows to ensure time differences are calculated correctly.
+head(cow_filt_data %>% dplyr::select(timestamp, time_diff), n = 20)
 
-#average time_diff per individual
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(individual_id) %>% 
+# Calculate mean and median time differences per individual.
+cow_filt_data <- 
+  cow_filt_data %>%
+  group_by(individual_ID) %>% 
   mutate(mean_time_diff = mean(time_diff, na.rm = TRUE),
          median_time_diff = median(time_diff, na.rm = TRUE)) %>% 
   ungroup()
 
+# > 1.2 Calculate number of positions per individual ####
 
-#> 3. Calculate number of positions per individual ####
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(individual_id) %>% 
+# Count the number of positions (i.e., tracking locations) for each individual.
+cow_filt_data <- 
+  cow_filt_data %>%
+  group_by(individual_ID) %>% 
   mutate(n_positions = n()) %>% 
   ungroup()
 
-print(lake_cow_filt_data %>% 
-        dplyr::select(individual_id,n_positions) %>% 
+# Print a summary of unique individuals and their corresponding number of positions.
+print(cow_filt_data %>% 
+        dplyr::select(individual_ID, n_positions) %>% 
         distinct(), 
       n = 66)
-#no really noticeable low numbers
 
-#> 4. Calculate number of days individuals were tracked or monitored (n_days_mon) ####
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(individual_id) %>% 
-  mutate(n_days_mon = length(unique(date))) %>% 
+
+
+# > 1.3 Calculate number of days individuals were tracked ####
+
+# Calculate the number of unique days each individual was monitored.
+cow_filt_data <- 
+  cow_filt_data %>%
+  group_by(individual_ID) %>% 
+  mutate(n_days_tracked = length(unique(Date))) %>% 
   ungroup()
 
-print(lake_cow_filt_data %>% 
-        dplyr::select(individual_id, treatment, n_positions, n_days_mon) %>% 
+# Optional: Check the summary of number of days and positions per individual.
+print(cow_filt_data %>% 
+        dplyr::select(individual_ID, Treatment, n_positions, n_days_tracked) %>% 
         distinct(), 
       n = 65)
-#max number of days tracked = 34
-#again no really noticeably low numbers, all individuals tracked for at least greater than 10 days
 
-#calculate number of positions per day
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(individual_id) %>% 
-  mutate(n_positions_per_day = n_positions/n_days_mon,
-         n_positions_per_hour = n_positions_per_day/24,
-         n_positions_per_min = n_positions_per_hour/60) %>% 
-  ungroup()
 
-positions_sum = 
-  lake_cow_filt_data %>% 
-  dplyr::select(individual_id, treatment, Species,
+# Create a summary table of the calculated metrics.
+positions_sum <- 
+  cow_filt_data %>% 
+  dplyr::select(individual_ID, Treatment, Species,
                 n_positions, 
-                n_days_mon, 
-                n_positions_per_day,
-                n_positions_per_hour,
-                n_positions_per_min,
+                n_days_tracked, 
                 mean_time_diff,
                 median_time_diff) %>% 
-  mutate_if(is.numeric, round, 1) %>% 
-  distinct() 
+  distinct()
 
 
-#> 5. Calculate number of individuals for each species within each treatment ####
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(Species, treatment) %>% 
-  mutate(n_individuals = length(unique(individual_id))) %>% 
+#> 1.4. Calculate daily positions sum stats ####
+
+# This section calculates daily tracking metrics for each individual, 
+# including the number of positions per day and time differences between positions.
+
+# Calculate the number of positions per day and median time differences between positions for each individual.
+cow_filt_data <- 
+  cow_filt_data %>%
+  group_by(individual_ID, Date) %>% 
+  mutate(n_positions_day = n(),
+         median_day_time_diff = median(time_diff, na.rm = TRUE)) %>%  # Median time difference per day.
   ungroup()
 
-print(lake_cow_filt_data %>% 
-        dplyr::select(Species, treatment, n_individuals) %>% 
-        distinct(), 
-      n = 6)
-
-#> 6. Extract effective sample sizes for home range estimation ####
-
-#first combine all ctmm fits
-lake_cow_all_ctmm_fits <- list(Pike_fits = pike_lake_cow_ctmm_fits, 
-                              Perch_fits = perch_lake_cow_ctmm_fits, 
-                              Roach_fits = roach_lake_cow_ctmm_fits)
-
-
-# Initialize an empty data frame to store the results
-summary_df <- data.frame(
-  species = character(),
-  ID = character(),
-  effective_n = numeric(),
-  stringsAsFactors = FALSE
-)
-
-# List the species in your dataset
-species_list <- c("Pike_fits", "Perch_fits", "Roach_fits")
-
-# Loop through each species in the list
-for (species in species_list) {
-  # Get the list of individuals for the species
-  individuals <- names(lake_cow_all_ctmm_fits[[species]])
-  
-  # Loop through each individual in the species
-  for (ID in individuals) {
-    # Extract the summary object
-    summary_obj <- summary(lake_cow_all_ctmm_fits[[species]][[ID]])
-    
-    # Extract the effective_n value using the correct indexing
-    effective_n <- summary_obj$DOF["area"]
-    
-    # Append the results to the summary data frame
-    summary_df <- rbind(summary_df, data.frame(
-      species = gsub("_fits", "", species),  # Remove the '_fits' suffix for species name
-      ID = ID,
-      effective_n = effective_n
-    ))
-  }
-}
-
-# Print the summary data frame
-print(summary_df)
-
-effective_n_sum = summary_df
-
-
-#> 7. Combine effective sample sizes with individual positions data ####
-
-positions_sum <- merge(positions_sum, 
-                       effective_n_sum[, c("ID", "effective_n")], 
-                       by.x = "individual_id", 
-                       by.y = "ID", 
-                       all_x = T)
-
-#What is the correlation between effective sample size and the number of locations
-cor(positions_sum$n_positions, positions_sum$effective_n, method = 'spearman')
-#0.77 - pretty high, and similar to muddyfoot (0.71)
-
-#> 8. Calculate daily positions sum stats ####
-
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(individual_id, date) %>% 
-  mutate(n_day_positions = n(),
-         median_day_time_diff = median(time_diff, na.rm = T)) %>% 
+# Calculate the number of positions per hour and per minute.
+cow_filt_data <- 
+  cow_filt_data %>%
+  group_by(individual_ID, Date) %>% 
+  mutate(n_positions_hourly = n_positions_day / 24,  # Average number of positions per hour.
+         n_positions_per_min = n_positions_hourly / 60) %>%  # Average number of positions per minute.
   ungroup()
-
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  group_by(individual_id, date) %>% 
-  mutate(n_day_positions_per_hour = n_day_positions/24,
-         n_day_positions_per_min = n_day_positions/60) %>% 
-  ungroup()
-
-#check
-print(
-  lake_cow_filt_data %>% 
-    filter(individual_id == 'F59804') %>% 
-    select(individual_id, Species, date, n_day_positions, median_day_time_diff, n_day_positions_per_hour, n_day_positions_per_min) %>% 
-    distinct(), n = 36)
 
 
 #------------------------------------------------------------------------------------------------#
 
-#> 9. Find periods of irregular sampling ####
-#For each individual and unique date calculate the average, stdev, min and max time difference between positions
+#-------------------------------------------#
+# 2. Find periods of irregular sampling ####
+#-------------------------------------------#
 
-daily_sampling_sum = 
-  lake_cow_filt_data %>% 
-  group_by(individual_id, treatment, date) %>%
+# This section identifies days with irregular sampling based on the number of positions and time differences.
+# Summarise average, standard deviation, minimum, and maximum time differences between positions for each individual per day.
+daily_sampling_sum <- 
+  cow_filt_data %>% 
+  group_by(individual_ID, Treatment, Date) %>%
   summarise(
     avg_time_diff = mean(time_diff, na.rm = TRUE),
     stdev_time_diff = sd(time_diff, na.rm = TRUE),
     min_time_diff = min(time_diff, na.rm = TRUE),
     max_time_diff = max(time_diff, na.rm = TRUE),
-    n_days_mon = first(n_days_mon))
+    n_days_tracked = first(n_days_tracked)  # Number of days monitored.
+  )
 
+# > 2.1 Dates that individuals were not tracked ####
 
-# >>> Dates that individuals were notdate# >>> Dates that individuals were not tracked ####
+# Identify dates where an individual was not tracked at all by comparing against a full date range.
+full_date_range <- seq(as.Date("2022-09-27"), as.Date("2022-10-31"), by = "day")  # Define full date range.
 
-#I also list the dates that an individual was tracked and was not tracked
-# Define the full sequence of dates
-full_date_range  <- seq(as.Date("2022-09-26"), as.Date("2022-10-29"), by = "day")
+# Create a table of all possible combinations of individual_id and dates.
+all_combinations <- 
+  expand.grid(
+    individual_ID = unique(cow_filt_data$individual_ID),
+    Date = full_date_range
+  )
 
-# Create a table of all possible individual_id and dates
-all_combinations <- expand.grid(
-  individual_id = unique(lake_cow_filt_data$individual_id),
-  Date = full_date_range
-)
-
-# Merge with the original data to include 'Species' and 'Treatment'
-all_combinations <- all_combinations %>%
-  left_join(lake_cow_filt_data %>% 
-              select(individual_id, Species, treatment) %>% 
+# Merge with original tracking data to include species and treatment information.
+all_combinations <- 
+  all_combinations %>%
+  left_join(cow_filt_data %>% 
+              dplyr::select(individual_ID, Species, Treatment) %>% 
               distinct(), 
-            by = "individual_id")
+            by = "individual_ID")
 
-#need to make column Date
-lake_cow_filt_data$Date = format(with_tz(ymd_hms(lake_cow_filt_data$timestamp), 
-                                        tzone = "Europe/Stockholm"), "%Y/%m/%d")
 
-lake_cow_filt_data$Date = as.Date(lake_cow_filt_data$Date)
+# Perform an anti-join to identify missing tracking dates.
+missing_dates <- 
+  all_combinations %>%
+  anti_join(cow_filt_data, by = c("individual_ID", "Date")) %>%
+  arrange(individual_ID, Date)
 
-# Identify the missing dates by performing an anti-join with the original tracking data
-missing_dates <- all_combinations %>%
-  anti_join(lake_cow_filt_data, by = c("individual_id", "Date")) %>%
-  arrange(individual_id, Date)
 
-# Create summary table
-summary_missing_dates <- missing_dates %>%
-  group_by(individual_id) %>%
+# Create a summary of missing dates for each individual.
+summary_missing_dates <- 
+  missing_dates %>%
+  group_by(individual_ID) %>%
   summarise(Species = first(Species),
-            Treatment = first(treatment),
-            missing_dates = paste(Date, collapse = ", "),
-            n = n(),
-            n_breaks = if_else(n() == 1, 0, sum(diff(Date) != 1)))
+            Treatment = first(Treatment),
+            missing_dates = paste(Date, collapse = ", "),  # List missing dates.
+            n = n(),  # Count of missing dates.
+            n_breaks = if_else(n() == 1, 0, sum(diff(Date) != 1)))  # Number of breaks in consecutive dates.
+
+# Create a table of missing dates using flextable.
+missing_dates_table <- 
+  flextable(summary_missing_dates) %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("individual_ID" = 'ID', 
+                    "missing_dates" = 'Dates ID was not tracked') %>% 
+  width(j = 4, 11, unit = 'cm')
+
+# Optional: Save the missing dates table as a Word document.
+save_as_docx(missing_dates_table, path = paste0(save_tables_path, "cow_IDs_missing_dates.docx"))
 
 
-(missing_dates_table <- 
-    flextable(summary_missing_dates) %>% 
-    fontsize(part = "all", size = 11) %>% 
-    bold(part = 'header')  %>% 
-    set_header_labels("individual_id" = 'Fish ID', 
-                      "missing_dates" = 'Dates fish was not tracked') %>% 
-    width(j = 4, 11, unit = 'cm'))
+#> 2.2 Add information about missing dates to positions summary ####
 
-
-
-#save table
-#save_as_docx(missing_dates_table, 
-path = paste0(save_tables_path, "lake_cow_fish_w_missing_dates.docx"))
-
-
-#>>> Add information about individual missing dates to positions summary ####
-
+# Combine missing dates information with the positions summary.
 positions_sum <- 
   positions_sum %>% 
-  left_join(summary_missing_dates[, c('individual_id', 'n', 'n_breaks')], by = "individual_id") %>%
-  mutate(n_missing_dates = ifelse(is.na(n), 0, n),
-         n_breaks = ifelse(is.na(n_breaks), 0, n_breaks)) %>%
-  select(-n, -n_positions_per_day, -n_positions_per_hour, -n_positions_per_min) %>% 
-  mutate_if(is.numeric, round, 1) 
+  left_join(summary_missing_dates[, c('individual_ID', 'n', 'n_breaks')], by = "individual_ID") %>%
+  mutate(n_missing_dates = ifelse(is.na(n), 0, n),  # If no missing dates, set to 0.
+         n_breaks = ifelse(is.na(n_breaks), 0, n_breaks)) %>% 
+  mutate_if(is.numeric, round, 1)  # Round all numeric columns.
 
-#might need to add median tracking frequency.
+# Create a summary table of positions using flextable.
+positions_sum_table <- 
+  flextable(positions_sum %>% 
+              dplyr::select(-n, -mean_time_diff)) %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("individual_ID" = 'ID',
+                    "treatment" = 'Treatment',
+                    "n_positions" = 'Number of locations',
+                    "n_days_tracked" = 'Number of days tracked',
+                    "median_time_diff" = 'Median location frequency',
+                    "n_breaks" = "Date sequence breaks in tracking",
+                    "n_missing_dates" = "Number of untracked days") 
 
-(positions_sum_table <- 
-    flextable(positions_sum) %>% 
-    fontsize(part = "all", size = 11) %>% 
-    bold(part = 'header')  %>% 
-    set_header_labels("individual_id" = 'Fish ID',
-                      "treatment" = 'Treatment',
-                      "n_positions" = 'Number of locations',
-                      "n_days_mon" = 'Number of days tracked',
-                      "mean_time_diff" = 'Mean location frequency (s)',
-                      "median_time_diff" = 'Median location frequency (s)',
-                      "effective_n" = "Effective sample size",
-                      "n_breaks" = "Date sequence breaks in tracking",
-                      "n_missing_dates" = "Number of untracked days")) 
+# Optional: Save the positions summary table as a Word document.
+save_as_docx(positions_sum_table, path = paste0(save_tables_path, "cow_ID_loc_sum_pred_events_unfilt.docx"))
 
-save_as_docx(positions_sum_table, 
-             path = paste0(save_tables_path, "lake_cow_fish_locations_sum.docx"))
+# Update the main dataset by adding effective sample size and missing dates.
+cow_filt_data <- merge(cow_filt_data, 
+                             positions_sum[, c("individual_ID", "n_breaks", "n_missing_dates")],
+                             by = "individual_ID", 
+                             all.x = TRUE)
 
-#16/66 individuals had some sort of missed tracking
 
-lake_cow_filt_data <- merge(lake_cow_filt_data, 
-                           positions_sum[, c("individual_id", "effective_n", "n_breaks", "n_missing_dates")],
-                           by = "individual_id", 
-                           all.x = TRUE)
+# > 2.3 Extract individual IDs that had irregularities in tracking ####
 
-#------------------------------------------------------------------------------------------------------------------#
+# This section identifies individuals with irregular tracking patterns, possibly due to predation, 
+# equipment failure, or battery issues. These individuals may need to have adjusted home range estimates.
 
-# > 10. Extract individual IDs that had irregularities in tracking ####
-
-#These individuals likely died or had battery malfunctions. 
-#If they died it could be because of predation - good candidates to assess this
-#Irregularly sampled individuals may also need to have their home range estimates weighted.
-
-#range of locations
+# Summarise the range of locations (n_positions) to determine thresholds for irregular sampling.
 positions_sum %>% 
-  select(n_positions) %>% 
+  dplyr::select(n_positions) %>% 
   summarise(mean = mean(n_positions, na.rm = TRUE),
             median = median(n_positions, na.rm = TRUE),
             stdev = sd(n_positions, na.rm = TRUE),
             min = min(n_positions, na.rm = TRUE),
             max = max(n_positions, na.rm = TRUE))
 
-# -1 std from the mean
-309094.7 - 1 * 189489.7 
-# Look for individuals that had less than 63852.95 locations
+# Set a threshold for irregular sampling as -1 standard deviation from the mean number of positions.
+# mean: 134257 - sd: 84074 = 63853
+irreg_indiv <- positions_sum %>% 
+  filter(n_positions < 50183 | n_missing_dates >= 10 | n_breaks >= 2)
 
-irreg_indiv = positions_sum %>% 
-  filter(n_positions < 119605 | n_missing_dates >= 10 | n_breaks >= 2)
+# Add a flag for individuals with irregular sampling in the main dataset.
+irregular_ids <- irreg_indiv$individual_ID
 
-#add column to lake_cow_filt_data flagging irregular individuals
-irregular_ids = irreg_indiv$individual_id
+cow_filt_data <- 
+  cow_filt_data %>% 
+  mutate(irregular_sampling = ifelse(individual_ID %in% irregular_ids, 1, 0))
 
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>% 
-  mutate(irregular_sampling = ifelse(individual_id %in% irregular_ids, 1, 0))
+### Identify irregular days ###
 
-saveRDS(lake_cow_filt_data, paste0(data_filter_path, "lake_cow_final_filt_data.rds"))
-
-
-#Identify irregular days 
-
-#What is the median daily time_diff and number of positions per species
-daily_pos_irreg_ind = 
-  lake_cow_filt_data %>% 
+daily_pos_irreg_ind <- 
+  cow_filt_data %>% 
   group_by(Species) %>% 
-  mutate(avg_median_time_diff = mean(median_time_diff, na.rm = T),
-         std_median_time_diff = sd(median_time_diff, na.rm = T),
-         avg_daily_positions = mean(n_day_positions, na.rm = T),
-         std_daily_positions = sd(n_day_positions, na.rm = T),
-         avg_daily_hour_positions = mean(n_day_positions_per_hour, na.rm = T),
-         std_daily_hour_positions = sd(n_day_positions_per_hour, na.rm = T)
+  mutate(avg_median_time_diff = mean(median_time_diff, na.rm = TRUE),
+         std_median_time_diff = sd(median_time_diff, na.rm = TRUE),
+         avg_daily_positions = mean(n_positions_day, na.rm = TRUE),
+         std_daily_positions = sd(n_positions_day, na.rm = TRUE),
+         avg_daily_hour_positions = mean(n_positions_hourly, na.rm = TRUE),
+         std_daily_hour_positions = sd(n_positions_hourly, na.rm = TRUE)
   ) %>% 
-  filter((median_day_time_diff <= (avg_median_time_diff - 3 * std_median_time_diff))|
-           (n_day_positions <= (avg_daily_positions - 1 * std_daily_positions))|
-           (n_day_positions_per_hour <= (avg_daily_hour_positions - 1 * std_daily_hour_positions))) %>%
-  select(Species, individual_id, date, median_day_time_diff, n_day_positions, n_day_positions_per_hour) %>% 
+  # Identify days where tracking is below thresholds for irregular sampling.
+  filter((median_day_time_diff <= (avg_median_time_diff - 3 * std_median_time_diff)) |
+           (n_positions_day <= (avg_daily_positions - 1 * std_daily_positions)) |
+           (n_positions_hourly <= (avg_daily_hour_positions - 1 * std_daily_hour_positions))) %>%
+  dplyr::select(Species, individual_ID, Date, median_day_time_diff, n_positions_day, n_positions_hourly) %>% 
   mutate_if(is.numeric, round, 1) %>% 
-  filter((n_day_positions <= 1000)) %>%
-  filter((median_day_time_diff > 5)) %>%
-  filter((n_day_positions_per_hour < 10)) %>%
-  distinct(individual_id, date, .keep_all = T) %>% 
+  filter((n_positions_day <= 1000)) %>%  
+  filter((median_day_time_diff > 5)) %>%  
+  filter((n_positions_hourly < 30)) %>% 
+  distinct(individual_ID, Date, .keep_all = TRUE) %>% 
   ungroup()
 
-lake_cow_filt_data <- 
-  lake_cow_filt_data %>%
-  mutate(irreg_sample_day = ifelse(paste(individual_id, date) %in% paste(daily_pos_irreg_ind$individual_id, 
-                                                                         daily_pos_irreg_ind$date), 1, 0))
+# Flag irregular sampling days in the main dataset.
+cow_filt_data <- 
+  cow_filt_data %>%
+  mutate(irreg_sample_day = ifelse(paste(individual_ID, Date) %in% paste(daily_pos_irreg_ind$individual_ID, 
+                                                                         daily_pos_irreg_ind$Date), 1, 0))
 
-#check
-check = print(
-  lake_cow_filt_data %>% 
-    filter(irreg_sample_day == '1') %>% 
-    select(individual_id, date, n_day_positions, median_day_time_diff, n_day_positions_per_hour) %>% 
+# Check the flagged data for irregular days.
+check <- print(
+  cow_filt_data %>% 
+    filter(irreg_sample_day == 1) %>% 
+    dplyr::select(individual_ID, Date, n_positions_day, median_day_time_diff, n_positions_hourly) %>% 
     mutate_if(is.numeric, round, 1) %>% 
-    distinct())
+    distinct()
+)
 
-#saveRDS(lake_cow_filt_data, paste0(data_filter_path, "lake_cow_final_filt_data.rds"))
-#lake_cow_filt_data <-  readRDS(paste0(data_filter_path, "lake_cow_final_filt_data.rds"))
-#this is the filtered data including the removal of outliers using the out() function in ctmm
+# Create a table of identified irregular sampling days.
+individual_irregular_sample_table <- 
+  flextable(check) %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("individual_ID" = 'ID', 
+                    "Date" = "Date",
+                    "n_positions_day" = "Number of locations",
+                    "median_day_time_diff" = "Median location frequency (s)",
+                    "n_positions_hourly" = "Number of location per hour") %>% 
+  width(j = c(2:5), width = 3, unit = 'cm')
 
-
-(individual_irregular_sample_table <- 
-    flextable(check) %>% 
-    fontsize(part = "all", size = 11) %>% 
-    bold(part = 'header')  %>% 
-    set_header_labels("individual_id" = 'Fish ID', 
-                      "date" = "Date",
-                      "n_day_positions" = "Number of positions",
-                      "median_day_time_diff" = "Median location frequency (s)",
-                      "n_day_positions_per_hour" = "Hourly positions") %>% 
-    width(j = c(3:5), width = 4, unit = 'cm'))
-
-
-
-#save table
-save_as_docx(individual_irregular_sample_table, 
-             path = paste0(save_tables_path, "lake_cow_individual_irregular_sampling.docx"))
+# Optional: Save the irregular sampling table as a Word document.
+save_as_docx(individual_irregular_sample_table, path = paste0(save_tables_path, "cow_ID_day_locs_w_irregular_sampling.docx"))
 
 
+# > 2.4. Summarise irregular days and missing data per individual ####
 
-#how many days per individuals had irregular sampling or had no locations
-# First, reduce the data to one row per individual per date
-reduced_data <- lake_cow_filt_data %>%
-  group_by(Species,individual_id, date) %>%
+# Reduce the data to one row per individual per date, summarising irregular and missing days.
+reduced_data <- 
+  cow_filt_data %>%
+  group_by(Species, individual_ID, Date) %>%
   summarise(
-    irreg_sample_day = max(irreg_sample_day),
-    n_missing_dates = max(n_missing_dates),
+    irreg_sample_day = max(irreg_sample_day),  # Maximum indicates any irregular sampling.
+    n_missing_dates = max(n_missing_dates),  # Maximum for missing dates.
     .groups = 'drop'
   )
 
-# Then, summarize the number of irregular days and add the missing days information
-summary_data <- reduced_data %>%
-  group_by(Species, individual_id) %>%
+# Summarise the number of irregular and missing days per individual.
+summary_data <- 
+  reduced_data %>%
+  group_by(Species, individual_ID) %>%
   summarise(
-    n_irregular_days = sum(irreg_sample_day == 1),
-    total_missing_days = max(n_missing_dates),
-    total_irregular_or_missing_days = n_irregular_days + total_missing_days,
-    dates_irregular_positions  = paste(date[irreg_sample_day == 1], collapse = ", "),
+    n_irregular_days = sum(irreg_sample_day == 1),  # Count irregular days.
+    total_missing_days = max(n_missing_dates),  # Count missing days.
+    total_irregular_or_missing_days = n_irregular_days + total_missing_days,  # Combine irregular and missing days.
+    dates_irregular_positions = paste(Date[irreg_sample_day == 1], collapse = ", "),  # List irregular dates.
     .groups = 'drop'
   )
 
-#merge missing dates
+# Merge the missing dates information.
 missing_dates_sub <- 
   summary_missing_dates %>% 
-  select(individual_id, missing_dates)
+  dplyr::select(individual_ID, missing_dates)
 
-summary_data_test = 
+summary_data_test <- 
   summary_data %>% 
-  left_join(missing_dates_sub, by = 'individual_id')
+  left_join(missing_dates_sub, by = 'individual_ID')
 
+# Create a flextable summarizing the irregular and missing days.
+daily_irregular_sample_table <- 
+  flextable(summary_data_test) %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("individual_ID" = 'ID', 
+                    "n_irregular_days" = "Number of days with irregular tracking",
+                    "total_missing_days" = "Number of days not tracked",
+                    "total_irregular_or_missing_days" = "Total number of poor tracking days",
+                    "dates_irregular_positions" = "Dates with irregular sampling",
+                    "missing_dates" = 'Dates ID was not tracked') %>% 
+  width(j = c(6,7), 13, unit = 'cm')
 
-(daily_irregular_sample_table <- 
-    flextable(summary_data_test) %>% 
-    fontsize(part = "all", size = 11) %>% 
-    bold(part = 'header')  %>% 
-    set_header_labels("individual_id" = 'Fish ID', 
-                      "n_irregular_days" = "Number of days with irregular sampling",
-                      "total_missing_days" = "Number of days not tracked",
-                      "total_irregular_or_missing_days" = "Total poor tracking days",
-                      "dates_irregular_positions" = "Dates with irregular sampling",
-                      "missing_dates" = 'Dates fish were not tracked') %>% 
-    width(j = c(6,7), 13, unit = 'cm'))
-
-
-
-#save table
+# Optional: Save the daily irregular sample table as a Word document.
 save_as_docx(daily_irregular_sample_table, 
-             path = paste0(save_tables_path, "lake_cow_irregular_sampling.docx"))
-
-# ----------------------------------------------------------------------------------------------------#
-
-#> 11. Summary table for manuscript ####
+             path = paste0(save_tables_path, "cow_ID_irregular_sampling_summary.docx"))
 
 
-#Need to create a summary table for each species and treatment (i.e regarding sample size and location related statistics)
+#--------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------------------------------#
 
-#change species order for summary table
-lake_cow_filt_data$Species <- factor(lake_cow_filt_data$Species, levels = c("Roach", "Perch", "Pike"))
-
-summary_table <- 
-  lake_cow_filt_data %>%
-  group_by(Species, treatment) %>%
-  summarise(
-    median_freq = median(time_diff, na.rm = TRUE),
-    mean_positions = mean(n_positions, na.rm = TRUE),
-    min_positions = min(n_positions, na.rm = TRUE),
-    max_positions = max(n_positions, na.rm = TRUE),
-    avg_days_mon = mean(n_days_mon, na.rm = TRUE),
-    min_days = min(n_days_mon, na.rm = TRUE),
-    max_days = max(n_days_mon, na.rm = TRUE),
-    mean_eff_n = mean(effective_n, na.rm = TRUE),
-    min_eff_n = min(effective_n, na.rm = TRUE),
-    max_eff_n = max(effective_n, na.rm = TRUE)
-  ) %>% 
-  mutate_if(is.numeric, round, 0)
-
-(summary_table <- 
-    summary_table %>% 
-    mutate(median_freq = median_freq,
-           positions = paste(mean_positions, "(", min_positions, "-", max_positions, ")", sep = ""),
-           days_mon = paste(avg_days_mon, "(", min_days, "-", max_days, ")", sep = ""),
-           effective_n = paste(mean_eff_n, "(", min_eff_n, "-", max_eff_n, ")", sep = "")) %>% 
-    select(Species, treatment, median_freq, positions, days_mon, effective_n))
+#SAVE
+saveRDS(summary_data_test, paste0(filtered_data_path, "cow_ID_irreg_sampling.rds"))
+saveRDS(cow_filt_data, paste0(filtered_data_path, "03_lake_cow_sub.rds"))
 
 
-(lake_cow_species_positions_sum <- 
-    flextable(summary_table) %>% 
-    fontsize(part = "all", size = 11) %>% 
-    bold(part = 'header')  %>% 
-    set_header_labels("individual_id" = 'Fish ID',
-                      "treatment" = 'Treatment',
-                      "median_freq" = 'Frequency (s)',
-                      "positions" = 'Locations',
-                      "days_mon" = 'Duration (days)',
-                      "effective_n" = 'N')) %>% 
-  width(width = 5, unit = 'cm') %>% 
-  width(j = c(1,2,3), width = 2, unit = 'cm')
-
-save_as_docx(lake_cow_species_positions_sum, 
-             path = paste0(save_tables_path, "lake_cow_species_location_summary_MS.docx"))

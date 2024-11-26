@@ -3,7 +3,7 @@
 # ------------------------------------------------#
 
 # This script analyses telemetry data of prey (Roach, Perch) and predators (Pike)
-# in the BT lake, including pairwise distances and encounter rates.
+# in BT, including pairwise distances and encounter rates.
 # The goal is to identify potential predation events based on close proximity and to create 
 # a dataframe that can be used for analysing potential treatment effects on predator encounters
 
@@ -24,7 +24,7 @@ filtered_data_path <- "./data/tracks_filtered/lake_BT/"
 lake_polygon_path <- "./data/lake_coords/"
 ctmm_path <- "./data/ctmm_fits/"
 telem_path <- "./data/telem_obj/BT/"
-enc_path <- "./data/encounters/"
+enc_path <- "./data/encounters/BT/"
 size_path <- "./data/fish_size/"
 
 ### DATA LOADING ###
@@ -186,17 +186,44 @@ roach_pike_encounter_sum <-
 
 #### ____ 2.1.1. Identify possible predation events ####
 
+# Load post-experiment biometric data to assess known deaths or survivals
+post_biometrics <- 
+  fread(paste0(size_path, "biometric_post_exp_data.csv")) %>%
+  mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
+
+post_biometrics %>% 
+  filter(Lake == 'BT') %>% 
+  dplyr::select(individual_ID, Species, Treatment, Found) %>% 
+  group_by(Species, Treatment) %>% 
+  summarise(num_survive = sum(Found),
+            num_died = length(unique(individual_ID)) - sum(Found),
+            percent_survive = sum(Found)/length(unique(individual_ID)))
+
+
+# Merge biometric data (e.g., whether the fish was found alive) with encounter summary
+post_size_cols <- 
+  post_biometrics %>%
+  filter(Lake == 'BT', Species == 'Roach') %>%
+  dplyr::select(individual_ID, Found, Known_predated) %>% 
+  rename(found_alive = Found)
+
+
+roach_pike_encounter_sum <- 
+  roach_pike_encounter_sum %>%
+  left_join(post_size_cols, by = c("Roach_ID" = "individual_ID"))
+  
+
 # This section identifies potential predation events by filtering for days when Pike and Roach
 # had more than 50 encounters or when their average daily distance was less than 3 meters.
 
 # Filter roach-pike encounters for days with more than 50 encounters or an avg daily distance < 3 meters.
 over_50_encounters <- 
   roach_pike_encounter_sum %>%
-  filter(encounter_count >= 50 | daily_avg_dist < 3)
+  filter(encounter_count >= 50  | daily_avg_dist < 3 | Known_predated == 1)
 
 #how many unique roach individuals
 unique(over_50_encounters$Roach_ID)
-#15 individuals
+#22 individuals
 
 # Summarise Roach-Pike interactions: count days with > 50 encounters, consecutive days, and the first date
 BT_roach_pike_pred_int <- 
@@ -221,34 +248,16 @@ BT_roach_pike_pred_int <-
   BT_roach_pike_pred_int %>%
   left_join(sel_cols, by = c("Roach_ID" = "individual_ID"))
 
-# Load post-experiment biometric data to assess known deaths or survivals
-post_biometrics <- 
-  fread(paste0(size_path, "biometric_post_exp_data.csv")) %>%
-  mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
-
-post_biometrics %>% 
-  filter(Lake == 'BT') %>% 
-  dplyr::select(individual_ID, Species, Treatment, Found) %>% 
-  group_by(Species, Treatment) %>% 
-  summarise(num_survive = sum(Found),
-            num_died = length(unique(individual_ID)) - sum(Found),
-            percent_survive = sum(Found)/length(unique(individual_ID)))
 
 
-# Merge biometric data (e.g., whether the fish was found alive) with encounter summary
-post_size_cols <- 
-  post_biometrics %>%
-  filter(Lake == 'BT', Species == 'Roach') %>%
-  dplyr::select(individual_ID, Found) %>% 
-  rename(found_alive = Found)
-
-BT_roach_pike_pred_int <- 
-  BT_roach_pike_pred_int %>%
-  left_join(post_size_cols, by = c("Roach_ID" = "individual_ID")) %>%
-  # Remove fish found alive at the end of the experiment
-  filter(found_alive == '0') %>%
+# Remove fish found alive at the end of the experiment
+filter(found_alive == '0') %>%
   # Flag likely predation events (i.e., when consecutive encounters are more than 2 days)
   mutate(likely_predated = ifelse(consecutive_days > 2, 1, 0))
+
+
+
+
 
 # Identify the date with the most encounters for each Perch and Pike pair
 max_encounter_dates <- 
@@ -290,7 +299,7 @@ saveRDS(perch_pike_distances_df, paste0(enc_path, "BT_pike_perch_distances_df.rd
 # Summarize the number of encounters and calculate the average daily distance for each Perch-Pike pair, excluding any outliers
 perch_pike_encounter_sum <- 
   perch_pike_distances_df %>%
-  group_by(perch_ID, Pike_ID, Date) %>%
+  group_by(Perch_ID, Pike_ID, Date) %>%
   summarize(encounter_count = sum(encounter),
             daily_avg_dist = mean(est, na.rm = TRUE))   
 
@@ -303,12 +312,10 @@ over_50_encounters <-
   perch_pike_encounter_sum %>%
   filter(encounter_count >= 50 | daily_avg_dist < 3)
 
-
-
-# Summarize the Perch-Pike interactions with more than 50 encounters:
+# Summarise the Perch-Pike interactions with more than 50 encounters:
 BT_perch_pike_pred_int <- 
   over_50_encounters %>%
-  group_by(perch_ID, Pike_ID) %>%
+  group_by(Perch_ID, Pike_ID) %>%
   summarise(
     num_days_over_50 = n(),  # Count of days with over 50 encounters or avg distance < 3 meters
     encounter_dates = paste(format(Date, "%d/%m/%Y"), collapse = ", "),  # Concatenate dates of encounters into a string
@@ -326,7 +333,7 @@ sel_cols <-
 # Merge the summarized predation events with the individual-level metadata
 BT_perch_pike_pred_int <- 
   BT_perch_pike_pred_int %>%
-  left_join(sel_cols, by = c("perch_ID" = "individual_ID"))
+  left_join(sel_cols, by = c("Perch_ID" = "individual_ID"))
 
 # Load post-experiment biometric data to check for known/assumed deaths and survivals during the experiment
 post_biometrics <- 
@@ -342,7 +349,7 @@ post_size_cols <-
 
 BT_perch_pike_pred_int <-
   BT_perch_pike_pred_int %>%
-  left_join(post_size_cols, by = c("perch_ID" = "individual_ID")) %>%
+  left_join(post_size_cols, by = c("Perch_ID" = "individual_ID")) %>%
   # Filter out fish that were found alive at the end of the experiment
   filter(found_alive == '0') %>%
   # Flag likely predation events based on consecutive days of encounters or if they were known to be predated
@@ -352,17 +359,17 @@ BT_perch_pike_pred_int <-
 # Identify the date with the most encounters for each Perch and Pike pair
 max_encounter_dates <- 
   perch_pike_encounter_sum %>%
-  group_by(perch_ID, Pike_ID) %>%
+  group_by(Perch_ID, Pike_ID) %>%
   filter(encounter_count == max(encounter_count)) %>%
   slice(1) %>%
-  dplyr::select(perch_ID, Pike_ID, max_encounter_date = Date, max_encounter_count = encounter_count)
+  dplyr::select(Perch_ID, Pike_ID, max_encounter_date = Date, max_encounter_count = encounter_count)
 
 #Add it max_encounter_date and max_encounter_count to potential predation events.
 BT_perch_pike_pred_int <- 
   BT_perch_pike_pred_int %>%
   left_join(max_encounter_dates %>%
-              dplyr::select(perch_ID, Pike_ID, max_encounter_date, max_encounter_count),
-            by = c("perch_ID" = "perch_ID", 
+              dplyr::select(Perch_ID, Pike_ID, max_encounter_date, max_encounter_count),
+            by = c("Perch_ID" = "Perch_ID", 
                    "Pike_ID" = "Pike_ID"))
 
 
@@ -379,10 +386,9 @@ saveRDS(BT_perch_pike_pred_int, paste0(enc_path, "BT_perch_pike_pred_int.rds"))
 BT_pred_events <- 
   rbind(
     BT_roach_pike_pred_int %>% rename(individual_ID = Roach_ID) %>% mutate(Species = 'Roach'),
-    BT_perch_pike_pred_int %>% rename(individual_ID = perch_ID) %>% mutate(Species = 'Perch')
+    BT_perch_pike_pred_int %>% rename(individual_ID = Perch_ID) %>% mutate(Species = 'Perch')
   ) %>%
-  dplyr::select(individual_ID, Species, Treatment, everything()) %>% 
-  filter(num_days_over_50 > 3 | max_encounter_count > 200)
+  dplyr::select(individual_ID, Species, Treatment, everything())
 
 # Save the combined predation event data
 saveRDS(BT_pred_events, paste0(enc_path, "BT_pred_events.rds"))
