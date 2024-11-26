@@ -317,11 +317,12 @@ stopCluster(cl)
 # 
 # #filter out speeds
 # perch_F59789_tel <- perch_F59789_tel[out_perch$speed < 0.977, ]
-# 
-# 
-# lake_BT_perch_guess <- ctmm.guess(perch_F59789_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
-# F59789 <- ctmm.select(perch_F59789_tel, lake_BT_perch_guess, verbose = TRUE)
-# saveRDS(F59789, file = paste0(save_ctmm_path, "lake_BT_perch_fits/", "F59789.rds"))
+
+perch_F59789_tel <- perch_BT_tel$F59789
+
+lake_BT_perch_guess <- ctmm.guess(perch_F59789_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
+F59789_ctmm <- ctmm.fit(perch_F59789_tel, lake_BT_perch_guess, method = 'ML')
+saveRDS(F59789_ctmm, file = paste0(save_ctmm_path, "lake_BT_perch_fits/", "F59789.rds"))
 
 #------------------------------------------------------------------------------------------#
 
