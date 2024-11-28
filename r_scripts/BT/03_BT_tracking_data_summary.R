@@ -445,7 +445,8 @@ individual_irregular_sample_table <-
   width(j = c(2:5), width = 3, unit = 'cm')
 
 # Optional: Save the irregular sampling table as a Word document.
-save_as_docx(individual_irregular_sample_table, path = paste0(save_tables_path, "BT_ID_day_locs_w_irregular_sampling.docx"))
+save_as_docx(individual_irregular_sample_table, 
+             path = paste0(save_tables_path, "BT_ID_day_locs_w_irregular_sampling.docx"))
 
 
 #--------------------------------------------------------------------#
@@ -490,7 +491,7 @@ summary_data <-
 
 # Create a flextable summarizing the irregular and missing days.
 daily_irregular_sample_table <- 
-  flextable(summary_data) %>% 
+  flextable(BT_ID_irreg_sampling) %>% 
   fontsize(part = "all", size = 11) %>% 
   bold(part = 'header') %>% 
   set_header_labels("Species" = 'Species',

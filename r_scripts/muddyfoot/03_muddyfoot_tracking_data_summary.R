@@ -1,10 +1,6 @@
-#-------------------------------------------#
-### EXTRACTING TRACKING SUMMARY STATISTICS
-#-------------------------------------------#
-
-#This script calculates tracking summary statistics prior to any filtering based on predation events 
-#It also adds data columns for missing data and irregular sampling which will be used to help to identify predation events
-#This script create summary tables for tracking data that could go into a supplementary section. 
+#----------------------------------------------------------#
+### EXTRACTING TRACKING SUMMARY STATISTICS - LAKE MUDDYFOOT
+#----------------------------------------------------------#
 
 # LIBRARIES
 # Loading essential libraries for data manipulation, spatial analysis, and formatting tables.
@@ -16,12 +12,10 @@ library(kableExtra)  # Additional table formatting options.
 library(officer)  # For exporting tables to Word documents.
 library(ctmm)  # For continuous-time movement modeling (ctmm) package.
 library(lubridate)  # For handling date-time data.
+library(data.table)
 
-# Set the time zone to ensure consistent time handling
-Sys.setenv(TZ = 'Europe/Stockholm')
 
-# SET TABLE PLOTTING PARAMETERS
-# Customize default settings for Flextable tables used later in the script.
+#SET TABLE PLOTTING PARAMETERS
 set_flextable_defaults(
   font.color = "black",
   border.color = "black",
@@ -33,26 +27,17 @@ set_flextable_defaults(
 # Define paths to various datasets and save locations for tables.
 ctmm_path <- "./data/ctmm_fits/"  # Path for ctmm model fits.
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"  # Path for filtered tracking data.
-telem_path <- "./data/telem_obj/"  # Path for telemetry object files.
+telem_path <- "./data/telem_obj/muddyfoot/"  # Path for telemetry object files.
 save_tables_path <- "./tables/muddyfoot/"  # Path to save summary tables.
 enc_path <- "./data/encounters/"
+size_path <- "./data/fish_size/"
 
-### LOAD DATA ###
 
-muddyfoot_filt_data <-  readRDS(paste0(filtered_data_path, "02_muddyfoot_sub.rds"))
-
-# Load telemetry objects for different species.
-pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
-perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
-roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
-
-# # Load ctmm model fits for each species.
-# pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
-# perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
-# roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
+### Load data ###
+muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, '02_muddyfoot_sub.rds'))
 
 #--------------------------------------------------------#
-# 1. Calculate tracking summary metrics #################
+# 1. Calculate tracking summary metrics ##################
 #--------------------------------------------------------#
 
 #Below we calculate the following metrics
@@ -66,9 +51,11 @@ roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
 #tracking date range
 date_range <- range(muddyfoot_filt_data$Date, na.rm = FALSE)
 date_range
+#"2022-09-25" "2022-10-30"
 
 number_of_days <- as.integer(difftime(date_range[2], date_range[1], units = "days")) + 1
 number_of_days
+#36
 
 # > 1.1 Calculate time difference between positions ####
 
@@ -105,7 +92,8 @@ muddyfoot_filt_data <-
 print(muddyfoot_filt_data %>% 
         dplyr::select(individual_ID, n_positions) %>% 
         distinct(), 
-      n = 65)
+      n = 66)
+
 
 # > 1.3 Calculate number of days individuals were tracked ####
 
@@ -121,17 +109,6 @@ print(muddyfoot_filt_data %>%
         dplyr::select(individual_ID, Treatment, n_positions, n_days_tracked) %>% 
         distinct(), 
       n = 65)
-
-
-# Create a summary table of the calculated metrics.
-positions_sum <- 
-  muddyfoot_filt_data %>% 
-  dplyr::select(individual_ID, Treatment, Species,
-                n_positions, 
-                n_days_tracked, 
-                mean_time_diff,
-                median_time_diff) %>% 
-  distinct()
 
 
 #> 1.4. Calculate daily positions sum stats ####
@@ -155,35 +132,10 @@ muddyfoot_filt_data <-
          n_positions_per_min = n_positions_hourly / 60) %>%  # Average number of positions per minute.
   ungroup()
 
-# Optional: Check a specific individual for daily tracking stats.
-print(
-  muddyfoot_filt_data %>% 
-    filter(individual_ID == 'F59704') %>%  # Example individual ID.
-    dplyr::select(individual_ID, Species, Date, n_positions_day, median_day_time_diff, n_positions_hourly, n_positions_per_min) %>% 
-    distinct(), n = 36
-)
 
-
-#------------------------------------------------------------------------------------------------#
-
-#-------------------------------------------#
-# 2. Find periods of irregular sampling ####
-#-------------------------------------------#
-
-# This section identifies days with irregular sampling based on the number of positions and time differences.
-# Summarise average, standard deviation, minimum, and maximum time differences between positions for each individual per day.
-daily_sampling_sum <- 
-  muddyfoot_filt_data %>% 
-  group_by(individual_ID, Treatment, Date) %>%
-  summarise(
-    avg_time_diff = mean(time_diff, na.rm = TRUE),
-    stdev_time_diff = sd(time_diff, na.rm = TRUE),
-    min_time_diff = min(time_diff, na.rm = TRUE),
-    max_time_diff = max(time_diff, na.rm = TRUE),
-    n_days_tracked = first(n_days_tracked)  # Number of days monitored.
-  )
-
-# > 2.1 Dates that individuals were not tracked ####
+#----------------------------------------------------#
+# 2. Find dates that individuals were not tracked ####
+#----------------------------------------------------#
 
 # Identify dates where an individual was not tracked at all by comparing against a full date range.
 full_date_range <- seq(as.Date("2022-09-25"), as.Date("2022-10-30"), by = "day")  # Define full date range.
@@ -191,9 +143,9 @@ full_date_range <- seq(as.Date("2022-09-25"), as.Date("2022-10-30"), by = "day")
 # Create a table of all possible combinations of individual_id and dates.
 all_combinations <- 
   expand.grid(
-  individual_ID = unique(muddyfoot_filt_data$individual_ID),
-  Date = full_date_range
-)
+    individual_ID = unique(muddyfoot_filt_data$individual_ID),
+    Date = full_date_range
+  )
 
 # Merge with original tracking data to include species and treatment information.
 all_combinations <- 
@@ -234,7 +186,17 @@ missing_dates_table <-
 save_as_docx(missing_dates_table, path = paste0(save_tables_path, "muddyfoot_IDs_missing_dates.docx"))
 
 
-#> 2.2 Add information about missing dates to positions summary ####
+#> 2.1. Add information about missing dates to positions summary ####
+
+# Create a summary table of the calculated metrics.
+positions_sum <- 
+  muddyfoot_filt_data %>% 
+  dplyr::select(individual_ID, Treatment, Species,
+                n_positions, 
+                n_days_tracked, 
+                mean_time_diff,
+                median_time_diff) %>% 
+  distinct()
 
 # Combine missing dates information with the positions summary.
 positions_sum <- 
@@ -243,6 +205,27 @@ positions_sum <-
   mutate(n_missing_dates = ifelse(is.na(n), 0, n),  # If no missing dates, set to 0.
          n_breaks = ifelse(is.na(n_breaks), 0, n_breaks)) %>% 
   mutate_if(is.numeric, round, 1)  # Round all numeric columns.
+
+
+#Add information as whether individual was found dead or alive at the end of the experiment
+#Load post-experiment biometric data to assess known deaths or survivals
+
+post_biometrics <- 
+  fread(paste0(size_path, "biometric_post_exp_data.csv")) %>%
+  mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
+
+# Merge biometric data (e.g., whether the fish was found alive) with encounter summary
+post_size_cols <- 
+  post_biometrics %>%
+  filter(Lake == 'Muddyfoot') %>%
+  dplyr::select(individual_ID, Found, Known_predated) %>% 
+  rename(found_alive = Found)
+
+
+positions_sum <- 
+  positions_sum %>%
+  left_join(post_size_cols, by = c("individual_ID" = "individual_ID"))
+
 
 # Create a summary table of positions using flextable.
 positions_sum_table <- 
@@ -256,78 +239,190 @@ positions_sum_table <-
                     "n_days_tracked" = 'Number of days tracked',
                     "median_time_diff" = 'Median location frequency',
                     "n_breaks" = "Date sequence breaks in tracking",
-                    "n_missing_dates" = "Number of untracked days") 
+                    "n_missing_dates" = "Number of untracked days",
+                    "found_alive" = "Found alive (yes = 1, no = 0)",
+                    "Known_predated" = "Found predated (yes = 1, no = 0)") 
 
 # Optional: Save the positions summary table as a Word document.
 save_as_docx(positions_sum_table, path = paste0(save_tables_path, "muddyfoot_ID_loc_sum_pred_events_unfilt.docx"))
 
-# Update the main dataset by adding effective sample size and missing dates.
+# Update the main dataset by adding missing dates and survival information.
 muddyfoot_filt_data <- merge(muddyfoot_filt_data, 
-                             positions_sum[, c("individual_ID", "n_breaks", "n_missing_dates")],
-                             by = "individual_ID", 
-                             all.x = TRUE)
+                      positions_sum[, c("individual_ID", "n_breaks", "n_missing_dates", "found_alive", "Known_predated")],
+                      by = "individual_ID", 
+                      all.x = TRUE)
 
 
-# > 2.3 Extract individual IDs that had irregularities in tracking ####
+
+#------------------------------------------------------#
+# 3. Find dates that individuals had poor tracking ####
+#------------------------------------------------------#
 
 # This section identifies individuals with irregular tracking patterns, possibly due to predation, 
-# equipment failure, or battery issues. These individuals may need to have adjusted home range estimates.
+# equipment failure, or battery issues. These individuals may need to have adjusted home range estimates
+# or we may need to re-run their ctmms depending on the identified issues.
 
-# Summarise the range of locations (n_positions) to determine thresholds for irregular sampling.
-positions_sum %>% 
-  dplyr::select(n_positions) %>% 
-  summarise(mean = mean(n_positions, na.rm = TRUE),
-            median = median(n_positions, na.rm = TRUE),
-            stdev = sd(n_positions, na.rm = TRUE),
-            min = min(n_positions, na.rm = TRUE),
-            max = max(n_positions, na.rm = TRUE))
+# > 3.1.Summarise the daily positional data for each individual ####
 
-# Set a threshold for irregular sampling as -1 standard deviation from the mean number of positions.
-# mean: 159364 - sd: 95511 = 63853
-irreg_indiv <- positions_sum %>% 
-  filter(n_positions < 63853 | n_missing_dates >= 10 | n_breaks >= 2)
-
-# Add a flag for individuals with irregular sampling in the main dataset.
-irregular_ids <- irreg_indiv$individual_ID
-
-muddyfoot_filt_data <- 
+daily_sampling_sum <- 
   muddyfoot_filt_data %>% 
-  mutate(irregular_sampling = ifelse(individual_ID %in% irregular_ids, 1, 0))
+  group_by(individual_ID, Date) %>%
+  summarise(
+    Species = first(Species),
+    Treatment = first(Treatment),
+    n_positions_day = n(), 
+    avg_time_diff = mean(time_diff, na.rm = TRUE),
+    median_time_diff = median(time_diff, na.rm = TRUE),
+    stdev_time_diff = sd(time_diff, na.rm = TRUE),
+    min_time_diff = min(time_diff, na.rm = TRUE),
+    max_time_diff = max(time_diff, na.rm = TRUE),
+    n_days_tracked = first(n_days_tracked)  # Number of days monitored.
+  )
 
-### Identify irregular days ###
 
-daily_pos_irreg_ind <- 
-  muddyfoot_filt_data %>% 
+
+# > 3.2. Summary statistics of the positional data for each species
+
+#For each day what is the mean, median, IQR, min and max number of locations
+species_positions_stats <- 
+  daily_sampling_sum %>%
+  dplyr::select(Species, n_positions_day) %>% 
   group_by(Species) %>% 
-  mutate(avg_median_time_diff = mean(median_time_diff, na.rm = TRUE),
-         std_median_time_diff = sd(median_time_diff, na.rm = TRUE),
-         avg_daily_positions = mean(n_positions_day, na.rm = TRUE),
-         std_daily_positions = sd(n_positions_day, na.rm = TRUE),
-         avg_daily_hour_positions = mean(n_positions_hourly, na.rm = TRUE),
-         std_daily_hour_positions = sd(n_positions_hourly, na.rm = TRUE)
-  ) %>% 
-  # Identify days where tracking is below thresholds for irregular sampling.
-  filter((median_day_time_diff <= (avg_median_time_diff - 3 * std_median_time_diff)) |
-           (n_positions_day <= (avg_daily_positions - 1 * std_daily_positions)) |
-           (n_positions_hourly <= (avg_daily_hour_positions - 1 * std_daily_hour_positions))) %>%
-  dplyr::select(Species, individual_ID, Date, median_day_time_diff, n_positions_day, n_positions_hourly) %>% 
-  mutate_if(is.numeric, round, 1) %>% 
-  filter((n_positions_day <= 1000)) %>%  
-  filter((median_day_time_diff > 5)) %>%  
-  filter((n_positions_hourly < 30)) %>% 
-  distinct(individual_ID, Date, .keep_all = TRUE) %>% 
+  summarise(mean = mean(n_positions_day, na.rm = TRUE),
+            median = median(n_positions_day, na.rm = TRUE),
+            Q1_n_positions = quantile(n_positions_day, 0.25, na.rm = TRUE),
+            Q3_n_positions = quantile(n_positions_day, 0.75, na.rm = TRUE),
+            min = min(n_positions_day, na.rm = TRUE),
+            max = max(n_positions_day, na.rm = TRUE),
+  )
+
+
+#Histogram of daily locations for each Species
+species_positions_histogram =
+  ggplot(daily_sampling_sum, aes(x = n_positions_day, fill = Species)) +
+  geom_histogram(binwidth = 500,
+                 position = "dodge", 
+                 color = "black",
+                 fill = 'lightgrey',
+                 alpha = 0.8) +
+  facet_wrap(~Species, scales = "free_y") +
+  geom_vline(data = species_positions_stats, 
+             aes(xintercept = mean, color = "Mean"), 
+             linetype = "solid", 
+             size = 1.5) +
+  geom_vline(data = species_positions_stats, 
+             aes(xintercept = median, color = "Median"), 
+             linetype = "dashed", 
+             size = 1) +
+  geom_vline(data = species_positions_stats, 
+             aes(xintercept = Q1_n_positions, color = "25% IQR"), 
+             linetype = "dotted", 
+             size = 1.5) +
+  geom_vline(data = species_positions_stats, 
+             aes(xintercept = Q3_n_positions, color = "75% IQR"), 
+             linetype = "dotted", 
+             size = 1.5) +
+  # Add text labels
+  geom_text(
+    data = species_positions_stats,
+    aes(x = mean, y = 10, label = "Mean"), color = "black", angle = 90, vjust = -0.5, hjust = 0
+  ) +
+  geom_text(
+    data = species_positions_stats,
+    aes(x = median, y = 10, label = "Median"), color = "black", angle = 90, vjust = -0.5, hjust = 0
+  ) +
+  geom_text(
+    data = species_positions_stats,
+    aes(x = Q1_n_positions, y = 10, label = "Q1"), color = "black", angle = 90, vjust = -0.5, hjust = 0
+  ) +
+  geom_text(
+    data = species_positions_stats,
+    aes(x = Q3_n_positions, y = 10, label = "Q3"), color = "black", angle = 90, vjust = -0.5, hjust = 0
+  ) +
+  scale_color_manual(
+    values = c("Mean" = "blue", "Median" = "red", "25% IQR" = "purple", "75% IQR" = "purple"),
+    name = "Statistics"
+  ) +
+  labs(
+    x = "Number of Positions per Day",
+    y = "Frequency"
+  ) +
+  coord_cartesian(xlim = c(0, NA)) + # Adjust x-axis dynamically
+  facet_wrap(~Species, scales = "free") +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+
+#Species daily position stats
+#Look at the positional stats for each species per date
+#Expected number of positions may depend on the date, for example dates towards
+#the end of the study may have fewer locations due to battery life
+#all days with poor weather or receiver malfunction will have fewer locations.
+#extract for each species and date the mean, median and lower 25% positions for that date
+
+daily_species_positions_stats <- 
+  daily_sampling_sum %>%
+  dplyr::select(Species, Date, n_positions_day) %>% 
+  group_by(Species, Date) %>% 
+  summarise(mean = mean(n_positions_day, na.rm = TRUE),
+            median = median(n_positions_day, na.rm = TRUE),
+            lower_25_quartile = quantile(n_positions_day, 0.25, na.rm = TRUE),
+  )
+
+
+# Bring in Q1_positions to daily sampling summary
+daily_sampling_sum <- 
+  daily_sampling_sum %>%
+  left_join(daily_species_positions_stats %>%
+              select(Date, Species, lower_25_quartile),
+            by = c("Date", "Species"))
+
+# Add a new column identifying individuals with n_positions <= lower_25_quartile
+daily_sampling_sum <- 
+  daily_sampling_sum %>%
+  mutate(poor_tracking_day = ifelse(n_positions_day <= lower_25_quartile, 1, 0))
+
+# Count the number of dates below Q1 and the maximum consecutive dates below Q1
+daily_sampling_sum <- 
+  daily_sampling_sum %>%
+  group_by(individual_ID) %>% # Group by individual ID
+  mutate(
+    # Count the number of dates below Q1
+    n_poor_tracking_days = sum(poor_tracking_day, na.rm = TRUE),
+    
+    # Calculate the maximum number of consecutive dates below Q1
+    max_consecutive_poor_tracking_days = {
+      # Identify streaks of 1s (equivalent to TRUE values)
+      streaks <- rle(poor_tracking_day == 1)
+      # Extract the maximum streak of 1s
+      max_streak <- ifelse(any(streaks$values), max(streaks$lengths[streaks$values == TRUE]), 0)
+      max_streak
+    }
+  ) %>%
   ungroup()
+
+
+#what is the median number of poor tracking days
+daily_sampling_sum %>% 
+  summarise(median = median(n_poor_tracking_days, na.rm = TRUE),
+            mean = mean(n_poor_tracking_days, na.rm = TRUE))
+
+
+#extract irregular individuals
+irreg_indiv <- daily_sampling_sum %>% 
+  #n_poor_tracking day threshold is based on the median
+  filter(poor_tracking_day == 1 & n_poor_tracking_days > 9)
+
 
 # Flag irregular sampling days in the main dataset.
 muddyfoot_filt_data <- 
   muddyfoot_filt_data %>%
-  mutate(irreg_sample_day = ifelse(paste(individual_ID, Date) %in% paste(daily_pos_irreg_ind$individual_ID, 
-                                                                         daily_pos_irreg_ind$Date), 1, 0))
-
+  mutate(poor_tracking_day = ifelse(paste(individual_ID, Date) %in% paste(irreg_indiv$individual_ID, 
+                                                                          irreg_indiv$Date), 1, 0))
 # Check the flagged data for irregular days.
 check <- print(
   muddyfoot_filt_data %>% 
-    filter(irreg_sample_day == 1) %>% 
+    filter(poor_tracking_day == 1) %>% 
     dplyr::select(individual_ID, Date, n_positions_day, median_day_time_diff, n_positions_hourly) %>% 
     mutate_if(is.numeric, round, 1) %>% 
     distinct()
@@ -342,22 +437,25 @@ individual_irregular_sample_table <-
                     "Date" = "Date",
                     "n_positions_day" = "Number of locations",
                     "median_day_time_diff" = "Median location frequency (s)",
-                    "n_positions_hourly" = "Number of location per hour") %>% 
+                    "n_positions_hourly" = "Number of locations per hour") %>% 
   width(j = c(2:5), width = 3, unit = 'cm')
 
 # Optional: Save the irregular sampling table as a Word document.
-save_as_docx(individual_irregular_sample_table, path = paste0(save_tables_path, "muddyfoot_ID_day_locs_w_irregular_sampling.docx"))
+save_as_docx(individual_irregular_sample_table, 
+             path = paste0(save_tables_path, "muddyfoot_ID_day_locs_w_irregular_sampling.docx"))
 
 
-# > 2.4. Summarise irregular days and missing data per individual ####
+#--------------------------------------------------------------------#
+# 4. Summarise irregular sampling and missing data per individual ####
+#--------------------------------------------------------------------#
 
 # Reduce the data to one row per individual per date, summarising irregular and missing days.
 reduced_data <- 
   muddyfoot_filt_data %>%
   group_by(Species, individual_ID, Date) %>%
   summarise(
-    irreg_sample_day = max(irreg_sample_day),  # Maximum indicates any irregular sampling.
-    n_missing_dates = max(n_missing_dates),  # Maximum for missing dates.
+    poor_tracking_day = max(poor_tracking_day), 
+    n_missing_dates = max(n_missing_dates),  
     .groups = 'drop'
   )
 
@@ -366,10 +464,10 @@ summary_data <-
   reduced_data %>%
   group_by(Species, individual_ID) %>%
   summarise(
-    n_irregular_days = sum(irreg_sample_day == 1),  # Count irregular days.
+    n_poor_tracking_days = sum(poor_tracking_day == 1),  # Count irregular days.
     total_missing_days = max(n_missing_dates),  # Count missing days.
-    total_irregular_or_missing_days = n_irregular_days + total_missing_days,  # Combine irregular and missing days.
-    dates_irregular_positions = paste(Date[irreg_sample_day == 1], collapse = ", "),  # List irregular dates.
+    total_irregular_or_missing_days = n_poor_tracking_days + total_missing_days,  # Combine irregular and missing days.
+    dates_irregular_positions = paste(Date[poor_tracking_day == 1], collapse = ", "),  # List irregular dates.
     .groups = 'drop'
   )
 
@@ -378,32 +476,40 @@ missing_dates_sub <-
   summary_missing_dates %>% 
   dplyr::select(individual_ID, missing_dates)
 
-summary_data_test <- 
+summary_data <- 
   summary_data %>% 
   left_join(missing_dates_sub, by = 'individual_ID')
 
+#add info on known survival
+summary_data <- 
+  summary_data %>%
+  left_join(post_size_cols, by = c("individual_ID" = "individual_ID"))
+
 # Create a flextable summarizing the irregular and missing days.
 daily_irregular_sample_table <- 
-  flextable(summary_data_test) %>% 
+  flextable(summary_data) %>% 
   fontsize(part = "all", size = 11) %>% 
   bold(part = 'header') %>% 
-  set_header_labels("individual_ID" = 'ID', 
-                    "n_irregular_days" = "Number of days with irregular tracking",
+  set_header_labels("Species" = 'Species',
+                    "individual_ID" = 'ID', 
+                    "n_poor_tracking_days" = "Number of poor tracking days",
                     "total_missing_days" = "Number of days not tracked",
-                    "total_irregular_or_missing_days" = "Total number of poor tracking days",
-                    "dates_irregular_positions" = "Dates with irregular sampling",
-                    "missing_dates" = 'Dates ID was not tracked') %>% 
+                    "total_irregular_or_missing_days" = "Total number of irregular tracking days",
+                    "dates_irregular_positions" = "Dates with poor tracking",
+                    "missing_dates" = 'Dates ID was not tracked',
+                    "found_alive" = 'Found alive (yes = 1, no = 0)',
+                    "Known_predated" = "Found predated (yes = 1, no = 0)") %>% 
   width(j = c(6,7), 13, unit = 'cm')
 
 # Optional: Save the daily irregular sample table as a Word document.
-save_as_docx(daily_irregular_sample_table, 
-             path = paste0(save_tables_path, "muddyfoot_ID_irregular_sampling_summary.docx"))
+save_as_docx(summary_data, 
+             path = paste0(save_tables_path, "muddyfoot_ID_poor_tracking_summary.docx"))
 
 
 #--------------------------------------------------------------------------------------------------------#
 #--------------------------------------------------------------------------------------------------------#
 
 #SAVE
-saveRDS(summary_data_test, paste0(filtered_data_path, "muddyfoot_ID_irreg_sampling.rds"))
+saveRDS(summary_data, paste0(filtered_data_path, "muddyfoot_ID_irreg_sampling.rds"))
 saveRDS(muddyfoot_filt_data, paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
-
+saveRDS(daily_sampling_sum, paste0(filtered_data_path, "muddyfoot_daily_tracking_ID_stats"))
