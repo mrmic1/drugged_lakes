@@ -1,21 +1,20 @@
-# -----------------------------------------------# 
-# Exploring predator-prey interactions 
+# ------------------------------------------------# 
+# Exploring predator-prey interactions - Muddyfoot
 # ------------------------------------------------#
 
 # This script analyses telemetry data of prey (Roach, Perch) and predators (Pike)
-# in the Muddyfoot lake, including pairwise distances and encounter rates.
+# in lake muddyfoot, including pairwise distances and encounter rates.
 # The goal is to identify potential predation events based on close proximity and to create 
 # a dataframe that can be used for analysing potential treatment effects on predator encounters
 
 ### LIBRARIES ###
 # Loading required packages
 library(dplyr)
-library(move)
-library(move2)
 library(ctmm)
 library(lubridate)
 library(data.table)
 library(sf)  # For spatial data handling
+library(flextable)
 
 # Set the time zone environment to 'Europe/Stockholm' for consistent timestamp manipulation
 Sys.setenv(TZ = 'Europe/Stockholm')
@@ -25,28 +24,35 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 lake_polygon_path <- "./data/lake_coords/"
 ctmm_path <- "./data/ctmm_fits/"
-telem_path <- "./data/telem_obj/"
-enc_path <- "./data/encounters/"
+telem_path <- "./data/telem_obj/muddyfoot/"
+enc_path <- "./data/encounters/muddyfoot/"
 size_path <- "./data/fish_size/"
+save_tables_path <- "./tables/muddyfoot/"  # Path to save summary tables.
+
+# SET TABLE PLOTTING PARAMETERS
+# Customize default settings for Flextable tables used later in the script.
+set_flextable_defaults(
+  font.color = "black",
+  border.color = "black",
+  font.family = 'Arial',
+  line_spacing = 1
+)
 
 ### DATA LOADING ###
 muddyfoot_filt_data <-  readRDS(paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
-
-pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
-perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
-roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
-
-pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
-perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
-roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
-
-# Load lake polygon data
-muddyfoot_polygon <- sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddyfoot_polygon.gpkg"))
 
 
 #---------------------------------------------------------------------------------#
 # 1. Calculate distances at shared timepoints for prey and predators #######
 #---------------------------------------------------------------------------------#
+
+pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
+perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
+roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
+
+pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
+perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
+roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
 
 # This section calculates pairwise distances between Roach/Perch (prey) and Pike (predator) at shared time points.
 
@@ -143,8 +149,6 @@ head(perch_pike_distances_df)
 # Save the distance data for future analysis
 # saveRDS(perch_pike_distances_df, paste0(enc_path, "muddyfoot_pike_perch_distances_df.rds"))
 
-#----------------------------------------------------------------------------------------------------#
-
 #---------------------------------------------------#
 # 2. Calculate empirical encounters #########
 #--------------------------------------------------#
@@ -171,52 +175,23 @@ saveRDS(roach_pike_distances_df, paste0(enc_path, "muddyfoot_pike_roach_distance
 roach_pike_encounter_sum <- 
   roach_pike_distances_df %>%
   group_by(Roach_ID, Pike_ID, Date) %>%
-  summarize(encounter_count = sum(encounter),
-            daily_avg_dist = mean(est, na.rm = TRUE))
+  summarise(encounter_count = sum(encounter),
+            daily_avg_dist_from_pike = mean(est, na.rm = TRUE),
+            daily_min_dist_from_pike = min(est, na.rm = TRUE))
 
 
 #### ____ 2.1.1. Identify possible predation events ####
 
-# This section identifies potential predation events by filtering for days when Pike and Roach
+# This section identifies potential predation events by filtering for days when pike and roach
 # had more than 50 encounters or when their average daily distance was less than 3 meters.
+# First we load post-experiment biometric data to assess known deaths or survivals
+# and add this information to our encounter summary
 
-# Filter roach-pike encounters for days with more than 50 encounters or an avg daily distance < 3 meters.
-over_50_encounters <- 
-  roach_pike_encounter_sum %>%
-  filter(encounter_count >= 50 | daily_avg_dist < 3)
-
-#how many unique roach individuals
-unique(over_50_encounters$Roach_ID)
-#15 individuals
-
-# Summarise Roach-Pike interactions: count days with > 50 encounters, consecutive days, and the first date
-muddyfoot_roach_pike_pred_int <- 
-  over_50_encounters %>%
-  group_by(Roach_ID, Pike_ID) %>%
-  summarise(
-    num_days_over_50 = n(),  # Count of days with over 50 encounters or daily avg distance < 3 meters
-    encounter_dates = paste(format(Date, "%d/%m/%Y"), collapse = ", "),  # Combine encounter dates as a string
-    consecutive_days = max(rle(cumsum(c(1, diff(Date) > 1)) == 1)$lengths),  # Calculate consecutive encounter days
-    first_date_over_50 = min(Date)  # Identify first date with more than 50 encounters
-  )
-
-# Extract individual treatment and missing date information from filtered data
-sel_cols <- 
-  muddyfoot_filt_data %>%
-  filter(Species == 'Roach') %>%
-  dplyr::select(individual_ID, Treatment, n_missing_dates) %>%
-  distinct()
-
-# Merge encounter summary with individual-level metadata
-muddyfoot_roach_pike_pred_int <- 
-  muddyfoot_roach_pike_pred_int %>%
-  left_join(sel_cols, by = c("Roach_ID" = "individual_ID"))
-
-# Load post-experiment biometric data to assess known deaths or survivals
 post_biometrics <- 
   fread(paste0(size_path, "biometric_post_exp_data.csv")) %>%
   mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
 
+#Summarise number of survivors and known death for each species in muddyfoot
 post_biometrics %>% 
   filter(Lake == 'Muddyfoot') %>% 
   dplyr::select(individual_ID, Species, Treatment, Found) %>% 
@@ -227,38 +202,85 @@ post_biometrics %>%
 
 
 # Merge biometric data (e.g., whether the fish was found alive) with encounter summary
-post_size_cols <- 
+roach_post_size_cols <- 
   post_biometrics %>%
   filter(Lake == 'Muddyfoot', Species == 'Roach') %>%
-  dplyr::select(individual_ID, Found) %>% 
-  rename(found_alive = Found)
+  dplyr::select(individual_ID, Found, Known_predated) %>% 
+  rename(found_alive = Found,
+         found_predated = Known_predated)
 
+roach_pike_encounter_sum <- 
+  roach_pike_encounter_sum %>%
+  left_join(roach_post_size_cols, by = c("Roach_ID" = "individual_ID"))
+
+
+# Now we filter roach-pike encounters for days with more than 50 encounters or an avg daily distance < 3 meters.
+# This our threshold for identifying potential predation events.
+# This threshold was arbitrarily chosen, but seems conservative 
+
+roach_over_50_encounters <- 
+  roach_pike_encounter_sum %>%
+  filter(encounter_count >= 50  | daily_min_dist_from_pike < 0.2)
+
+#how many unique roach individuals
+unique(roach_over_50_encounters$Roach_ID)
+#17 unique individuals
+
+# Summarise roach-pike interactions: count days with > 50 encounters, consecutive days, and the first date
+muddyfoot_roach_pike_pred_int <- 
+  roach_over_50_encounters %>%
+  group_by(Roach_ID, Pike_ID) %>%
+  summarise(
+    num_days_over_50 = sum(encounter_count >=50),  # Count of days with over 50 encounters
+    num_days_min_dist_less_0.2m = sum(daily_min_dist_from_pike < 0.2),
+    encounter_dates = paste(format(Date, "%d/%m/%Y"), collapse = ", "),  # Combine encounter dates as a string
+    consecutive_days = max(rle(cumsum(c(1, diff(Date) > 1)) == 1)$lengths),  # Calculate consecutive encounter days
+    first_date_over_50 = if_else(any(encounter_count >= 50), min(Date[encounter_count >= 50]), as.Date(NA))  # Identify first date with more than 50 encounters
+  )
+
+# Extract individual treatment and missing dates information from filtered data
+roach_sel_cols <- 
+  muddyfoot_filt_data %>%
+  filter(Species == 'Roach') %>%
+  dplyr::select(individual_ID, Treatment, n_missing_dates) %>%
+  distinct()
+
+# Merge encounter summary with individual-level metadata
 muddyfoot_roach_pike_pred_int <- 
   muddyfoot_roach_pike_pred_int %>%
-  left_join(post_size_cols, by = c("Roach_ID" = "individual_ID")) %>%
+  left_join(roach_sel_cols, by = c("Roach_ID" = "individual_ID"))
+
+# Merge biometric data (e.g., whether the fish was found alive) with possible predation events
+# Create column indicated instances where there might be a higher likelihood that an individual was predated
+# specifically, when individuals 2 or more consecutive days where they had more than 50 encounters with a predator
+muddyfoot_roach_pike_pred_int <- 
+  muddyfoot_roach_pike_pred_int %>%
+  left_join(roach_post_size_cols, by = c("Roach_ID" = "individual_ID")) %>%
   # Remove fish found alive at the end of the experiment
   filter(found_alive == '0') %>%
   # Flag likely predation events (i.e., when consecutive encounters are more than 2 days)
-  mutate(likely_predated = ifelse(consecutive_days > 2, 1, 0))
+  mutate(likely_predated = ifelse(consecutive_days >= 2, 1, 0))
 
-# Identify the date with the most encounters for each Perch and Pike pair
-max_encounter_dates <- 
+
+# Identify the date with the most encounters for each roach and pike pair
+muddyfoot_roach_max_encounter_dates <- 
   roach_pike_encounter_sum %>%
   group_by(Roach_ID, Pike_ID) %>%
   filter(encounter_count == max(encounter_count)) %>%
   slice(1) %>%
   dplyr::select(Roach_ID, Pike_ID, max_encounter_date = Date, max_encounter_count = encounter_count)
 
-#Add it max_encounter_date and max_encounter_count to potential predation events.
+#Add max_encounter_date and max_encounter_count to potential predation events summary.
 muddyfoot_roach_pike_pred_int <- 
   muddyfoot_roach_pike_pred_int %>%
-  left_join(max_encounter_dates %>%
+  left_join(muddyfoot_roach_max_encounter_dates %>%
               dplyr::select(Roach_ID, Pike_ID, max_encounter_date, max_encounter_count),
             by = c("Roach_ID" = "Roach_ID", 
                    "Pike_ID" = "Pike_ID"))
 
-# Save the summarized potential predation events for future use
-saveRDS(muddyfoot_roach_pike_pred_int, paste0(enc_path, "muddyfoot_roach_predation_events.rds"))
+# Save the summarised potential predation events for future use
+saveRDS(muddyfoot_roach_pike_pred_int, paste0(enc_path, "muddyfoot_roach_possible_predation_events.rds"))
+saveRDS(muddyfoot_roach_max_encounter_dates, paste0(enc_path, "muddyfoot_roach_max_encounters_for_each_ID.rds"))
 
 
 #### > 2.2. Perch - Pike encounters #### 
@@ -278,120 +300,505 @@ perch_pike_distances_df <-
 #save with encounter and date column
 saveRDS(perch_pike_distances_df, paste0(enc_path, "muddyfoot_pike_perch_distances_df.rds"))
 
-# Summarize the number of encounters and calculate the average daily distance for each Perch-Pike pair, excluding any outliers
+# Summarise the number of encounters and calculate the 
+# average daily distance for each perch-pike pair,
+# and minimum daily distance
+
 perch_pike_encounter_sum <- 
   perch_pike_distances_df %>%
   group_by(perch_ID, Pike_ID, Date) %>%
-  summarize(encounter_count = sum(encounter),
-            daily_avg_dist = mean(est, na.rm = TRUE))   
+  summarise(encounter_count = sum(encounter),
+            daily_avg_dist_from_pike = mean(est, na.rm = TRUE),
+            daily_min_dist_from_pike = min(est, na.rm = TRUE)) %>% 
+  rename(Perch_ID = perch_ID)
 
 
-####____ 2.2.1. Identify possible predation events ####
 
-# Filter for days when there were more than 50 encounters or when the average distance between Perch and Pike 
-# was less than 3 meters, which may indicate possible predation events.
-over_50_encounters <- 
+#---------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------#
+
+####____ 2.2.2. Identify possible predation events ####
+
+# Merge biometric data (e.g., whether the fish was found alive) with perch encounter summary
+perch_post_size_cols <- 
+  post_biometrics %>%
+  filter(Lake == 'Muddyfoot', Species == 'Perch') %>%
+  dplyr::select(individual_ID, Found, Known_predated) %>% 
+  rename(found_alive = Found,
+         found_predated = Known_predated)
+
+perch_pike_encounter_sum <- 
   perch_pike_encounter_sum %>%
-  filter(encounter_count >= 50 | daily_avg_dist < 3)
+  left_join(perch_post_size_cols, by = c("Perch_ID" = "individual_ID"))
 
+# Filter perch-pike encounters for days with more than 50 encounters or an avg daily distance < 3 meters.
+perch_over_50_encounters <- 
+  perch_pike_encounter_sum %>%
+  filter(encounter_count >= 50  | daily_min_dist_from_pike < 0.2 | found_predated == 1)
 
+#how many unique perch individuals
+unique(perch_over_50_encounters$Perch_ID)
+#17 individuals
 
-# Summarize the Perch-Pike interactions with more than 50 encounters:
+# Summarise perch-pike interactions: count days with > 50 encounters, consecutive days, and the first date
 muddyfoot_perch_pike_pred_int <- 
-  over_50_encounters %>%
-  group_by(perch_ID, Pike_ID) %>%
+  perch_over_50_encounters %>%
+  group_by(Perch_ID, Pike_ID) %>%
   summarise(
-    num_days_over_50 = n(),  # Count of days with over 50 encounters or avg distance < 3 meters
-    encounter_dates = paste(format(Date, "%d/%m/%Y"), collapse = ", "),  # Concatenate dates of encounters into a string
+    num_days_over_50 = sum(encounter_count >=50),  # Count of days with over 50 encounters
+    num_days_min_dist_less_0.2m = sum(daily_min_dist_from_pike < 0.2),
+    encounter_dates = paste(format(Date, "%d/%m/%Y"), collapse = ", "),  # Combine encounter dates as a string
     consecutive_days = max(rle(cumsum(c(1, diff(Date) > 1)) == 1)$lengths),  # Calculate consecutive encounter days
-    first_date_over_50 = min(Date)  # Identify first date with more than 50 encounters
+    first_date_over_50 = if_else(any(encounter_count >= 50), min(Date[encounter_count >= 50]), as.Date(NA))  # Identify first date with more than 50 encounters
   )
 
-# Extract additional metadata such as treatment type and number of missing tracking dates for each Perch individual
-sel_cols <- 
+# Extract individual treatment and missing date information from filtered data
+perch_sel_cols <- 
   muddyfoot_filt_data %>%
   filter(Species == 'Perch') %>%
   dplyr::select(individual_ID, Treatment, n_missing_dates) %>%
   distinct()
 
-# Merge the summarized predation events with the individual-level metadata
+# Merge encounter summary with individual-level metadata
 muddyfoot_perch_pike_pred_int <- 
   muddyfoot_perch_pike_pred_int %>%
-  left_join(sel_cols, by = c("perch_ID" = "individual_ID"))
+  left_join(perch_sel_cols, by = c("Perch_ID" = "individual_ID"))
 
-# Load post-experiment biometric data to check for known/assumed deaths and survivals during the experiment
-post_biometrics <- 
-  fread(paste0(size_path, "biometric_post_exp_data.csv")) %>%
-  mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
-
-# Add information about whether each Perch was found alive at the end of the experiment
-post_size_cols <- 
-  post_biometrics %>%
-  filter(Lake == 'Muddyfoot', Species == 'Perch') %>%
-  dplyr::select(individual_ID, Found, Known_predated) %>% 
-  rename(found_alive = Found)
-
-muddyfoot_perch_pike_pred_int <-
+# Merge biometric data (e.g., whether the fish was found alive) with possible predation events
+# Create column indicated instances where there might be a higher likelihood that an individual was predated
+# specifically, when individuals 2 or more consecutive days where they had more than 50 encounters with a predator
+muddyfoot_perch_pike_pred_int <- 
   muddyfoot_perch_pike_pred_int %>%
-  left_join(post_size_cols, by = c("perch_ID" = "individual_ID")) %>%
-  # Filter out fish that were found alive at the end of the experiment
+  left_join(perch_post_size_cols, by = c("Perch_ID" = "individual_ID")) %>%
+  # Remove fish found alive at the end of the experiment
   filter(found_alive == '0') %>%
-  # Flag likely predation events based on consecutive days of encounters or if they were known to be predated
-  mutate(likely_predated = ifelse(consecutive_days >= 2 | Known_predated == 1, 1, 0))
+  # Flag likely predation events (i.e., when consecutive encounters are more than 2 days)
+  mutate(likely_predated = ifelse(consecutive_days >= 2, 1, 0))
 
 
-# Identify the date with the most encounters for each Perch and Pike pair
-max_encounter_dates <- 
+# Identify the date with the most encounters for each perch and pike pair
+muddyfoot_perch_max_encounter_dates <- 
   perch_pike_encounter_sum %>%
-  group_by(perch_ID, Pike_ID) %>%
+  group_by(Perch_ID, Pike_ID) %>%
   filter(encounter_count == max(encounter_count)) %>%
   slice(1) %>%
-  dplyr::select(perch_ID, Pike_ID, max_encounter_date = Date, max_encounter_count = encounter_count)
+  dplyr::select(Perch_ID, Pike_ID, max_encounter_date = Date, max_encounter_count = encounter_count)
 
-#Add it max_encounter_date and max_encounter_count to potential predation events.
+#Add max_encounter_date and max_encounter_count to potential predation events summary.
 muddyfoot_perch_pike_pred_int <- 
   muddyfoot_perch_pike_pred_int %>%
-  left_join(max_encounter_dates %>%
-              dplyr::select(perch_ID, Pike_ID, max_encounter_date, max_encounter_count),
-            by = c("perch_ID" = "perch_ID", 
+  left_join(muddyfoot_perch_max_encounter_dates %>%
+              dplyr::select(Perch_ID, Pike_ID, max_encounter_date, max_encounter_count),
+            by = c("Perch_ID" = "Perch_ID", 
                    "Pike_ID" = "Pike_ID"))
 
-
-# Save the summarized predation events for Perch-Pike encounters
-saveRDS(muddyfoot_perch_pike_pred_int, paste0(enc_path, "muddyfoot_perch_pike_pred_int.rds")) 
+# Save the summarised potential predation events for future use
+saveRDS(muddyfoot_perch_pike_pred_int, paste0(enc_path, "muddyfoot_perch_possible_predation_events.rds"))
+saveRDS(muddyfoot_perch_max_encounter_dates, paste0(enc_path, "muddyfoot_perch_max_encounters_for_each_ID.rds"))
 
 #--------------------------------------------------------------------------------------------------------------------#
 
-#----------------------------------------------#
-# 3. Identify predation events in muddyfoot ####
-#----------------------------------------------#
+#-----------------------------------------------------------------#
+# 3. Create dataframe of likely predation events ####
+#------------------------------------------------------------------#
 
 # Combine predation events into a single dataframe
 muddyfoot_pred_events <- 
   rbind(
     muddyfoot_roach_pike_pred_int %>% rename(individual_ID = Roach_ID) %>% mutate(Species = 'Roach'),
-    muddyfoot_perch_pike_pred_int %>% rename(individual_ID = perch_ID) %>% mutate(Species = 'Perch')
+    muddyfoot_perch_pike_pred_int %>% rename(individual_ID = Perch_ID) %>% mutate(Species = 'Perch')
   ) %>%
-  dplyr::select(individual_ID, Species, Treatment, everything()) %>% 
-  filter(num_days_over_50 > 3 | max_encounter_count > 200)
+  dplyr::select(individual_ID, Species, Treatment, everything())
 
 # Save the combined predation event data
-saveRDS(muddyfoot_pred_events, paste0(enc_path, "muddyfoot_pred_events.rds"))
+saveRDS(muddyfoot_pred_events, paste0(enc_path, "muddyfoot_possible_pred_events.rds"))
 
 
-#--------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------------------#
+# 4. Create summary of encounter rate unfiltered ##########
+#---------------------------------------------------------#
 
-#-----------------------------------------------#
-# 4. Create summary of encounter rates ##########
-#-----------------------------------------------#
-
-# > 4.1. Roach encounters ####
-
-# The purpose of this section is to evaluate whether the number of encounters might be inflated due to the Roach being
-# eaten by a Pike but still being tracked (e.g., high encounter rates post-predation). The analysis aims to determine
+# The purpose of this section is to evaluate whether the number of encounters might be inflated due prey being
+# eaten by a pike but still being tracked (e.g., high encounter rates post-predation). The analysis aims to determine
 # when such high encounter rates started and remove data after potential predation.
 
-## Filtered data ##
+# > 4.1. Roach ####
+
+# >____ Total encounters ####
+
+# Create a summary dataframe for the number of predator encounters each roach had per day
+# This will be used to help try and identify the fate of individuals that were not found at the end of the experiment
+# see below
+
+muddyfoot_roach_daily_encounter_summary <-
+  roach_pike_encounter_sum %>%
+  group_by(Roach_ID, Date) %>%
+  summarise(total_daily_encounter_count = sum(encounter_count),
+            max_daily_encounter_count = max(encounter_count),
+            pike_id_max_encounter_count = Pike_ID[which.max(encounter_count)],
+            daily_min_dist_from_pike = min(daily_avg_dist_from_pike),
+            pike_id_min_dist = Pike_ID[which.min(daily_avg_dist_from_pike)],
+            found_alive = first(found_alive),
+            found_predated = first(found_predated))
+
+
+# Total encounter summary
+# Not unfiltered because we have not removed encounters calculated post-predation events
+# this these encounter numbers are likely to be inflated for individuals that were predated
+
+muddyfoot_roach_encounter_summary <-
+  muddyfoot_roach_daily_encounter_summary %>%
+  group_by(Roach_ID) %>%
+  summarise(total_encounters = sum(total_daily_encounter_count),
+            avg_minimum_daily_dist_from_pike = mean(mean(daily_min_dist_from_pike, na.rm = TRUE)))
+
+# Merge encounter summary with metadata for individual Roach
+muddyfoot_roach_encounter_summary <-
+  muddyfoot_roach_encounter_summary %>%
+  left_join(roach_sel_cols, by = c("Roach_ID" = "individual_ID"))
+
+#also add number of poor tracking days info
+#the loaded dataframe was created in script 03_muddyfoot_tracking_data_summary
+muddyfoot_ID_irreg_sampling <- readRDS(paste0(filtered_data_path, "muddyfoot_ID_irreg_sampling.rds"))
+roach_irreg_sampling_cols <- 
+  muddyfoot_ID_irreg_sampling %>% 
+  filter(Species == 'Roach') %>% 
+  select(individual_ID, n_poor_tracking_days, found_alive)
+
+muddyfoot_roach_encounter_summary <-
+  muddyfoot_roach_encounter_summary %>%
+  left_join(roach_irreg_sampling_cols, by = c("Roach_ID" = "individual_ID"))
+
+muddyfoot_roach_encounter_summary <-
+  muddyfoot_roach_encounter_summary %>% 
+  mutate(days_tracked = 36 - n_missing_dates,  # Total tracking duration (max 34 days)
+         avg_daily_pred_encounter_rate = round(total_encounters / days_tracked, 0))
+
+head(muddyfoot_roach_encounter_summary)
+
+
+# Save the unfiltered encounter summary
+saveRDS(muddyfoot_roach_encounter_summary, paste0(enc_path, 'muddyfoot_roach_encounter_summmary_unfiltered.rds'))
+
+
+# >____ Encounter summaries for roach not found at the end of the experiment ####
+
+#Reduce summary data to only include individuals that were not found at the end of the experiment
+daily_encounter_sum_roach_not_found <- 
+  muddyfoot_roach_daily_encounter_summary %>% 
+  filter(found_alive == 0)
+
+#Add column to identify whether the date was irregularly sampled or dates were not tracked
+#First I need to extract the required columns
+roach_not_found_cols <- 
+  muddyfoot_ID_irreg_sampling %>% 
+  filter(Species == 'Roach') %>% 
+  select(individual_ID, dates_irregular_positions, missing_dates)
+
+#Then we need to do some data wrangling to extract the date information
+
+daily_encounter_sum_roach_not_found$Date <- as.Date(daily_encounter_sum_roach_not_found$Date)
+# Ensure dates_irregular_positions and missing_dates are properly formatted as lists of dates
+roach_not_found_cols$dates_irregular_positions <- lapply(strsplit(roach_not_found_cols$dates_irregular_positions, ", "), as.Date)
+roach_not_found_cols$missing_dates <- lapply(strsplit(roach_not_found_cols$missing_dates, ", "), as.Date)
+
+# Merge the two datasets on the IDs
+merged_df <- merge(daily_encounter_sum_roach_not_found, roach_not_found_cols, 
+                   by.x = "Roach_ID", by.y = "individual_ID", all.x = TRUE)
+
+# Create the two new columns
+merged_df$poor_tracking_date <- mapply(function(date, irregular_dates) {
+  if (!is.null(irregular_dates) && date %in% irregular_dates) 1 else 0
+}, merged_df$Date, merged_df$dates_irregular_positions)
+
+merged_df$no_tracking_date <- mapply(function(date, missing_dates) {
+  if (!is.null(missing_dates) && date %in% missing_dates) 1 else 0
+}, merged_df$Date, merged_df$missing_dates)
+
+# Keep only the original columns from daily_encounter_sum_roach_found and the new ones
+daily_encounter_sum_roach_not_found <- merged_df[, c("Roach_ID", "Date", "total_daily_encounter_count", 
+                                                     "max_daily_encounter_count", "pike_id_max_encounter_count",
+                                                     "daily_min_dist_from_pike", "pike_id_min_dist", "found_predated",
+                                                     "poor_tracking_date", "no_tracking_date")]
+
+# Save the unfiltered encounter summary
+saveRDS(daily_encounter_sum_roach_not_found, paste0(enc_path, 'muddyfoot_daily_encounter_summaries_for_roach_not_found.rds'))
+
+
+#Total encounter summary for roach not found
+#This summarised dataframe will include information on
+#total encounter count
+#max encounter count
+#date with max encounter count
+#number of days with over 50 encounters
+#first date with over 50 encounters
+
+encounter_sum_roach_not_found <-
+  daily_encounter_sum_roach_not_found %>% 
+  group_by(Roach_ID) %>% 
+  summarise(total_encounter_count = sum(total_daily_encounter_count),
+            max_encounter_count = max(max_daily_encounter_count ),
+            max_encounter_date = Date[which.max(max_daily_encounter_count )],
+            max_encounter_pike = pike_id_max_encounter_count[which.max(max_daily_encounter_count)],
+            min_avg_dist_from_pike = min(daily_min_dist_from_pike),
+            min_dist_date = Date[which.min(daily_min_dist_from_pike)],
+            min_dist_pike = pike_id_min_dist[which.min(daily_min_dist_from_pike)])
+
+roach_not_found_cols <-
+  muddyfoot_roach_pike_pred_int %>%
+  dplyr::select(Roach_ID, num_days_over_50, first_date_over_50, consecutive_days) %>% 
+  group_by(Roach_ID) %>% 
+  arrange(desc(num_days_over_50),
+          desc(first_date_over_50),
+          .by_group = TRUE) %>% 
+  slice(1) %>% 
+  ungroup()
+
+encounter_sum_roach_not_found <-
+  encounter_sum_roach_not_found %>%
+  left_join(roach_not_found_cols, by = c("Roach_ID" = "Roach_ID"))
+
+saveRDS(encounter_sum_roach_not_found, paste0(enc_path, 'muddyfoot_total_encounter_summary_for_roach_not_found.rds'))
+
+#--------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------------------------------------#
+
+#> 4.2. Perch ####
+
+# >____ Total encounters ####
+
+# Create a summary dataframe for the number of predator encounters each perch had per day
+# This will be used to help try and identify the fate of individuals that were not found at the end of the experiment
+# see below
+
+muddyfoot_perch_daily_encounter_summary <-
+  perch_pike_encounter_sum %>%
+  group_by(Perch_ID, Date) %>%
+  summarise(total_daily_encounter_count = sum(encounter_count),
+            max_daily_encounter_count = max(encounter_count),
+            pike_id_max_encounter_count = Pike_ID[which.max(encounter_count)],
+            daily_min_dist_from_pike = min(daily_avg_dist_from_pike),
+            pike_id_min_dist = Pike_ID[which.min(daily_avg_dist_from_pike)],
+            found_alive = first(found_alive),
+            found_predated = first(found_predated))
+
+
+# Total encounter summary
+# Not unfiltered because we have not removed encounters calculated post-predation events
+# this these encounter numbers are likely to be inflated for individuals that were predated
+
+muddyfoot_perch_encounter_summary <-
+  muddyfoot_perch_daily_encounter_summary %>%
+  group_by(Perch_ID) %>%
+  summarise(total_encounters = sum(total_daily_encounter_count),
+            avg_minimum_daily_dist_from_pike = mean(mean(daily_min_dist_from_pike, na.rm = TRUE)))
+
+# Merge encounter summary with metadata for individual perch
+muddyfoot_perch_encounter_summary <-
+  muddyfoot_perch_encounter_summary %>%
+  left_join(perch_sel_cols, by = c("Perch_ID" = "individual_ID"))
+
+#also add number of poor tracking days info
+#the loaded dataframe was created in script 03_muddyfoot_tracking_data_summary
+muddyfoot_ID_irreg_sampling <- readRDS(paste0(filtered_data_path, "muddyfoot_ID_irreg_sampling.rds"))
+perch_irreg_sampling_cols <- 
+  muddyfoot_ID_irreg_sampling %>% 
+  filter(Species == 'Perch') %>% 
+  select(individual_ID, n_poor_tracking_days, found_alive)
+
+muddyfoot_perch_encounter_summary <-
+  muddyfoot_perch_encounter_summary %>%
+  left_join(perch_irreg_sampling_cols, by = c("Perch_ID" = "individual_ID"))
+
+muddyfoot_perch_encounter_summary <-
+  muddyfoot_perch_encounter_summary %>% 
+  mutate(days_tracked = 36 - n_missing_dates,  # Total tracking duration (max 34 days)
+         avg_daily_pred_encounter_rate = round(total_encounters / days_tracked, 0))
+
+head(muddyfoot_perch_encounter_summary)
+
+
+# Save the unfiltered encounter summary
+saveRDS(muddyfoot_perch_encounter_summary, paste0(enc_path, 'muddyfoot_perch_encounter_summmary_unfiltered.rds'))
+
+
+# >____ Encounter summaries for perch not found at the end of the experiment ####
+
+#Reduce summary data to only include individuals that were not found at the end of the experiment
+daily_encounter_sum_perch_not_found <- 
+  muddyfoot_perch_daily_encounter_summary %>% 
+  filter(found_alive == 0)
+
+#Add column to identify whether the date was irregularly sampled or dates were not tracked
+#First I need to extract the required columns
+perch_not_found_cols <- 
+  muddyfoot_ID_irreg_sampling %>% 
+  filter(Species == 'Perch') %>% 
+  select(individual_ID, dates_irregular_positions, missing_dates)
+
+#Then we need to do some data wrangling to extract the date information
+
+daily_encounter_sum_perch_not_found$Date <- as.Date(daily_encounter_sum_perch_not_found$Date)
+# Ensure dates_irregular_positions and missing_dates are properly formatted as lists of dates
+perch_not_found_cols$dates_irregular_positions <- lapply(strsplit(perch_not_found_cols$dates_irregular_positions, ", "), as.Date)
+perch_not_found_cols$missing_dates <- lapply(strsplit(perch_not_found_cols$missing_dates, ", "), as.Date)
+
+# Merge the two datasets on the IDs
+merged_df <- merge(daily_encounter_sum_perch_not_found, perch_not_found_cols, 
+                   by.x = "Perch_ID", by.y = "individual_ID", all.x = TRUE)
+
+# Create the two new columns
+merged_df$poor_tracking_date <- mapply(function(date, irregular_dates) {
+  if (!is.null(irregular_dates) && date %in% irregular_dates) 1 else 0
+}, merged_df$Date, merged_df$dates_irregular_positions)
+
+merged_df$no_tracking_date <- mapply(function(date, missing_dates) {
+  if (!is.null(missing_dates) && date %in% missing_dates) 1 else 0
+}, merged_df$Date, merged_df$missing_dates)
+
+# Keep only the original columns from daily_encounter_sum_perch_found and the new ones
+daily_encounter_sum_perch_not_found <- merged_df[, c("Perch_ID", "Date", "total_daily_encounter_count", 
+                                                     "max_daily_encounter_count", "pike_id_max_encounter_count",
+                                                     "daily_min_dist_from_pike", "pike_id_min_dist", "found_predated",
+                                                     "poor_tracking_date", "no_tracking_date")]
+
+# Save the unfiltered encounter summary
+saveRDS(daily_encounter_sum_perch_not_found, paste0(enc_path, 'muddyfoot_daily_encounter_summaries_for_perch_not_found.rds'))
+
+
+#Total encounter summary for perch not found
+#This summarised dataframe will include information on
+#total encounter count
+#max encounter count
+#date with max encounter count
+#number of days with over 50 encounters
+#first date with over 50 encounters
+
+encounter_sum_perch_not_found <-
+  daily_encounter_sum_perch_not_found %>% 
+  group_by(Perch_ID) %>% 
+  summarise(total_encounter_count = sum(total_daily_encounter_count),
+            max_encounter_count = max(max_daily_encounter_count ),
+            max_encounter_date = Date[which.max(max_daily_encounter_count )],
+            max_encounter_pike = pike_id_max_encounter_count[which.max(max_daily_encounter_count)],
+            min_avg_dist_from_pike = min(daily_min_dist_from_pike),
+            min_dist_date = Date[which.min(daily_min_dist_from_pike)],
+            min_dist_pike = pike_id_min_dist[which.min(daily_min_dist_from_pike)])
+
+perch_not_found_cols <-
+  muddyfoot_perch_pike_pred_int %>%
+  dplyr::select(Perch_ID, num_days_over_50, first_date_over_50, consecutive_days) %>% 
+  group_by(Perch_ID) %>% 
+  arrange(desc(num_days_over_50),
+          desc(first_date_over_50),
+          .by_group = TRUE) %>% 
+  slice(1) %>% 
+  ungroup()
+
+encounter_sum_perch_not_found <-
+  encounter_sum_perch_not_found %>%
+  left_join(perch_not_found_cols, by = c("Perch_ID" = "Perch_ID"))
+
+saveRDS(encounter_sum_perch_not_found, paste0(enc_path, 'muddyfoot_total_encounter_summary_for_perch_not_found.rds'))
+
+#--------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------------------------------------#
+
+#Combine roach and perch encounter summaries for those individuals not found at the end of the study
+
+# Modify the roach dataset
+encounter_sum_roach_not_found <- 
+  encounter_sum_roach_not_found %>%
+  dplyr::rename(individual_ID = Roach_ID) %>%  # Rename roach_id to individual_ID
+  dplyr::mutate(Species = "Roach")            # Add a Species column with "Roach"
+
+# Modify the perch dataset
+encounter_sum_perch_not_found <- 
+  encounter_sum_perch_not_found %>%
+  dplyr::rename(individual_ID = Perch_ID) %>% # Rename perch_ID to individual_ID
+  dplyr::mutate(Species = "Perch")            # Add a Species column with "Perch"
+
+# Combine the two datasets
+encounters_sum_IDs_not_found <- dplyr::bind_rows(encounter_sum_roach_not_found, encounter_sum_perch_not_found)
+
+saveRDS(encounters_sum_IDs_not_found, paste0(enc_path, 'muddyfoot_sum_IDS_not_found.rds'))
+
+#merge with irregular sampling summary
+#create in script 03_muddyfoot_tracking_data_summary
+muddyfoot_ID_irreg_sampling_not_found <- 
+  muddyfoot_ID_irreg_sampling %>% 
+  filter(found_alive == 0)
+
+#get required rows from filtered encounters
+filtered_encounters_rows <- 
+  muddyfoot_ID_irreg_sampling_not_found %>% 
+  select(individual_ID, n_poor_tracking_days, total_missing_days)
+
+encounters_sum_IDs_not_found <-
+  encounters_sum_IDs_not_found %>%
+  left_join(filtered_encounters_rows, by = c("individual_ID" = "individual_ID")) %>% 
+  select(individual_ID, Species, everything())
+
+# Create a flextable summarizing the irregular and missing days for missing individuals
+daily_irregular_sample_table <- 
+  flextable(encounters_sum_IDs_not_found) %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("individual_ID" = 'ID',
+                    "Species" = 'Species',
+                    "total_encounter_count" = "Total encounters",
+                    "max_encounter_count" = "Max encounters in day",
+                    "max_encounter_date" = "Date w/max encounters",
+                    "max_encounter_pike" = "Pike ID w/max encounters",
+                    "min_avg_dist_from_pike" = "Minimum avg dist from pike",
+                    "min_dist_date" = "Date w/min avg dist",
+                    "min_dist_pike" = "Pike ID w/min dist",
+                    "num_days_over_50" = "Days > 50 encounters",
+                    "first_date_over_50" = "First date > 50 ",
+                    "consecutive_days_over_50" = "consecutive days > 50",
+                    "n_poor_tracking_days" = "N poor tracking days",
+                    "total_missing_days" = "N days not tracked")
+
+save_as_docx(daily_irregular_sample_table, 
+             path = paste0(save_tables_path, "muddyfoot_IDs_not_found_encounter and tracking_summary.docx"))
+
+saveRDS(encounters_sum_IDs_not_found, paste0(enc_path, "muddyfoot_encounter_summary_IDs_not_found"))
+
+#create seperate table for dates
+
+muddyfoot_dates_table <- 
+  muddyfoot_ID_irreg_sampling_not_found %>% 
+  select(individual_ID, Species, n_poor_tracking_days, dates_irregular_positions, 
+         total_missing_days, missing_dates) %>% 
+  flextable() %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("individual_ID" = 'ID',
+                    "Species" = 'Species',
+                    "n_poor_tracking_days" = "N poor tracking days",
+                    "dates_irregular_positions" = "Dates poor tracking",
+                    "total_missing_days" = "N days not tracked",
+                    "missing_dates" = 'Dates not tracked')
+
+save_as_docx(muddyfoot_dates_table, 
+             path = paste0(save_tables_path, "muddyfoot_IDs_not_found_tracking_dates.docx"))
+
+#--------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------------------------------------#
+
+
+# I will need to filter the encounter date once we decide who was predated/died and when they predated/died
+
+
+
+
+
+
+
+
+
+
+
 
 # Create a dataframe that filters out potential post-predation encounters by removing rows after the first
 # date with more than 50 encounters for likely predated Roach.
@@ -448,7 +855,7 @@ roach_pike_encounter_sum_filt <-
 # Add information about whether each Perch was found alive at the end of the experiment
 post_size_cols <- 
   post_biometrics %>%
-  filter(Lake == 'Muddyfoot', Species == 'Roach') %>%
+  filter(Lake == 'muddyfoot', Species == 'Roach') %>%
   dplyr::select(individual_ID, Found, Known_predated) %>% 
   rename(found_alive = Found)
 
@@ -478,59 +885,11 @@ roach_pike_encounter_sum_filt <-
 # Save the filtered summary table for Roach-Pike encounters
 saveRDS(roach_pike_encounter_sum_filt, paste0(enc_path, 'roach_pike_encounter_sum_filt.rds'))
 
-# Unfiltered data #
-# # This creates a dataframe without filtering out potential predation events 
-# #(i.e., no post-predation data is removed).
-# 
-# # Identify the date with the highest number of encounters for each Roach and Pike pair
-# max_encounter_dates <- 
-#   roach_pike_encounter_sum %>%
-#   group_by(Roach_ID, Pike_ID) %>%
-#   filter(encounter_count == max(encounter_count)) %>%
-#   slice(1) %>%
-#   dplyr::select(Roach_ID, Pike_ID, max_encounter_date = Date, max_encounter_count = encounter_count)
-# 
-# # Create a summary dataframe for Roach-Pike encounters without filtering
-# roach_pike_encounter_sum_unfilt <- 
-#   roach_pike_encounter_sum %>%
-#   group_by(Roach_ID, Pike_ID) %>%
-#   mutate(num_encounters_w_pike_id = sum(encounter_count)) %>%
-#   group_by(Roach_ID) %>%
-#   mutate(total_pike_encounters = sum(encounter_count),
-#          avg_dist_from_pike = mean(daily_avg_dist, na.rm = TRUE)) %>%
-#   left_join(max_encounter_dates, by = c("Roach_ID", "Pike_ID"))
-# 
-# # Merge encounter summary with metadata for individual Roach
-# roach_pike_encounter_sum_unfilt <- 
-#   roach_pike_encounter_sum_unfilt %>%
-#   left_join(sel_cols, by = c("Roach_ID" = "individual_ID"))
-# 
-# # Add information about whether Roach were found alive or likely predated
-# roach_pike_encounter_sum_unfilt <- 
-#   roach_pike_encounter_sum_unfilt %>%
-#   left_join(post_size_cols, by = c("Roach_ID" = "individual_ID"))
-# 
-# # Merge likely predation information
-# pred_cols <- 
-#   muddyfoot_roach_pike_pred_int %>%
-#   filter(likely_predated == '1') %>%
-#   dplyr::select(Roach_ID, likely_predated)
-# 
-# roach_pike_encounter_sum_unfilt <- 
-#   roach_pike_encounter_sum_unfilt %>%
-#   left_join(pred_cols, by = c("Roach_ID" = "Roach_ID")) %>%
-#   tidyr::replace_na(list(likely_predated = 0)) %>%
-#   # Flag individuals as likely dead if they were predated or had more than 3 missing tracking days
-#   mutate(likely_died = ifelse(n_missing_dates > 3 & found_alive == 0 | likely_predated == 1, 1, 0),
-#          days_tracked = 36 - n_missing_dates,  # Total tracking duration (max 36 days)
-#          avg_daily_pred_encounter_rate = round(total_pike_encounters / days_tracked, 0))
-# 
-# # Save the unfiltered encounter summary
-# saveRDS(roach_pike_encounter_sum_unfilt, paste0(enc_path, 'roach_pike_encounter_sum_unfilt.rds'))
+
 
 
 # > 4.2. Perch encounters ####         
-  
+
 ## Filtered ##
 # Filter dataframe to remove post-predation encounters after the first day with >50 encounters
 pred_cols <- 
@@ -586,7 +945,7 @@ perch_pike_encounter_sum_filt <-
 # Add information about whether each Perch was found alive at the end of the experiment
 post_size_cols <- 
   post_biometrics %>%
-  filter(Lake == 'Muddyfoot', Species == 'Perch') %>%
+  filter(Lake == 'muddyfoot', Species == 'Perch') %>%
   dplyr::select(individual_ID, Found, Known_predated) %>% 
   rename(found_alive = Found)
 
@@ -651,19 +1010,25 @@ saveRDS(perch_pike_encounter_sum_filt, paste0(enc_path, 'perch_pike_encounter_su
 # saveRDS(perch_pike_encounter_sum_unfilt, paste0(enc_path, 'perch_pike_encounter_sum_unfilt.rds'))
 
 
-# > 4.3. Muddyfoot encounter summary ####
+# > 4.3. muddyfoot encounter summary ####
 
-# Combine Roach-Pike and Perch-Pike encounter data into a single summary table of predation events in Muddyfoot lake.
+# Combine Roach-Pike and Perch-Pike encounter data into a single summary table of predation events in muddyfoot lake.
 muddyfoot_pred_encounter_summary <- 
   rbind(
-  roach_pike_encounter_sum_filt %>% rename(individual_ID = Roach_ID) %>% mutate(Species = 'Roach'),
-  perch_pike_encounter_sum_filt %>% rename(individual_ID = perch_ID) %>% mutate(Species = 'Perch')
-) %>%
+    roach_pike_encounter_sum_filt %>% rename(individual_ID = Roach_ID) %>% mutate(Species = 'Roach'),
+    perch_pike_encounter_sum_filt %>% rename(individual_ID = perch_ID) %>% mutate(Species = 'Perch')
+  ) %>%
   dplyr::select(individual_ID, Species, Treatment, everything()) %>%
   tidyr::replace_na(list(Known_predated = 0))  # Replace NA values in Known_predated column
 
 # Save the combined predation event summary
 saveRDS(muddyfoot_pred_encounter_summary, paste0(enc_path, "muddyfoot_pred_encounter_summary.rds"))
+
+#----------------------------------------------------------------------------------------------------------#
+
+
+
+
 
 #----------------------------------------------------------------------------------------------------------#
 #---------------------------------------------------#
