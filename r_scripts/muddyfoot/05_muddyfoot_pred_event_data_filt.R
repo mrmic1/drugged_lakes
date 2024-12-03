@@ -1,8 +1,9 @@
-#------------------------------------------------#
-# Filter data to remove post-predation tracking  #
-#------------------------------------------------#
+#--------------------------------------------------------------#
+# Filter data to remove post-predation and mortality tracking  #
+#--------------------------------------------------------------#
 
-#In this script we will remove data where individuals were tracked after being predated
+#In this script we will remove data where individuals were tracked after being predated or had 
+#an identified mortality event
 #Predation events are identified in the 04_muddyfoot_pred_encounters script
 #We will then re-run ctmm movement models for these individuals
 
@@ -23,13 +24,13 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 # Paths to directories containing the necessary data files
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 telem_path <- "./data/telem_obj/"
-enc_path <- "./data/encounters/"
+enc_path <- "./data/encounters/muddyfoot/"
 save_ctmm_path = "./data/ctmm_fits/"
 
 ### DATA LOADING ###
 muddyfoot_telem_data <-  readRDS(paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
 # Load the predation event dataframe 
-mud_pred_events <- readRDS(paste0(enc_path, "muddyfoot_pred_events.rds"))
+mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
 
 #-------------------------------------------------#
 # 1. Filter out post-predation event data ####
@@ -37,20 +38,29 @@ mud_pred_events <- readRDS(paste0(enc_path, "muddyfoot_pred_events.rds"))
 
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
 pred_cols <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1) %>% 
-  dplyr::select(individual_ID, first_date_over_50)
+  mud_pred_mort_events %>%
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
+  mutate(
+    first_date_over_50 = as.Date(first_date_over_50),
+    death_date = as.Date(death_date)) %>% 
+  dplyr::select(individual_ID, first_date_over_50, death_date)
 
-# Filter out data after the predation event for each individual.
+# Merge into single death_date column
+pred_cols$death_date <- ifelse(!is.na(pred_cols$first_date_over_50), pred_cols$first_date_over_50, pred_cols$death_date)
+
+# Ensure the merged_date column is of Date type
+pred_cols$death_date <- as.Date(pred_cols$death_date, origin = "1970-01-01")
+
+# Filter out data after the predation or mortality event for each individual.
 muddyfoot_filt_data <- 
   muddyfoot_telem_data %>%
   left_join(pred_cols, by = c("individual_ID" = "individual_ID")) %>%
-  filter(is.na(first_date_over_50) | Date <= first_date_over_50)  # Keep only pre-predation data
+  filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
 #pre-filter rows: 10358641
-#post-filter rows: 10067142
-#291499 rows removed
+#post-filter rows: 10032122
+#326519 rows removed
 
-print(paste0("Rows removed after predation filtering: ", nrow(muddyfoot_telem_data) - nrow(muddyfoot_filt_data)))
+print(paste0("Rows removed after  filtering: ", nrow(muddyfoot_telem_data) - nrow(muddyfoot_filt_data)))
 
 #save
 saveRDS(muddyfoot_filt_data, paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
