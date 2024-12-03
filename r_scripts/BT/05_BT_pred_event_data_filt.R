@@ -1,10 +1,10 @@
-#--------------------------------------------------------------#
-# Filter data to remove post-predation and mortality tracking  #
-#--------------------------------------------------------------#
+#-------------------------------------------------------------------#
+# Filter data to remove post-predation and mortality tracking - BT  #
+#-------------------------------------------------------------------#
 
 #In this script we will remove data where individuals were tracked after being predated or had 
 #an identified mortality event
-#Predation events are identified in the 04_muddyfoot_pred_encounters script
+#Predation events are identified in the 04_BT_pred_encounters script
 #We will then re-run ctmm movement models for these individuals
 
 ### LIBRARIES ###
@@ -22,15 +22,15 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 
 ### DIRECTORIES ###
 # Paths to directories containing the necessary data files
-filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
+filtered_data_path <- "./data/tracks_filtered/lake_BT/"
 telem_path <- "./data/telem_obj/"
-enc_path <- "./data/encounters/muddyfoot/"
+enc_path <- "./data/encounters/BT/"
 save_ctmm_path = "./data/ctmm_fits/"
 
 ### DATA LOADING ###
-muddyfoot_telem_data <-  readRDS(paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
+BT_telem_data <-  readRDS(paste0(filtered_data_path, "03_lake_BT_sub.rds"))
 # Load the predation event dataframe 
-mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
+BT_pred_mort_events <- readRDS(paste0(enc_path, "BT_pred_encounter_summary_filtered.rds"))
 
 #-------------------------------------------------#
 # 1. Filter out post-predation event data ####
@@ -38,7 +38,7 @@ mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summa
 
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
 pred_cols <- 
-  mud_pred_mort_events %>%
+  BT_pred_mort_events %>%
   filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
   mutate(
     first_date_over_50 = as.Date(first_date_over_50),
@@ -52,18 +52,18 @@ pred_cols$death_date <- ifelse(!is.na(pred_cols$first_date_over_50), pred_cols$f
 pred_cols$death_date <- as.Date(pred_cols$death_date, origin = "1970-01-01")
 
 # Filter out data after the predation or mortality event for each individual.
-muddyfoot_filt_data <- 
-  muddyfoot_telem_data %>%
+BT_filt_data <- 
+  BT_telem_data %>%
   left_join(pred_cols, by = c("individual_ID" = "individual_ID")) %>%
   filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
-#pre-filter rows: 10358641
-#post-filter rows: 10032122
-#326519 rows removed
+#pre-filter rows: 20165124
+#post-filter rows: 18824499
+#134065 rows removed
 
-print(paste0("Rows removed after  filtering: ", nrow(muddyfoot_telem_data) - nrow(muddyfoot_filt_data)))
+print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data) - nrow(BT_filt_data)))
 
 #save
-saveRDS(muddyfoot_filt_data, paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
+saveRDS(BT_filt_data, paste0(filtered_data_path, "04_lake_BT_sub.rds"))
 
 
 #------------------------------------------------------------#
@@ -72,7 +72,7 @@ saveRDS(muddyfoot_filt_data, paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
 
 #I need to pull the Reference tag data again 
 #load dataframe that contains this information
-get_ref_data <-  readRDS(paste0(filtered_data_path, "01_muddyfoot_sub.rds"))
+get_ref_data <-  readRDS(paste0(filtered_data_path, "01_BT_sub.rds"))
 
 ref_data <- get_ref_data %>% 
   filter(individual_ID == 'FReference') %>% 
@@ -109,7 +109,7 @@ predated_perch_ID <-
   pull(individual_ID)
 
 pred_perch_data <- 
-  muddyfoot_filt_data %>% 
+  BT_filt_data %>% 
   filter(individual_ID == predated_perch_ID)
 
 pred_perch_data <- 
@@ -123,17 +123,17 @@ pred_perch_data <-
 
 #create telemetry object for predated perch
 pred_perch_tel <- as.telemetry(pred_perch_data, 
-                        timezone = "Europe/Stockholm",   
-                        timeformat = "%Y-%m-%d %H:%M:%S",
-                        projection = NULL,               
-                        datum = "WGS84")
+                               timezone = "Europe/Stockholm",   
+                               timeformat = "%Y-%m-%d %H:%M:%S",
+                               projection = NULL,               
+                               datum = "WGS84")
 
 ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
 uere(pred_perch_tel) <- UERE
 
 pred_perch_guess <- ctmm.guess(pred_perch_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
 pred_perch_fit <- ctmm.fit(pred_perch_tel, pred_perch_guess, method = 'ML', trace = TRUE)
-saveRDS(pred_perch_fit, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/", "F59692.rds"))
+saveRDS(pred_perch_fit, file = paste0(save_ctmm_path, "BT_perch_fits/", "F59692.rds"))
 
 #> 2.2. Roach ####
 
@@ -144,7 +144,7 @@ predated_roach_IDs <-
   pull(individual_ID)
 
 pred_roach_data <- 
-  muddyfoot_filt_data %>% 
+  BT_filt_data %>% 
   filter(individual_ID %in% predated_roach_IDs)
 
 pred_roach_data <- 
@@ -173,10 +173,9 @@ doParallel::registerDoParallel(cl)
 # Perform model fitting using ctmm for each individual in the telemetry data.
 pred_roach_fits <- 
   foreach(i = 1:length(pred_roach_tel), .packages = 'ctmm') %dopar% {
-  pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
-  model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
-  # Save individual model fits to a specified folder.
-  saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/", names(pred_roach_tel)[i], ".rds"))
-  model_fit
-}
-
+    pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "BT_roach_fits/", names(pred_roach_tel)[i], ".rds"))
+    model_fit
+  }

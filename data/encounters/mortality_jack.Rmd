@@ -1,0 +1,194 @@
+---
+title: "Movement analysis"
+author: "Jack B"
+date: "2024-11-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Housekeeping #Note: not all packages are required
+```{r, include=FALSE}
+library(tidyverse)
+library(sf)
+library(move2)
+library(units)
+library(data.table)
+```
+
+
+Load data
+```{r}
+muddyfoot_sub <- readRDS("C:/Users/jacka/Documents/Academia/Projects/Landscape of fear - personality - Jack/Mortality/03_muddyfoot_sub.rds")
+bt_sub <- readRDS("C:/Users/jacka/Documents/Academia/Projects/Landscape of fear - personality - Jack/Mortality/03_lake_BT_sub.rds")
+cow_sub <- readRDS("C:/Users/jacka/Documents/Academia/Projects/Landscape of fear - personality - Jack/Mortality/03_lake_cow_sub.rds")
+```
+
+Combine data
+```{r}
+combined <- rbind(muddyfoot_sub, bt_sub, cow_sub)
+#Remove old data files
+rm(muddyfoot_sub, bt_sub, cow_sub)
+#clear memory
+gc()
+```
+
+Filter out pike
+```{r}
+combined <- combined %>% dplyr::filter(Species != 'Pike') 
+```
+
+Filter for individuals that were not found alive at the end of the expeirment
+```{r}
+suspect_mort = fread("C:/Users/jacka/Documents/Academia/Projects/Landscape of fear - personality - Jack/Mortality/suspected_mortality.csv", header = TRUE)
+head(suspect_mort)
+```
+
+Filter for  suspected dead individuals
+```{r}
+mortality <- combined %>%  dplyr::filter(individual_ID %in% suspect_mort$individual_ID)
+rm(combined)
+```
+
+Arrange by individual and datetime
+```{r}
+mortality <- mortality %>%
+  arrange(individual_ID,timestamp)
+```
+
+
+Reduce influence of positional error
+
+Using average positional estimates
+```{r}
+#Creating averaged positional estimates for each minute
+average_positions <- mortality %>%
+  mutate(time_1min = floor_date(timestamp, "1 minute")) %>% 
+  group_by(individual_ID, time_1min) %>%
+  mutate(avg_longitude = mean(longitude, na.rm = TRUE),
+         avg_latitude = mean(latitude, na.rm = TRUE)) %>% 
+  ungroup() %>%
+  unite(indiv_time, c("individual_ID", "time_1min"), remove = FALSE) %>%
+  distinct(indiv_time, .keep_all = T) %>% select(-c(longitude, latitude))
+rm(mortality)
+```
+
+Convert to move object
+```{r}
+combined_mv <- mt_as_move2(average_positions, time_column = 'time_1min', track_id_column = 'individual_ID',
+                                  coords = c("avg_longitude", "avg_latitude")) %>% sf::st_set_crs(4326) %>% st_transform(32634)
+rm(average_positions)
+```
+
+
+Trajectory analysis
+```{r}
+# Calculate speed and distance
+combined_mv <- combined_mv %>% mutate(speed = mt_speed(combined_mv),
+                      distance = mt_distance(combined_mv))
+
+#Change units
+combined_mv$speed <- units::set_units(combined_mv$speed, cm/s)
+combined_mv$distance <- units::set_units(combined_mv$distance, m)
+
+#Convert to data frame
+combined_mv <- as.data.frame(combined_mv)
+```
+
+Filter out unrealistic speeds (based on data from https://doi.org/10.1038/s41598-020-75974-x)
+```{r}
+#Load Ucrit data from https://doi.org/10.1038/s41598-020-75974-x
+ucrit_data = fread("C:/Users/jacka/Documents/Academia/Projects/Landscape of fear - personality - Jack/data/ucrit_data.csv", header = TRUE)
+
+ucrit <- ucrit_data %>% dplyr::filter(Species == 'Perca fluviatilis' | Species == 'Rutilus rutilus') %>% 
+  group_by(Species) %>%
+  dplyr::summarise(mean = mean(`Ucrit (cm/s)`))
+ucrit
+#Going to filter by the mean UCrit value = 97.72 cm/s for perch, and 84.075 cm/s for roach
+```
+
+Filter out unrealistic speeds
+```{r}
+combined_mv <- combined_mv %>% 
+  dplyr::filter((Species == "Perch" & speed <= units::set_units(97.72, "cm/s")) |
+                (Species == "Roach" & speed <= units::set_units(84.075, "cm/s")))
+```
+
+
+Summarise average daily speed
+```{r}
+#Summarise per day
+daily_data <- combined_mv %>%
+  dplyr::group_by(individual_ID, Date) %>%
+  dplyr::mutate(
+    avg_daily_speed_cm = mean(speed),
+    avg_daily_speed_bl = as.numeric(mean(speed/Total_length)),
+    total_distance = sum(distance)) %>% 
+  dplyr::distinct(individual_ID, Date, .keep_all = TRUE) %>%
+  ungroup()
+```
+
+What is the distribution of total daily distance? Bottom 5 % of total daily distance when fish were presumed alive is ~100 m per day
+```{r}
+daily_data %>% dplyr::filter(between(Date, '2022-09-26','2022-09-30')) %>% #first five days of tracking that is consistent between lakes
+  dplyr::summarise(mean = mean(total_distance, na.rm = T),
+                   sd = sd(total_distance, na.rm = T),
+                   max = max(total_distance, na.rm = T),
+                   min = min(total_distance, na.rm = T),
+                   quartile_05 = quantile(total_distance, na.rm = T, probs = c(0.05))) %>%
+  ungroup()
+```
+
+Making plots for each individual
+```{r}
+unique(daily_data$individual_ID)
+
+#Make distance numeric 
+daily_data$total_distance <- as.numeric(daily_data$total_distance)
+
+#Create list of individuals
+individual_id <- as.list(unique(daily_data$individual_ID))
+
+# Create an empty list to store results
+results_list <- list()
+
+# Loop over each individual
+for (i in seq_along(individual_id)) {
+  tag <- individual_id[[i]]
+  
+  # Filter data for the current individual
+  individual_data <- daily_data %>% filter(individual_ID == tag)
+  
+  # Run plot
+  plot <- individual_data %>%
+  ggplot(mapping = aes(x = Date, y = total_distance, color = individual_ID)) +
+  geom_line(linewidth = 1) + 
+  labs(y = "Total distance per day", x = "Date") +
+  geom_point(aes(shape = as.factor(poor_tracking_day)), size = 2, color = 'black') +
+  theme_bw() +
+  scale_y_continuous(
+    breaks = seq(0, max(individual_data$total_distance, na.rm = TRUE), by = 200),
+    limits = c(0, max(individual_data$total_distance, na.rm = TRUE))
+  ) +
+  geom_hline(yintercept = 100, linetype = "dotted", color = "red")
+  
+  # Save results to the list with indexed label
+  results_list[[paste0("plot_", i)]] <- plot
+  
+  # Save the plot as a PNG file
+  ggsave(filename = paste0("C:/Users/jacka/Documents/Academia/Projects/Landscape of fear - personality - Jack/Mortality/Plots/", tag, ".png"), plot = plot)
+  
+  # Remove the object from the environment
+  rm(individual_data, plot)
+}
+```
+
+Which fish were known to be predated?
+```{r}
+daily_data %>%
+  dplyr::distinct(individual_ID, .keep_all = TRUE) %>%
+  dplyr::filter(Known_predated == 1)
+```
+
