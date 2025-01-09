@@ -72,10 +72,10 @@ saveRDS(BT_filt_data, paste0(filtered_data_path, "04_lake_BT_sub.rds"))
 
 #I need to pull the Reference tag data again 
 #load dataframe that contains this information
-get_ref_data <-  readRDS(paste0(filtered_data_path, "01_BT_sub.rds"))
+get_ref_data <-  readRDS(paste0(filtered_data_path, "01_lake_BT_sub.rds"))
 
 ref_data <- get_ref_data %>% 
-  filter(individual_ID == 'FReference') %>% 
+  filter(individual_ID == 'FReference'| Species == "Northern Pike" ) %>% 
   dplyr::select(individual_ID, HPE, timestamp_cest, Long, Lat)
 
 
@@ -96,21 +96,27 @@ ref_tel <- as.telemetry(ref_data,
                         datum = "WGS84")
 
 ctmm::projection(ref_tel) <- ctmm::median(ref_tel)
-UERE <- uere.fit(ref_tel)
+UERE <- uere.fit(ref_tel$FReference)
 summary(UERE)
 
 
 #> 2.1. Perch ####
 
-#Extract predated individual from the data frame
-predated_perch_ID <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1 & Species == 'Perch') %>% 
+BT_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_BT_sub.rds"))
+
+perch_pred_ids <- 
+  BT_pred_mort_events %>%
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
+  mutate(
+    first_date_over_50 = as.Date(first_date_over_50),
+    death_date = as.Date(death_date)) %>% 
+  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
+  filter(Species == 'Perch') %>% 
   pull(individual_ID)
 
 pred_perch_data <- 
   BT_filt_data %>% 
-  filter(individual_ID == predated_perch_ID)
+  filter(individual_ID == perch_pred_ids)
 
 pred_perch_data <- 
   with(pred_perch_data, 
@@ -131,21 +137,37 @@ pred_perch_tel <- as.telemetry(pred_perch_data,
 ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
 uere(pred_perch_tel) <- UERE
 
-pred_perch_guess <- ctmm.guess(pred_perch_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
-pred_perch_fit <- ctmm.fit(pred_perch_tel, pred_perch_guess, method = 'ML', trace = TRUE)
-saveRDS(pred_perch_fit, file = paste0(save_ctmm_path, "BT_perch_fits/", "F59692.rds"))
+#Initialize a parallel cluster to speed up model fitting for each fish individual.
+cl <- makeCluster(2)
+doParallel::registerDoParallel(cl)
+
+pred_perch_fits <- 
+  foreach(i = 1:length(pred_perch_tel), .packages = 'ctmm') %dopar% {
+    pred_perch_guess <- ctmm.guess(pred_perch_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_perch_tel[[i]], pred_perch_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "BT_perch_fits/", names(pred_perch_tel)[i], ".rds"))
+    model_fit
+  }
+
+saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "BT_perch_fits/", "pred_perch_fits.rds"))
+
 
 #> 2.2. Roach ####
 
-#Extract predated individual from the data frame
-predated_roach_IDs <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1 & Species == 'Roach') %>% 
+roach_pred_ids <- 
+  BT_pred_mort_events %>%
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
+  mutate(
+    first_date_over_50 = as.Date(first_date_over_50),
+    death_date = as.Date(death_date)) %>% 
+  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
+  filter(Species == 'Roach') %>% 
   pull(individual_ID)
 
 pred_roach_data <- 
   BT_filt_data %>% 
-  filter(individual_ID %in% predated_roach_IDs)
+  filter(individual_ID == roach_pred_ids)
 
 pred_roach_data <- 
   with(pred_roach_data, 
@@ -156,7 +178,7 @@ pred_roach_data <-
          "GPS.HDOP" = HDOP,                               
          "individual-local-identifier" = individual_ID))
 
-#create telemetry object for predated perch
+#create telemetry object for predated roach
 pred_roach_tel <- as.telemetry(pred_roach_data, 
                                timezone = "Europe/Stockholm",   
                                timeformat = "%Y-%m-%d %H:%M:%S",
@@ -167,15 +189,16 @@ ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
 uere(pred_roach_tel) <- UERE
 
 #Initialize a parallel cluster to speed up model fitting for each fish individual.
-cl <- makeCluster(5)
+cl <- makeCluster(7)
 doParallel::registerDoParallel(cl)
 
-# Perform model fitting using ctmm for each individual in the telemetry data.
 pred_roach_fits <- 
   foreach(i = 1:length(pred_roach_tel), .packages = 'ctmm') %dopar% {
     pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
     model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
     # Save individual model fits to a specified folder.
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "BT_roach_fits/", names(pred_roach_tel)[i], ".rds"))
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", names(pred_roach_tel)[i], ".rds"))
     model_fit
   }
+
+saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "pred_roach_fits.rds"))
