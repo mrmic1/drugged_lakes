@@ -102,15 +102,21 @@ summary(UERE)
 
 #> 2.1. Perch ####
 
-#Extract predated individual from the data frame
-predated_perch_ID <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1 & Species == 'Perch') %>% 
+muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
+
+perch_pred_ids <- 
+  mud_pred_mort_events %>%
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
+  mutate(
+    first_date_over_50 = as.Date(first_date_over_50),
+    death_date = as.Date(death_date)) %>% 
+  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
+  filter(Species == 'Perch') %>% 
   pull(individual_ID)
 
 pred_perch_data <- 
   muddyfoot_filt_data %>% 
-  filter(individual_ID == predated_perch_ID)
+  filter(individual_ID == perch_pred_ids)
 
 pred_perch_data <- 
   with(pred_perch_data, 
@@ -131,9 +137,21 @@ pred_perch_tel <- as.telemetry(pred_perch_data,
 ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
 uere(pred_perch_tel) <- UERE
 
-pred_perch_guess <- ctmm.guess(pred_perch_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
-pred_perch_fit <- ctmm.fit(pred_perch_tel, pred_perch_guess, method = 'ML', trace = TRUE)
-saveRDS(pred_perch_fit, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/", "F59692.rds"))
+#Initialize a parallel cluster to speed up model fitting for each fish individual.
+cl <- makeCluster(2)
+doParallel::registerDoParallel(cl)
+
+pred_perch_fits <- 
+  foreach(i = 1:length(pred_perch_tel), .packages = 'ctmm') %dopar% {
+    pred_perch_guess <- ctmm.guess(pred_perch_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_perch_tel[[i]], pred_perch_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/", names(pred_perch_tel)[i], ".rds"))
+    model_fit
+  }
+
+saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/", "pred_perch_fits.rds"))
+
 
 #> 2.2. Roach ####
 
@@ -180,3 +198,4 @@ pred_roach_fits <-
   model_fit
 }
 
+saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/", "pred_roach_fits.rds"))
