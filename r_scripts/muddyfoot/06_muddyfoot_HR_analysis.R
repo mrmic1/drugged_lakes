@@ -8,20 +8,20 @@ library(dplyr)       # Data manipulation and pipeline functions
 library(parallel)    # Parallel computing support
 library(foreach)     # Looping construct for parallel execution
 library(doParallel)  # Parallel backend for foreach loops
-library(ggplot2)     # Visualization package for creating plots
-library(sf)          # Handling spatial vector data (Simple Features)
-library(terra)       # Handling raster and vector data in a modern framework
-library(raster)      # Legacy package for raster data manipulation
+library(ggplot2)     
+library(sf)          
+library(terra)       
+library(raster)      
 
 # Define paths to directories for loading/saving data
 ctmm_path <- "./data/ctmm_fits/"                  # Directory for ctmm model fits
-telem_path <- "./data/telem_obj/"                 # Directory for telemetry objects
+telem_path <- "./data/telem_obj/muddyfoot/"       # Directory for telemetry objects
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
 rec_data_path <- "./data/lake_coords/reciever_and_habitat_locations/"  # Directory for receiver and habitat location data
 save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
 enc_path <- "./data/encounters/"                  # Directory for encounter data
-track_data_path <- "./data/tracks_filtered/muddyfoot/"
+filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 
 
 ### LOAD DATA ###
