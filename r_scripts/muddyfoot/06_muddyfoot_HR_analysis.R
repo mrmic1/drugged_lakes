@@ -38,7 +38,7 @@ perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/mud
 roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
 
 # Load the polygon representing the boundary of Muddyfoot lake, in the form of a GeoPackage file
-muddyfoot_polygon <- sf::st_read(paste0(lake_polygon_path, "muddyfoot/lake_muddyfoot_polygon.gpkg"))
+muddyfoot_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_muddyfoot_polygon.gpkg"))
 
 # Convert the simple features (sf) polygon data into a Spatial object for compatibility with other functions
 muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
