@@ -39,7 +39,7 @@ mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summa
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
 pred_cols <- 
   mud_pred_mort_events %>%
-  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated'| n_missing_dates > 24) %>% 
   mutate(
     first_date_over_50 = as.Date(first_date_over_50),
     death_date = as.Date(death_date)) %>% 
@@ -106,7 +106,7 @@ muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "04_muddyfoot_sub.rds"
 
 perch_pred_ids <- 
   mud_pred_mort_events %>%
-  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated'| n_missing_dates > 24) %>% 
   mutate(
     first_date_over_50 = as.Date(first_date_over_50),
     death_date = as.Date(death_date)) %>% 
@@ -155,15 +155,19 @@ saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/", 
 
 #> 2.2. Roach ####
 
-#Extract predated individual from the data frame
-predated_roach_IDs <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1 & Species == 'Roach') %>% 
+roach_pred_ids <- 
+  mud_pred_mort_events %>%
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated'| n_missing_dates > 24) %>% 
+  mutate(
+    first_date_over_50 = as.Date(first_date_over_50),
+    death_date = as.Date(death_date)) %>% 
+  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
+  filter(Species == 'Roach') %>% 
   pull(individual_ID)
 
 pred_roach_data <- 
   muddyfoot_filt_data %>% 
-  filter(individual_ID %in% predated_roach_IDs)
+  filter(individual_ID == roach_pred_ids)
 
 pred_roach_data <- 
   with(pred_roach_data, 
@@ -174,7 +178,7 @@ pred_roach_data <-
          "GPS.HDOP" = HDOP,                               
          "individual-local-identifier" = individual_ID))
 
-#create telemetry object for predated perch
+#create telemetry object for predated roach
 pred_roach_tel <- as.telemetry(pred_roach_data, 
                                timezone = "Europe/Stockholm",   
                                timeformat = "%Y-%m-%d %H:%M:%S",
@@ -185,17 +189,21 @@ ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
 uere(pred_roach_tel) <- UERE
 
 #Initialize a parallel cluster to speed up model fitting for each fish individual.
-cl <- makeCluster(5)
+cl <- makeCluster(2)
 doParallel::registerDoParallel(cl)
 
-# Perform model fitting using ctmm for each individual in the telemetry data.
 pred_roach_fits <- 
   foreach(i = 1:length(pred_roach_tel), .packages = 'ctmm') %dopar% {
-  pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
-  model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
-  # Save individual model fits to a specified folder.
-  saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/", names(pred_roach_tel)[i], ".rds"))
-  model_fit
-}
+    pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/", names(pred_roach_tel)[i], ".rds"))
+    model_fit
+  }
 
 saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/", "pred_roach_fits.rds"))
+
+
+
+
+

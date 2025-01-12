@@ -58,12 +58,11 @@ muddyfoot_sp_data <- as(muddyfoot_polygon, "Spatial")
 #> 1.1. Pike ####
 
 # Pike AKDE estimation with parallel processing
-
-# Load pike AKDE list from saved RDS
-pike_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/pike_akdes_list.rds"))
-
-# Use the first individual's AKDE to set a reference grid size
-akde_ref <- pike_akdes_list[[1]]
+#Get reference akde for consistent grid
+#Pick individuals with full dataset
+unique(pike_muddyfoot_tel[[1]]$Date)
+nrow(pike_muddyfoot_tel[[1]])
+pike_akde_ref <- akde(pike_muddyfoot_tel[[1]], pike_muddyfoot_ctmm_fits[[1]], weights = FALSE)
 
 # Initialize the list to store AKDEs with consistent grid
 pike_akdes_cg <- list()
@@ -80,7 +79,7 @@ pike_akdes_cg <- foreach(i = 1:length(pike_muddyfoot_tel), .packages = 'ctmm') %
     weights = FALSE,                          # No weighting
     SP = muddyfoot_sp_data,                   # Spatial polygon for the lake boundary
     SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
-    grid = list(dr = akde_ref$dr,             # Use reference grid resolution
+    grid = list(dr = pike_akde_ref$dr,             # Use reference grid resolution
                 align.to.origin = TRUE))      # Align the grid to the origin
   # Save the AKDE result for each individual pike
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/", names(pike_muddyfoot_tel)[i], "_akde_cg.rds"))
@@ -105,11 +104,11 @@ saveRDS(pike_akdes_cg, paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akde
 
 # Perch AKDE estimation with parallel processing
 
-# Load perch AKDE list from saved RDS
-perch_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/perch_akdes_list.rds"))
-
-# Use an individual's AKDE (e.g., 9th perch) as a reference for grid size
-akde_ref <- perch_akdes_list[[9]]
+#Get reference akde for consistent grid
+#Pick individuals with full dataset
+unique(perch_muddyfoot_tel[[9]]$Date)
+nrow(perch_muddyfoot_tel[[9]])
+perch_akde_ref <- akde(perch_muddyfoot_tel[[9]], perch_muddyfoot_ctmm_fits[[9]], weights = FALSE)
 
 # Initialize the list to store AKDEs with consistent grid for Perch
 perch_akdes_cg <- list()
@@ -126,7 +125,7 @@ perch_akdes_cg <- foreach(i = 1:length(perch_muddyfoot_tel), .packages = 'ctmm')
     weights = FALSE,                          # No weighting
     SP = muddyfoot_sp_data,                   # Spatial polygon for the lake boundary
     SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
-    grid = list(dr = akde_ref$dr,             # Use reference grid resolution
+    grid = list(dr = perch_akde_ref$dr,             # Use reference grid resolution
                 align.to.origin = TRUE))      # Align the grid to the origin
   # Save the AKDE result for each individual perch
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/", names(perch_muddyfoot_tel)[i], "_akde_cg.rds"))
@@ -151,17 +150,17 @@ saveRDS(perch_akdes_cg, paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_a
 
 # Roach AKDE estimation with parallel processing
 
-# Load roach AKDE list from saved RDS
-roach_akdes_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/roach_akdes_list.rds"))
-
-# Use an individual's AKDE (e.g., 7th roach) as a reference for grid size
-akde_ref <- roach_akdes_list[[7]]
+#Get reference akde for consistent grid
+#Pick individuals with full dataset
+unique(roach_muddyfoot_tel[[9]]$Date)
+nrow(roach_muddyfoot_tel[[9]])
+roach_akde_ref <- akde(roach_muddyfoot_tel[[9]], roach_muddyfoot_ctmm_fits[[9]], weights = FALSE)
 
 # Initialize the list to store AKDEs with consistent grid for Roach
 roach_akdes_cg <- list()
 
 # Set up parallel processing using 3 cores
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 
 # Estimate AKDE for each individual roach using the reference grid
@@ -172,7 +171,7 @@ roach_akdes_cg <- foreach(i = 1:length(roach_muddyfoot_tel), .packages = 'ctmm')
     weights = FALSE,                          # No weighting
     SP = muddyfoot_sp_data,                   # Spatial polygon for the lake boundary
     SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
-    grid = list(dr = akde_ref$dr,             # Use reference grid resolution
+    grid = list(dr = roach_akde_ref$dr,             # Use reference grid resolution
                 align.to.origin = TRUE))      # Align the grid to the origin
   # Save the AKDE result for each individual roach
   saveRDS(akde_fit_cg, file = paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/", names(roach_muddyfoot_tel)[i], "_akde_cg.rds"))
