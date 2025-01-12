@@ -15,9 +15,19 @@ names(rds_list) <- sub("\\.rds$", "", names(rds_list))
 # Print the names of the loaded RDS files
 print(names(rds_list))
 
-#remove the the last list
-rds_list <- rds_list[1:29]
-names(rds_list)
+#remove pred filtered ids 
+#these were rerun using ctmm.fit so we do not need to extract OUF
+#OUF is already extracted. 
+
+exclude_ids <- c("F59701", "F59738", "F59719", "F59709", "F59731", "F59687",
+                 "F59745", "F59729", "F59683")
+
+muddyfoot_roach_ctmm_fits <- rds_list[!names(rds_list) %in% exclude_ids]
+
+# Create a list of remaining elements
+remaining_list <- rds_list[names(rds_list) %in% exclude_ids]
+
+
 
 #Isolate the files than need to be renamed
 # Create a new list to store renamed objects
@@ -49,9 +59,17 @@ saveRDS(muddyfoot_roach_ctmm_fits, paste0(save_ctmm_path, "muddyfoot_roach_ctmm_
 
 muddyfoot_roach_OUF_models <- list()
 
+
+
 #Iterate over each object in muddyfoot_roach_ctmm_fits and extract the 'OUF anisotropic error' models
 muddyfoot_roach_OUF_models <- lapply(muddyfoot_roach_ctmm_fits, function(x) x[['OUF anisotropic error']])
+#check it worked
+summary(muddyfoot_roach_OUF_models$F59684)
 
-# Set the names of the new list to the identities of the original objects (if needed)
-names(muddyfoot_roach_OUF_models) <- names(muddyfoot_roach_ctmm_fits)
+#rejoin pred filtered models
+muddyfoot_roach_OUF_models <- c(muddyfoot_roach_OUF_models, remaining_list)[names(rds_list)]
+#check that ID are in chonological order
+names(muddyfoot_roach_OUF_models)
+
+#save
 saveRDS(muddyfoot_roach_OUF_models, paste0(save_ctmm_path, "muddyfoot_roach_OUF_models.rds"))
