@@ -135,7 +135,7 @@ pike_mud_early_ctmm_fits <-
   model_fit <- ctmm.fit(pike_early_tel[[i]], pike_early_guess, method = 'ML')
   
   # Save the fitted model for each fish individually
-  saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_pike_fits/stage/", names(pike_early_tel)[i], ".rds"))
+  saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_pike_fits/stage/", names(pike_early_tel)[i], "_early.rds"))
   
   model_fit  # Return the fitted model
 }
@@ -157,7 +157,7 @@ pike_mud_late_ctmm_fits <-
     model_fit <- ctmm.fit(pike_late_tel[[i]], pike_late_guess, method = 'ML')
     
     # Save the fitted model for each fish individually
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_pike_fits/stage/", names(pike_late_tel)[i], ".rds"))
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_pike_fits/stage/", names(pike_late_tel)[i], "_late.rds"))
     
     model_fit  # Return the fitted model
   }
@@ -254,8 +254,6 @@ perch_mud_early_ctmm_fits <-
 # Stop the parallel cluster once model fitting is complete
 stopCluster(cl)
 
-saveRDS(perch_mud_early_ctmm_fits, paste0(save_ctmm_path, "muddyfoot_perch_fits/stage/perch_mud_early_ctmm_fits.rds"))
-
 
 ### LATE ###
 cl <- makeCluster(15)  
@@ -270,15 +268,13 @@ perch_mud_late_ctmm_fits <-
     model_fit <- ctmm.fit(perch_late_tel[[i]], perch_late_guess, method = 'ML')
     
     # Save the fitted model for each fish individually
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/stage/", names(perch_late_tel)[i], "_late.rds"))
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_perch_fits/stage/", names(perch_late_tel)[i], ".rds"))
     
     model_fit  # Return the fitted model
   }
 
 # Stop the parallel cluster once model fitting is complete
 stopCluster(cl)
-
-saveRDS(perch_mud_late_ctmm_fits, paste0(save_ctmm_path, "muddyfoot_perch_fits/stage/perch_mud_late_ctmm_fits.rds"))
 
 
 #----------------------------------------------------------------------------------------------------#
@@ -359,17 +355,13 @@ roach_mud_early_ctmm_fits <-
     model_fit <- ctmm.fit(roach_early_tel[[i]], roach_early_guess, method = 'ML')
     
     # Save the fitted model for each fish individually
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/stage/", names(roach_early_tel)[i], "_early.rds"))
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/stage/", names(roach_early_tel)[i], ".rds"))
     
     model_fit  # Return the fitted model
   }
 
 # Stop the parallel cluster once model fitting is complete
 stopCluster(cl)
-
-saveRDS(roach_mud_early_ctmm_fits, paste0(save_ctmm_path, "muddyfoot_roach_fits/stage/roach_mud_early_ctmm_fits.rds"))
-
-
 
 
 ### LATE ###
@@ -385,12 +377,10 @@ roach_mud_late_ctmm_fits <-
     model_fit <- ctmm.fit(roach_late_tel[[i]], roach_late_guess, method = 'ML')
     
     # Save the fitted model for each fish individually
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/stage/", names(roach_late_tel)[i], "_late.rds"))
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/stage/", names(roach_late_tel)[i], ".rds"))
     
     model_fit  # Return the fitted model
   }
 
 # Stop the parallel cluster once model fitting is complete
 stopCluster(cl)
-
-saveRDS(roach_mud_late_ctmm_fits, paste0(save_ctmm_path, "muddyfoot_roach_fits/stage/roach_mud_late_ctmm_fits.rds"))
