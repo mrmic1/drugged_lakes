@@ -20,7 +20,7 @@ akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorr
 lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
 rec_data_path <- "./data/lake_coords/reciever_and_habitat_locations/"  # Directory for receiver and habitat location data
 save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
-enc_path <- "./data/encounters/"                  # Directory for encounter data
+enc_path <- "./data/encounters/muddyfoot/"                  # Directory for encounter data
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 
 
@@ -114,7 +114,7 @@ perch_akde_ref <- akde(perch_muddyfoot_tel[[9]], perch_muddyfoot_ctmm_fits[[9]],
 perch_akdes_cg <- list()
 
 # Set up parallel processing using 3 cores
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 
 # Estimate AKDE for each individual perch using the reference grid
@@ -185,7 +185,7 @@ stopCluster(cl)
 names(roach_akdes_cg) <- names(roach_muddyfoot_tel)
 
 # View summary of all roach AKDEs
-summary(roach_akdes_cg)
+summary(roach_akdes_cg$F59683)
 
 # Save the complete list of Roach AKDEs with consistent grid
 saveRDS(roach_akdes_cg, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
@@ -206,33 +206,25 @@ pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pi
 perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
 roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
-# Load predation event data (pre-identified predation events)
-mud_pred_events <- readRDS(paste0(enc_path, "muddyfoot_pred_events.rds"))
+# Check predation event data (pre-identified predation events) for individual with many missing dates
+mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
 
 # Remove Roach individuals that were predated based on predation events
-roach_ids_remove <- mud_pred_events %>%
-  filter(Species == "Roach") %>%    # Filter for Roach species
+roach_ids_remove <- mud_pred_mort_events %>%
+  filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
   pull(individual_ID)               # Extract IDs of predated Roach
 
 # Update the Roach AKDE list and telemetry data, removing predated individuals
 roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
 roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
 
-# Remove Perch individuals that were predated based on predation events
-perch_ids_remove <- mud_pred_events %>%
-  filter(Species == "Perch") %>%    # Filter for Perch species
-  pull(individual_ID)               # Extract IDs of predated Perch
-
-# Update the Perch AKDE list and telemetry data, removing predated individuals
-perch_akdes_cg_list <- perch_akdes_cg_list[!(names(perch_akdes_cg_list) %in% perch_ids_remove)]
-perch_muddyfoot_tel <- perch_muddyfoot_tel[!(names(perch_muddyfoot_tel) %in% perch_ids_remove)]
 
 #> 2.2. Pike  ####
 
 # Separating Pike data into two groups: 'control' and 'mix'
 # 'control' refers to the first three individuals, 'mix' refers to the next three
 
-# Separate telemetry objects
+# Separate  telemetry objects
 pike_control_tel <- pike_muddyfoot_tel[1:3]   # Control group
 pike_mix_tel <- pike_muddyfoot_tel[4:6]       # Mixed group
 
@@ -271,13 +263,36 @@ saveRDS(pike_total_PKDE, paste0(akde_path, "muddyfoot_pike_akdes/population_akde
 #> 2.3. Perch ####
 
 # Separating into 'control' and 'mix'
+# Check that treatments are in the right order
+unique_ids <- names(perch_muddyfoot_tel)
+
+# Create a data frame to store ID and unique Treatment information
+result_table <- do.call(rbind, lapply(unique_ids, function(id) {
+  # Extract the unique Treatment value for the current ID
+  treatment_info <- unique(perch_muddyfoot_tel[[id]]$Treatment)
+  
+  # Ensure only one unique Treatment value is captured
+  if (length(treatment_info) > 1) {
+    warning(paste("Multiple treatments found for ID:", id, 
+                  "using the first value. Treatments:", paste(treatment_info, collapse = ", ")))
+    treatment_info <- treatment_info[1]
+  }
+  
+  # Create a data frame for the ID and its treatment
+  data.frame(ID = id, Treatment = treatment_info)
+}))
+
+# View the resulting table
+print(result_table)
+
 #telemetry objects
-perch_control_tel <- perch_muddyfoot_tel[1:14]
-perch_mix_tel <- perch_muddyfoot_tel[15:29]
+
+perch_control_tel <- perch_muddyfoot_tel[1:15]
+perch_mix_tel <- perch_muddyfoot_tel[16:30]
 
 #akdes
-perch_control_akdes <- perch_akdes_cg_list[1:14]
-perch_mix_akdes <- perch_akdes_cg_list[15:29]
+perch_control_akdes <- perch_akdes_cg_list[1:15]
+perch_mix_akdes <- perch_akdes_cg_list[16:30]
 
 #calculate population-level autocorrelated kernel density home range estimates for each treatment
 perch_control_PKDE <- pkde(perch_control_tel,
@@ -285,7 +300,7 @@ perch_control_PKDE <- pkde(perch_control_tel,
                           SP = muddyfoot_sp_data,
                           SP.in = TRUE)
 
-#saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+saveRDS(perch_control_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
 
 perch_mix_PKDE <- pkde(perch_mix_tel,
                       perch_mix_akdes, 
@@ -297,13 +312,37 @@ saveRDS(perch_mix_PKDE, paste0(akde_path, "muddyfoot_perch_akdes/population_akde
 # > 2.4. Roach ####
 
 # Separating into 'control' and 'mix'
+# Check that treatments are in the right order
+unique_ids <- names(roach_muddyfoot_tel)
+
+# Create a data frame to store ID and unique Treatment information
+result_table <- do.call(rbind, lapply(unique_ids, function(id) {
+  # Extract the unique Treatment value for the current ID
+  treatment_info <- unique(roach_muddyfoot_tel[[id]]$Treatment)
+  
+  # Ensure only one unique Treatment value is captured
+  if (length(treatment_info) > 1) {
+    warning(paste("Multiple treatments found for ID:", id, 
+                  "using the first value. Treatments:", paste(treatment_info, collapse = ", ")))
+    treatment_info <- treatment_info[1]
+  }
+  
+  # Create a data frame for the ID and its treatment
+  data.frame(ID = id, Treatment = treatment_info)
+}))
+
+# View the resulting table
+print(result_table)
+
+
+
 #telemetry objects
-roach_control_tel <- roach_muddyfoot_tel[1:11]
-roach_mix_tel <- roach_muddyfoot_tel[12:24]
+roach_control_tel <- roach_muddyfoot_tel[1:14]
+roach_mix_tel <- roach_muddyfoot_tel[15:28]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[1:11]
-roach_mix_akdes <- roach_akdes_cg_list[12:24]
+roach_control_akdes <- roach_akdes_cg_list[1:14]
+roach_mix_akdes <- roach_akdes_cg_list[15:28]
 
 #calculate population-level autocorrelated kernel density home range estimates
 roach_control_PKDE <- pkde(roach_control_tel,
