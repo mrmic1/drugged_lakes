@@ -32,6 +32,8 @@ BT_telem_data <-  readRDS(paste0(filtered_data_path, "03_lake_BT_sub.rds"))
 # Load the predation event dataframe 
 BT_pred_mort_events <- readRDS(paste0(enc_path, "BT_pred_encounter_summary_filtered.rds"))
 
+
+
 #-------------------------------------------------#
 # 1. Filter out post-predation event data ####
 #-------------------------------------------------#
@@ -64,6 +66,7 @@ print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data) - nrow(BT_fi
 
 #save
 saveRDS(BT_filt_data, paste0(filtered_data_path, "04_lake_BT_sub.rds"))
+
 
 
 #------------------------------------------------------------#
