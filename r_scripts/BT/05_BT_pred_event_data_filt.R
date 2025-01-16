@@ -114,43 +114,7 @@ perch_pred_ids <-
   filter(Species == 'Perch') %>% 
   pull(individual_ID)
 
-pred_perch_data <- 
-  BT_filt_data %>% 
-  filter(individual_ID == perch_pred_ids)
-
-pred_perch_data <- 
-  with(pred_perch_data, 
-       data.frame(
-         "timestamp" = timestamp,                        
-         "location.long" = longitude,                         
-         "location.lat" = latitude, 
-         "GPS.HDOP" = HDOP,                               
-         "individual-local-identifier" = individual_ID))
-
-#create telemetry object for predated perch
-pred_perch_tel <- as.telemetry(pred_perch_data, 
-                               timezone = "Europe/Stockholm",   
-                               timeformat = "%Y-%m-%d %H:%M:%S",
-                               projection = NULL,               
-                               datum = "WGS84")
-
-ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
-uere(pred_perch_tel) <- UERE
-
-#Initialize a parallel cluster to speed up model fitting for each fish individual.
-cl <- makeCluster(2)
-doParallel::registerDoParallel(cl)
-
-pred_perch_fits <- 
-  foreach(i = 1:length(pred_perch_tel), .packages = 'ctmm') %dopar% {
-    pred_perch_guess <- ctmm.guess(pred_perch_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
-    model_fit <- ctmm.fit(pred_perch_tel[[i]], pred_perch_guess, method = 'ML')
-    # Save individual model fits to a specified folder.
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "BT_perch_fits/", names(pred_perch_tel)[i], ".rds"))
-    model_fit
-  }
-
-saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "BT_perch_fits/", "pred_perch_fits.rds"))
+#No perch need to be re-analysed.
 
 
 #> 2.2. Roach ####
@@ -201,4 +165,57 @@ pred_roach_fits <-
     model_fit
   }
 
-saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "pred_roach_fits.rds"))
+saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "pred_roach_fits.rds"))#
+
+#-----------------------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------------------#
+
+#EXTRACT OUF MODELS
+#CREATE CTMM LIST FOR BT ROACH
+
+###
+open_ctmm_path = "./data/ctmm_fits/lake_BT_roach_fits/"
+save_ctmm_path = "./data/ctmm_fits/lake_BT_roach_fits/"
+
+# List all RDS files in the folder
+rds_files <- list.files(path = open_ctmm_path, pattern = "\\.rds$", full.names = TRUE)
+
+# Read all RDS files into a list
+rds_list <- lapply(rds_files, readRDS)
+
+# Read all RDS files into a list
+names(rds_list) <- basename(rds_files)
+names(rds_list) <- sub("\\.rds$", "", names(rds_list))
+
+# Print the names of the loaded RDS files
+print(names(rds_list))
+
+#remove pred filtered ids 
+#these were rerun using ctmm.fit so we do not need to extract OUF
+#OUF is already extracted. 
+#Use roach_pred_ids created earlier in the script
+
+lake_BT_roach_ctmm_fits <- rds_list[!names(rds_list) %in% roach_pred_ids]
+print(names(muddyfoot_roach_ctmm_fits))
+
+# Create a list of remaining elements
+remaining_list <- rds_list[names(rds_list) %in% roach_pred_ids]
+
+
+# ------------------ Extract OUF models ----------------------- #
+
+lake_BT_roach_OUF_models <- list()
+
+#Iterate over each object in muddyfoot_roach_ctmm_fits and extract the 'OUF anisotropic error' models
+lake_BT_roach_OUF_models <- lapply(lake_BT_roach_ctmm_fits, function(x) x[['OUF anisotropic error']])
+#check it worked
+summary(lake_BT_roach_OUF_models$F59766)
+
+#rejoin pred filtered models
+lake_BT_roach_OUF_models <- c(lake_BT_roach_OUF_models, remaining_list)[names(rds_list)]
+#check that ID are in chonological order
+names(lake_BT_roach_OUF_models)
+
+#save
+saveRDS(lake_BT_roach_OUF_models, paste0(save_ctmm_path, "lake_BT_roach_OUF_models.rds"))
+
