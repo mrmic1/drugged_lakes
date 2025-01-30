@@ -188,7 +188,7 @@ names(roach_akdes_cg) <- names(roach_muddyfoot_tel)
 summary(roach_akdes_cg$F59683)
 
 # Save the complete list of Roach AKDEs with consistent grid
-saveRDS(roach_akdes_cg, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+saveRDS(roach_akdes_cg_list, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
 #---------------------------------------------------------------------------------------------------------------#
 
@@ -199,8 +199,6 @@ saveRDS(roach_akdes_cg, paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_a
 # This script estimates population-level Autocorrelated Kernel Density Estimates (AKDEs)
 # for Pike, Perch, and Roach species, excluding individuals that were predated.
 
-#> 2.1. Remove predated individuals from population AKDE estimation ####
-
 # Load AKDEs for each species from previously saved files
 pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
 perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
@@ -209,7 +207,7 @@ roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/
 # Check predation event data (pre-identified predation events) for individual with many missing dates
 mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
 
-# Remove Roach individuals that were predated based on predation events
+# Remove Roach individual that had poor tracking - if not already removed
 roach_ids_remove <- mud_pred_mort_events %>%
   filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
   pull(individual_ID)               # Extract IDs of predated Roach
@@ -359,23 +357,26 @@ roach_mix_PKDE <- pkde(roach_mix_tel,
 
 saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
 
+#-----------------------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------------------#
 
 #-------------------------------------#
-# >3. Compare home range size --------#
+# 3. COMPARE HR SIZE ##########
 #-------------------------------------#
 
 #> 3.1. Pike ####
 
 # Combining 'control' and 'mix' back into a 'total' list
 pike_akde_total <- list(Control = pike_control_akdes, Exposed = pike_mix_akdes)
+
 pike_akde_meta_data <- ctmm::meta(pike_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
+
 pike_HR_control <- as.data.frame(t(pike_akde_meta_data$Control[1,]))
 pike_HR_exposed <- as.data.frame(t(pike_akde_meta_data$Exposed[1,]))
   
 # Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
 pike_HR_control$treatment <- "Control"
 pike_HR_exposed$treatment <- "Exposed"
-
 
 # Combine the coefficients for both treatments into one data frame
 pike_HR_coefs <- rbind(pike_HR_control, pike_HR_exposed)
@@ -403,28 +404,81 @@ pike_HR_coefs <- rbind(pike_HR_control, pike_HR_exposed)
 )
 
 
-#Plotting AKDEs by treatment
+#> 3.2. Perch ####
 
-COL <- color(pike_akdes_cg_list, by='individual')
-COL_control <- COL[1:3]
-COL_mix <- COL[4:6]
+# Combining 'control' and 'mix' back into a 'total' list
+perch_akde_total <- list(Control = perch_control_akdes, Exposed = perch_mix_akdes)
 
-#Calculate extent
-EXT <- as.data.frame(t(as.matrix(extent(muddyfoot_sp_data))))
+perch_akde_meta_data <- ctmm::meta(perch_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
 
-# plot AKDEs
-plot(pike_control_akdes,
-     col.UD = COL_control,
-     col.DF = COL_control,
-     col.level =COL_control, 
-     col.grid = NA,
-     SP = muddyfoot_sp_data,
-     level.UD = 0.5,
-     xlim = EXT$x,
-     ylim = EXT$y)
+perch_HR_control <- as.data.frame(t(perch_akde_meta_data$Control[1,]))
+perch_HR_exposed <- as.data.frame(t(perch_akde_meta_data$Exposed[1,]))
 
+# Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
+perch_HR_control$treatment <- "Control"
+perch_HR_exposed$treatment <- "Exposed"
 
-plot(mix_AKDES,col.DF=COL_mix,col.level=COL_mix,col.grid=NA,level=NA,main="Mix AKDE", level.UD = 0.95,xlim=EXT$x,ylim=EXT$y)
+# Combine the coefficients for both treatments into one data frame
+perch_HR_coefs <- rbind(perch_HR_control, perch_HR_exposed)
 
+# Create the ggplot visualization of RSF coefficient estimates for perch habitats
+(perch_HR_coefs_plot <- 
+    ggplot(perch_HR_coefs, 
+           aes(x = treatment, y = est)) +  # Aesthetic mapping: treatment on x-axis, estimate (est) on y-axis
+    geom_errorbar(aes(ymin = low, ymax = high), 
+                  width = 0.1,  # Width of error bars
+                  size = 1,       # Thickness of error bars
+                  color = "black") +  # Error bars in black
+    geom_point(aes(shape = treatment, fill = treatment), 
+               size = 4,  # Point size
+               color = "black") +  # Outline of points in black
+    scale_shape_manual(values = c(21, 21)) +  # Use the same shape (circle) for both treatments
+    scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +  # White fill for Control, black fill for Exposed
+    labs(y = "Home range size (m^2)") +  # Label for the y-axis
+    theme_classic() +  # Use a clean classic theme for the plot
+    theme(legend.position = "none",  # Remove the legend as it's not necessary
+          axis.title.x = element_blank(),  # Remove the x-axis title for simplicity
+          axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),  # Bold y-axis title with larger font
+          axis.text = element_text(size = 12, color = 'black'),
+          panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
+)
 
+#> 3.3. Roach ####
+
+# Combining 'control' and 'mix' back into a 'total' list
+roach_akde_total <- list(Control = roach_control_akdes, Exposed = roach_mix_akdes)
+
+roach_akde_meta_data <- ctmm::meta(roach_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
+
+roach_HR_control <- as.data.frame(t(roach_akde_meta_data$Control[1,]))
+roach_HR_exposed <- as.data.frame(t(roach_akde_meta_data$Exposed[1,]))
+
+# Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
+roach_HR_control$treatment <- "Control"
+roach_HR_exposed$treatment <- "Exposed"
+
+# Combine the coefficients for both treatments into one data frame
+roach_HR_coefs <- rbind(roach_HR_control, roach_HR_exposed)
+
+# Create the ggplot visualization of RSF coefficient estimates for roach habitats
+(roach_HR_coefs_plot <- 
+    ggplot(roach_HR_coefs, 
+           aes(x = treatment, y = est)) +  # Aesthetic mapping: treatment on x-axis, estimate (est) on y-axis
+    geom_errorbar(aes(ymin = low, ymax = high), 
+                  width = 0.1,  # Width of error bars
+                  size = 1,       # Thickness of error bars
+                  color = "black") +  # Error bars in black
+    geom_point(aes(shape = treatment, fill = treatment), 
+               size = 4,  # Point size
+               color = "black") +  # Outline of points in black
+    scale_shape_manual(values = c(21, 21)) +  # Use the same shape (circle) for both treatments
+    scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +  # White fill for Control, black fill for Exposed
+    labs(y = "Home range size (m^2)") +  # Label for the y-axis
+    theme_classic() +  # Use a clean classic theme for the plot
+    theme(legend.position = "none",  # Remove the legend as it's not necessary
+          axis.title.x = element_blank(),  # Remove the x-axis title for simplicity
+          axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),  # Bold y-axis title with larger font
+          axis.text = element_text(size = 12, color = 'black'),
+          panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
+)
 

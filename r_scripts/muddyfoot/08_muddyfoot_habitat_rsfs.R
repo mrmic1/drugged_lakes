@@ -1,7 +1,8 @@
-# --------------------------------------------------------- #
-# RESOURCE SELECTION FOR ARTIFICIAL HABITATS - MUDDYFOOT ####
-# --------------------------------------------------------- #
+# ---------------------------------------------------------#
+# RESOURCE SELECTION FOR ARTIFICIAL HABITATS - MUDDYFOOT ###
+# ---------------------------------------------------------#
 
+### LIBRARIES ###
 library(ctmm)
 library(tidyverse)
 library(sf)
@@ -12,21 +13,16 @@ library(parallel)    # Parallel computing support
 library(foreach)     # Looping construct for parallel execution
 library(doParallel)  # Parallel backend for foreach loops
 
-options(digits = 3)
-
-
 ### DIRECTORIES ###
 polygon_path = "./data/lake_coords/muddyfoot/"
 ctmm_path = "./data/ctmm_fits/"
-data_filter_path = "./data/tracks_filtered/"
-telem_path = "./data/telem_obj/"
+filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
+telem_path <- "./data/telem_obj/muddyfoot/" 
 rec_data_path = "./data/lake_coords/reciever_and_habitat_locations/"
 enc_path <- "./data/encounters/"                  # Directory for encounter data
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 rsf_path <- "./data/rsfs/habitats/"
-save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
-
-
+save_plots <- "./plots/muddyfoot/"  # Directory for saving utilization distribution plots
 
 ### LOAD DATA ###
 #receiver and habitat locations
@@ -49,13 +45,167 @@ pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pi
 perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
 roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
+#load pkdes if necessary
+perch_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
+perch_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
+roach_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
+roach_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+pike_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
+pike_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_mix_PKDE.rds"))
+pike_total_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_total_PKDE.rds"))
 
-#-----------------------------#
-#> 1. Create a lake raster ####
-#----------------------------#
 
 #Load lake polygon
 muddyfoot_polygon <- st_read(paste0(polygon_path, "lake_muddyfoot_polygon.gpkg"))
+
+#----------------------------------------------------------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------#
+# 1. Plot population akdes with habitats ####
+#---------------------------------------------#
+
+# Function to generate the plot with habitats
+generate_ud_plot_whabitats <- function(pkde_data, bbox, hab_locs) {
+  ud_raster <- raster(pkde_data)
+  masked_ud_raster <- mask(ud_raster, bbox)
+  ud_df <- as.data.frame(as(masked_ud_raster, "SpatialPixelsDataFrame"))
+  colnames(ud_df) <- c("value", "x", "y")
+  
+  ggplot() +
+    geom_sf(data = bbox, color = "black") +
+    geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
+    geom_sf(data = hab_locs, color = "green", size = 1, fill = NA, shape = 3, stroke = 1) + 
+    scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
+    coord_sf() +
+    theme_classic() +
+    labs(fill = "Utilization Distribution", x = "", y = '')+
+    theme(legend.position = "none",
+          axis.text = element_text(size = 8, color = 'black'))
+}
+
+# Function to generate the plot without habitats
+generate_ud_plot <- function(pkde_data, bbox, hab_locs) {
+  ud_raster <- raster(pkde_data)
+  masked_ud_raster <- mask(ud_raster, bbox)
+  ud_df <- as.data.frame(as(masked_ud_raster, "SpatialPixelsDataFrame"))
+  colnames(ud_df) <- c("value", "x", "y")
+  
+  ggplot() +
+    geom_sf(data = bbox, color = "black") +
+    geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
+    scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
+    coord_sf() +
+    theme_classic() +
+    labs(fill = "Utilization Distribution", x = "", y = '')+
+    theme(legend.position = "none",
+          axis.text = element_text(size = 8, color = 'black'))
+}
+
+# Transform bbox
+muddyfoot_bbox_perch <- st_transform(muddyfoot_polygon, crs(raster(perch_control_PKDE)))
+muddyfoot_bbox_roach <- st_transform(muddyfoot_polygon, crs(raster(roach_control_PKDE)))
+muddyfoot_bbox_pike <- st_transform(muddyfoot_polygon, crs(raster(pike_total_PKDE)))
+
+# Generate the plots
+
+#> 1.1. Perch ####
+
+## CONTROL ##
+perch_control_plot <- generate_ud_plot(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
+perch_control_plot_habitats <- generate_ud_plot_whabitats(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
+ggsave(file = paste0(save_plots, "perch_control_UD_habitats_muddyfoot.png"), 
+       plot = perch_control_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+
+## EXPOSED ##
+perch_exposed_plot <- generate_ud_plot(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
+perch_exposed_plot_habitats <- generate_ud_plot_whabitats(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
+ggsave(file = paste0(save_plots, "perch_exposed_UD_habitats_muddyfoot.png"), 
+       plot = perch_exposed_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+
+
+#> 1.2. Roach ####
+## CONTROL ##
+roach_control_plot <- generate_ud_plot(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
+roach_control_plot_habitats <- generate_ud_plot_whabitats(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
+ggsave(file = paste0(save_plots, "roach_control_UD_habitats_muddyfoot.png"), 
+       plot = roach_control_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+
+## EXPOSED ##
+roach_exposed_plot <- generate_ud_plot(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
+roach_exposed_plot_habitats <- generate_ud_plot_whabitats(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
+ggsave(file = paste0(save_plots, "roach_exposed_UD_habitats_muddyfoot.png"), 
+       plot = roach_exposed_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+
+
+#> 1.3. Pike ####
+
+## CONTROL ##
+pike_control_plot <- generate_ud_plot(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
+pike_control_plot_habitats <- generate_ud_plot_whabitats(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
+ggsave(file = paste0(save_plots, "pike_control_UD_habitats_muddyfoot.png"), 
+       plot = pike_control_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+
+## EXPOSED ##
+pike_exposed_plot <- generate_ud_plot(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
+pike_exposed_plot_habitats <- generate_ud_plot_whabitats(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
+ggsave(file = paste0(save_plots, "pike_exposed_UD_habitats_muddyfoot.png"), 
+       plot = pike_exposed_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+
+## TOTAL ##
+pike_total_plot <- generate_ud_plot(pike_total_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
+pike_total_plot_habitats <- generate_ud_plot_whabitats(pike_total_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
+ggsave(file = paste0(save_plots, "pike_total_UD_habitats_muddyfoot.png"), 
+       plot = pike_total_plot_habitats, 
+       device = 'png',
+       width = 9, 
+       height = 6.5,
+       units = 'cm',
+       dpi = 300)
+
+#----------------------------------------------------------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------#
+
+#-----------------------------------------#
+# 2. Create a lake and habitat raster ####
+#-----------------------------------------#
+
+#Final raster is used in RSF models
 
 #Transform the CRS to UTM Zone 33N (EPSG:32633)
 polyProj <- st_transform(muddyfoot_polygon, crs = "EPSG:32633")
@@ -76,11 +226,7 @@ muddyfoot_polygon <- st_transform(muddyfoot_polygon, crs = "EPSG:4326")
 lake_raster <- rasterize(muddyfoot_polygon, lake_raster, background = NA)
 plot(lake_raster, main = "Lake Raster")
 
-
-
-#---------------------------------#
-#> 2. Create a habitat raster ####
-#--------------------------------#
+#Plot habitats onto lake raster
 
 habitat_patches <- vect(mud_hab_locs)
 
@@ -98,50 +244,83 @@ plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 #Need to convert it from terra to raster to work with rsf.fit()
 habitat_raster <- raster::raster(habitat_raster)
 
+#---------------------------------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------------------------------#
 
 #---------------------------------------------#
-#> 3. Split telemetry objects by treatment ####
+#3. Split telemetry objects by treatment ####
 #---------------------------------------------#
 
-#first need to remove individuals that were predated and tracked while in stomack of pikes
-# Load predation event data (pre-identified predation events)
-mud_pred_events <- readRDS(paste0(enc_path, "muddyfoot_pred_events.rds"))
+# Separating into 'control' and 'mix'
 
-# Remove Roach individuals that were predated based on predation events
-roach_ids_remove <- mud_pred_events %>%
-  filter(Species == "Roach") %>%    # Filter for Roach species
-  pull(individual_ID)               # Extract IDs of predated Roach
+#> 3.1 Perch ########################
 
-# Update the Roach AKDE list and telemetry data, removing predated individuals
-roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
-roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
+# Check that treatments are in the right order
+unique_ids <- names(perch_muddyfoot_tel)
 
-# Remove Perch individuals that were predated based on predation events
-perch_ids_remove <- mud_pred_events %>%
-  filter(Species == "Perch") %>%    # Filter for Perch species
-  pull(individual_ID)               # Extract IDs of predated Perch
+# Create a data frame to store ID and unique Treatment information
+result_table <- do.call(rbind, lapply(unique_ids, function(id) {
+  # Extract the unique Treatment value for the current ID
+  treatment_info <- unique(perch_muddyfoot_tel[[id]]$Treatment)
+  
+  # Ensure only one unique Treatment value is captured
+  if (length(treatment_info) > 1) {
+    warning(paste("Multiple treatments found for ID:", id, 
+                  "using the first value. Treatments:", paste(treatment_info, collapse = ", ")))
+    treatment_info <- treatment_info[1]
+  }
+  
+  # Create a data frame for the ID and its treatment
+  data.frame(ID = id, Treatment = treatment_info)
+}))
 
-# Update the Perch AKDE list and telemetry data, removing predated individuals
-perch_akdes_cg_list <- perch_akdes_cg_list[!(names(perch_akdes_cg_list) %in% perch_ids_remove)]
-perch_muddyfoot_tel <- perch_muddyfoot_tel[!(names(perch_muddyfoot_tel) %in% perch_ids_remove)]
-
+# View the resulting table
+print(result_table)
 
 #use perch as an example
 #telemetry objects
-perch_control_tel <- perch_muddyfoot_tel[1:14]
-perch_mix_tel <- perch_muddyfoot_tel[15:29]
+perch_control_tel <- perch_muddyfoot_tel[1:15]
+perch_mix_tel <- perch_muddyfoot_tel[16:30]
 
 #akdes
-perch_control_akdes <- perch_akdes_cg_list[1:14]
-perch_mix_akdes <- perch_akdes_cg_list[15:29]
+perch_control_akdes <- perch_akdes_cg_list[1:15]
+perch_mix_akdes <- perch_akdes_cg_list[16:30]
+
+
+#> 3.2 Roach ########################
+
+# Check that treatments are in the right order
+unique_ids <- names(roach_muddyfoot_tel)
+
+# Create a data frame to store ID and unique Treatment information
+result_table <- do.call(rbind, lapply(unique_ids, function(id) {
+  # Extract the unique Treatment value for the current ID
+  treatment_info <- unique(roach_muddyfoot_tel[[id]]$Treatment)
+  
+  # Ensure only one unique Treatment value is captured
+  if (length(treatment_info) > 1) {
+    warning(paste("Multiple treatments found for ID:", id, 
+                  "using the first value. Treatments:", paste(treatment_info, collapse = ", ")))
+    treatment_info <- treatment_info[1]
+  }
+  
+  # Create a data frame for the ID and its treatment
+  data.frame(ID = id, Treatment = treatment_info)
+}))
+
+print(result_table)
+
 
 #telemetry objects
-roach_control_tel <- roach_muddyfoot_tel[1:11]
-roach_mix_tel <- roach_muddyfoot_tel[12:24]
+roach_control_tel <- roach_muddyfoot_tel[1:14]
+roach_mix_tel <- roach_muddyfoot_tel[14:28]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[1:11]
-roach_mix_akdes <- roach_akdes_cg_list[12:24]
+roach_control_akdes <- roach_akdes_cg_list[1:14]
+roach_mix_akdes <- roach_akdes_cg_list[14:28]
+
+
+#> 3.3 Pike ########################
 
 # Separate telemetry objects
 pike_control_tel <- pike_muddyfoot_tel[1:3]   # Control group
@@ -151,13 +330,13 @@ pike_mix_tel <- pike_muddyfoot_tel[4:6]       # Mixed group
 pike_control_akdes <- pike_akdes_cg_list[1:3]
 pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
-
-
+#-----------------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------------#
 #-----------------------#
-#> 4. Fit RSF models ####
+# 4. Fit RSF models ####
 #-----------------------#
 
-#>>> 4.1 Perch ########################
+#> 4.1 Perch ########################
 
 ### CONTROL ###
 
@@ -195,7 +374,6 @@ summary(rsf_perch_control_list$F59697)
 #saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
 
 
-
 ### EXPOSED ###
 
 cl <- makeCluster(3)
@@ -227,8 +405,10 @@ names(rsf_perch_mix_list) <- names(perch_mix_tel)
 
 saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
 
+#-----------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------#
 
-#>>> 4.2 Roach ########################
+#> 4.2 Roach ########################
 
 ### CONTROL ###
 
@@ -298,8 +478,10 @@ names(rsf_roach_mix_list) <- names(roach_mix_tel)
 
 saveRDS(rsf_roach_mix_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
 
+#-----------------------------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------------------------#
 
-#>>> 4.3. Pike ########################
+#> 4.3. Pike ########################
 
 ### CONTROL ###
 
@@ -334,7 +516,6 @@ names(rsf_pike_control_list) <- names(pike_control_tel)
 saveRDS(rsf_pike_control_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_control_list.rds"))
 
 
-
 ### EXPOSED ###
 
 cl <- makeCluster(3)
@@ -367,12 +548,13 @@ names(rsf_pike_mix_list) <- names(pike_mix_tel)
 saveRDS(rsf_pike_mix_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_mix_list.rds"))
 
 #-------------------------------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------------------------------#
 
 #-----------------------------------------#
-# > 5. Explore RSF model results ####
+# 5. Explore RSF model results ####
 #-----------------------------------------#
 
-#>>> 5.1. Perch ####
+#> 5.1. Perch ####
 
 # Load the RSF (Resource Selection Function) results for control and exposed perch
 rsf_perch_control_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
@@ -428,7 +610,11 @@ ggsave(file = paste0(save_ud_plots, "perch_habitats_rsf_muddyfoot.png"),
        units = 'cm',
        dpi = 300)
 
-#>>> 5.2 Roach ####
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+
+
+#> 5.2 Roach ####
 
 # Load the RSF (Resource Selection Function) results for control and exposed roach
 rsf_roach_control_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
@@ -485,7 +671,10 @@ ggsave(file = paste0(save_ud_plots, "roach_habitats_rsf_muddyfoot.png"),
        dpi = 300)
 
 
-#>>> 5.3. Pike ####
+#-------------------------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
+
+#> 5.3 Pike ####
 
 # Load the RSF (Resource Selection Function) results for control and exposed pike
 rsf_pike_control_list <- readRDS(paste0(rsf_path, "muddyfoot_pike/rsf_pike_control_list.rds"))
@@ -542,165 +731,4 @@ ggsave(file = paste0(save_ud_plots, "pike_habitats_rsf_muddyfoot.png"),
        dpi = 300)
 
 #------------------------------------------------------------------------------------------------------------------------------#
-
-#-----------------------------------#
-# > 6. Plot population akdes ####
-#-----------------------------------#
-
-#receiver and habitat locations
-mud_rec_locs_kml <- paste0(rec_data_path, "muddyfoot_rec_hab_locations.kml")
-mud_rec_locs <- st_read(mud_rec_locs_kml)[1:5,]
-mud_hab_locs <- st_read(mud_rec_locs_kml)[6:7,]
-
-#load pkdes if necessary
-perch_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
-perch_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
-roach_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
-roach_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
-pike_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
-pike_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_mix_PKDE.rds"))
-pike_total_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_total_PKDE.rds"))
-
-# Function to generate the plot with habitats
-generate_ud_plot_whabitats <- function(pkde_data, bbox, hab_locs) {
-  ud_raster <- raster(pkde_data)
-  masked_ud_raster <- mask(ud_raster, bbox)
-  ud_df <- as.data.frame(as(masked_ud_raster, "SpatialPixelsDataFrame"))
-  colnames(ud_df) <- c("value", "x", "y")
-  
-  ggplot() +
-    geom_sf(data = bbox, color = "black") +
-    geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
-    geom_sf(data = hab_locs, color = "green", size = 3, fill = NA, shape = 3, stroke = 2) + 
-    scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
-    coord_sf() +
-    theme_classic() +
-    labs(fill = "Utilization Distribution", x = "", y = '')+
-    theme(legend.position = "none",
-          axis.text = element_text(size = 8, color = 'black'))
-}
-
-# Function to generate the plot without habitats
-generate_ud_plot <- function(pkde_data, bbox, hab_locs) {
-  ud_raster <- raster(pkde_data)
-  masked_ud_raster <- mask(ud_raster, bbox)
-  ud_df <- as.data.frame(as(masked_ud_raster, "SpatialPixelsDataFrame"))
-  colnames(ud_df) <- c("value", "x", "y")
-  
-  ggplot() +
-    geom_sf(data = bbox, color = "black") +
-    geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
-    scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
-    coord_sf() +
-    theme_classic() +
-    labs(fill = "Utilization Distribution", x = "", y = '')+
-    theme(legend.position = "none",
-          axis.text = element_text(size = 8, color = 'black'))
-}
-
-
-
-# Transform bbox
-muddyfoot_bbox_perch <- st_transform(muddyfoot_polygon, crs(raster(perch_control_PKDE)))
-muddyfoot_bbox_roach <- st_transform(muddyfoot_polygon, crs(raster(roach_control_PKDE)))
-muddyfoot_bbox_pike <- st_transform(muddyfoot_polygon, crs(raster(pike_total_PKDE)))
-
-# Generate the plots
-
-#>>> 6.1. Perch ####
-
-## CONTROL ##
-perch_control_plot <- generate_ud_plot(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-perch_control_plot_habitats <- generate_ud_plot_whabitats(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-
-#Save
-ggsave(file = paste0(save_ud_plots, "perch_control_UD_muddyfoot.png"), 
-       plot = perch_control_plot, 
-       device = 'png',
-       width = 9, 
-       height = 6.5,
-       units = 'cm',
-       dpi = 300)
-
-ggsave(file = paste0(save_ud_plots, "perch_control_UD_habitats_muddyfoot.png"), 
-       plot = perch_control_plot_habitats, 
-       device = 'png',
-       width = 9, 
-       height = 6.5,
-       units = 'cm',
-       dpi = 300)
-
-
-## EXPOSED ##
-
-perch_exposed_plot <- generate_ud_plot(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-perch_exposed_plot_habitats <- generate_ud_plot_whabitats(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-
-ggsave(file = paste0(save_ud_plots, "perch_exposed_UD_muddyfoot.png"), 
-       plot = perch_exposed_plot, 
-       device = 'png',
-       width = 9, 
-       height = 6.5,
-       units = 'cm',
-       dpi = 300)
-
-ggsave(file = paste0(save_ud_plots, "perch_exposed_UD_habitats_muddyfoot.png"), 
-       plot = perch_exposed_plot_habitats, 
-       device = 'png',
-       width = 9, 
-       height = 6.5,
-       units = 'cm',
-       dpi = 300)
-
-
-
-#Roach
-roach_control_plot <- generate_ud_plot_whabitats(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
-ggsave(file = paste0(save_ud_plots, "roach_control_UD_muddyfoot.png"), 
-       plot = roach_control_plot, 
-       width = 9, 
-       height = 6.5,
-       units = 'cm',
-       dpi = 300)
-
-
-roach_mix_plot <- generate_ud_plot(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs, "Roach exposed")
-ggsave(file = paste0(save_ud_plots, "roach_exposed_UDs_habitat_muddyfoot.png"), 
-       plot = roach_mix_plot, 
-       width = 15, 
-       height = 15,
-       units = 'cm',
-       dpi = 300)
-
-
-#Pike
-pike_control_plot <- generate_ud_plot(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs, "pike control")
-pike_mix_plot <- generate_ud_plot(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs, "pike exposed")
-pike_total_plot <- generate_ud_plot_whabitats(pike_total_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-ggsave(file = paste0(save_ud_plots, "pike_UDs_habitat_muddyfoot.png"), 
-       plot = pike_total_plot, 
-       width = 9, 
-       height = 6.5,
-       units = 'cm',
-       dpi = 300)
-
-
-# Display the plots side by side
-library(patchwork)
-prey_habitat_overlap_muddyfoot_fig <- 
-  perch_control_plot + roach_control_plot + 
-  perch_mix_plot +  roach_mix_plot +  plot_layout(nrow = 2, ncol = 2)
-
-pred_habitat_overlap_muddyfoot_fig <- pike_control_plot + pike_mix_plot + plot_layout(nrow = 2)
-
-
-#Save
-ggsave(file = paste0(save_ud_plots, "prey_UDs_habitat_muddyfoot.png"), 
-       plot = prey_habitat_overlap_muddyfoot_fig, 
-       width = 30, 
-       height = 30,
-       units = 'cm',
-       dpi = 300)
-
-
 
