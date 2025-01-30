@@ -45,7 +45,6 @@ muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, '02_muddyfoot_sub.rds'
 #- number of locations per individual
 #- number of days individuals were tracked for.
 #- number of locations per day, hour and min
-#- effective sample size for each individual used for calculating akdes
 #- daily location information
 
 #tracking date range

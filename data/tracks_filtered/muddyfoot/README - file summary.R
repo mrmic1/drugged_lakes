@@ -13,4 +13,5 @@
 #Locations where prey were tracked after being predated filtered from the dataframe.
 
 #05_muddyfoot_sub.rds
-#Add movement metrics to dataset (e.g. distance, speed)
+#effective sample size info added, roach with only 1 tracking day removed.
+
