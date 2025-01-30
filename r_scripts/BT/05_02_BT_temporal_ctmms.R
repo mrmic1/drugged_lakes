@@ -28,6 +28,10 @@ save_telem_path <- "./data/telem_obj/"
 #Post-predation tracks have also been filtered
 BT_track_data <- readRDS(paste0(filtered_data_path, "04_lake_BT_sub.rds"))
 
+#Load BT UERE
+BT_UERE <- readRDS(paste0(save_telem_path, "BT/UERE_BT.rds"))
+
+#Run the below code if you need to extract UERE again
 #I need to pull the Reference tag data again 
 #load dataframe that contains this information
 get_ref_data <-  readRDS(paste0(filtered_data_path, "01_lake_BT_sub.rds"))
@@ -107,8 +111,8 @@ ctmm::projection(pike_early_tel) <- ctmm::median(pike_early_tel)
 ctmm::projection(pike_late_tel) <- ctmm::median(pike_late_tel)
 
 #Add error model
-uere(pike_early_tel) <- UERE
-uere(pike_late_tel) <- UERE
+uere(pike_early_tel) <- BT_UERE
+uere(pike_late_tel) <- BT_UERE
 
 #save telemetry objects
 saveRDS(pike_early_tel, paste0(save_telem_path, "BT/stage/pike_BT_early_tel.rds"))
@@ -118,8 +122,8 @@ saveRDS(pike_late_tel, paste0(save_telem_path, "BT/stage/pike_BT_late_tel.rds"))
 ### CTMM Model Fitting ###
 
 #load telemetry objects
-pike_early_tel <- readRDS(paste0(save_telem_path, "BT/stage/pike_BT_early_tel.rds"))
-pike_late_tel <- readRDS(paste0(save_telem_path, "BT/stage/pike_BT_late_tel.rds"))
+#pike_early_tel <- readRDS(paste0(save_telem_path, "BT/stage/pike_BT_early_tel.rds"))
+#pike_late_tel <- readRDS(paste0(save_telem_path, "BT/stage/pike_BT_late_tel.rds"))
 
 ### EARLY ###
 cl <- makeCluster(6)  
