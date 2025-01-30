@@ -18,9 +18,6 @@ ctmm_path <- "./data/ctmm_fits/"                  # Directory for ctmm model fit
 telem_path <- "./data/telem_obj/muddyfoot/"       # Directory for telemetry objects
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
-rec_data_path <- "./data/lake_coords/reciever_and_habitat_locations/"  # Directory for receiver and habitat location data
-save_ud_plots <- "./lakes_images_traces/ud_plots/"  # Directory for saving utilization distribution plots
-enc_path <- "./data/encounters/muddyfoot/"                  # Directory for encounter data
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 
 
