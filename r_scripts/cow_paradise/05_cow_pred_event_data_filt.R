@@ -24,13 +24,17 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 # Paths to directories containing the necessary data files
 filtered_data_path <- "./data/tracks_filtered/lake_cow_paradise/"
 telem_path <- "./data/telem_obj/"
-enc_path <- "./data/encounters/cow_paradise/"
+enc_path <- "./data/encounters/"
 save_ctmm_path = "./data/ctmm_fits/"
 
 ### DATA LOADING ###
 cow_telem_data <-  readRDS(paste0(filtered_data_path, "03_lake_cow_sub.rds"))
 # Load the predation event dataframe 
-cow_pred_mort_events <- readRDS(paste0(enc_path, "cow_pred_encounter_summary_filtered.rds"))
+cow_pred_mort_events <- readRDS(paste0(enc_path, "cow_paradise/cow_pred_encounter_summary_filtered.rds"))
+# Load suspected dates for pike deaths
+pike_deaths <- read.csv(paste0(enc_path, "pike_deaths.csv"))
+
+
 
 #-------------------------------------------------#
 # 1. Filter out post-predation event data ####
@@ -52,7 +56,7 @@ pred_cols$death_date <- ifelse(!is.na(pred_cols$first_date_over_50), pred_cols$f
 pred_cols$death_date <- as.Date(pred_cols$death_date, origin = "1970-01-01")
 
 # Filter out data after the predation or mortality event for each individual.
-cow_filt_data <- 
+cow_telem_data_2 <- 
   cow_telem_data %>%
   left_join(pred_cols, by = c("individual_ID" = "individual_ID")) %>%
   filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
@@ -60,14 +64,45 @@ cow_filt_data <-
 #post-filter rows: 8824287
 #36706 rows removed
 
-print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data) - nrow(cow_filt_data)))
+print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data) - nrow(cow_telem_data_2)))
+
+#------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------------------------------------------------------------------#
+
+#-------------------------------------------------#
+# 2. Filter out pike post-mortality data ####
+#-------------------------------------------------#
+
+#Some pike died in Lake Cow Paradise. Need to filter out date post-suspected mortality date
+
+# Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
+pike_mort_cols <- 
+  pike_deaths %>%
+  filter(individual_ID %in% cow_telem_data_2$individual_ID) %>% 
+  mutate(
+    pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y"))
+
+
+#check
+str(pike_mort_cols)
+
+# Filter out data after the predation or mortality event for each individual.
+cow_filt_data <- 
+  cow_telem_data_2 %>%
+  left_join(pike_mort_cols, by = c("individual_ID" = "individual_ID")) %>%
+  filter(is.na(pike_death_date)| Date <= pike_death_date)  # Keep only pre-predation data
+#pre-filter rows: 8824287
+#post-filter rows: 8793919
+
+print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data_2) - nrow(cow_filt_data)))
+#30368
 
 #save
 saveRDS(cow_filt_data, paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 
 
 #------------------------------------------------------------#
-# 2. Rerun ctmm models for individuals that were predated ####
+# 3. Rerun ctmm models for individuals that were predated ####
 #------------------------------------------------------------#
 
 #I need to pull the Reference tag data again 
