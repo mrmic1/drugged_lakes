@@ -107,7 +107,7 @@ saveRDS(cow_filt_data, paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 
 #I need to pull the Reference tag data again 
 #load dataframe that contains this information
-get_ref_data <-  readRDS(paste0(filtered_data_path, "01_cow_sub.rds"))
+get_ref_data <-  readRDS(paste0(filtered_data_path, "01_lake_cow_sub.rds"))
 
 ref_data <- get_ref_data %>% 
   filter(individual_ID == 'FReference') %>% 
@@ -136,6 +136,8 @@ summary(UERE)
 
 
 #> 2.1. Perch ####
+
+cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 
 #Extract predated individual from the data frame
 predated_perch_ID <- 
@@ -214,3 +216,41 @@ pred_roach_fits <-
     saveRDS(model_fit, file = paste0(save_ctmm_path, "cow_roach_fits/", names(pred_roach_tel)[i], ".rds"))
     model_fit
   }
+
+#> 2.3. Pike ####
+
+pike_ids <- 
+  pike_deaths %>%
+  filter(individual_ID %in% cow_filt_data$individual_ID) %>% 
+  mutate(
+    pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y")) %>%  
+  pull(individual_ID)
+
+#only 1 pike, because 893 has no data as it died soon after release
+
+pike_mort_data <- 
+  cow_filt_data %>% 
+  filter(individual_ID %in% pike_ids)
+
+pike_mort_data <- 
+  with(pike_mort_data, 
+       data.frame(
+         "timestamp" = timestamp,                        
+         "location.long" = longitude,                         
+         "location.lat" = latitude, 
+         "GPS.HDOP" = HDOP,                               
+         "individual-local-identifier" = individual_ID))
+
+#create telemetry object for predated roach
+pike_mort_tel <- as.telemetry(pike_mort_data, 
+                              timezone = "Europe/Stockholm",   
+                              timeformat = "%Y-%m-%d %H:%M:%S",
+                              projection = NULL,               
+                              datum = "WGS84")
+
+ctmm::projection(pike_mort_tel) <- ctmm::median(pike_mort_tel)
+uere(pike_mort_tel) <- UERE
+
+mort_pike_guess <- ctmm.guess(pike_mort_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
+mort_pike_fit <- ctmm.fit(pike_mort_tel, mort_pike_guess, method = 'ML', trace = TRUE)
+saveRDS(mort_pike_fit, file = paste0(save_ctmm_path, "lake_cow_pike_fits/", "F59896.rds"))

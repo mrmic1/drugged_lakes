@@ -203,7 +203,54 @@ pred_roach_fits <-
     model_fit
   }
 
-saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "pred_roach_fits.rds"))#
+saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "pred_roach_fits.rds"))
+
+#> 2.3. Pike ####
+
+pike_ids <- 
+  pike_deaths %>%
+  filter(individual_ID %in% BT_filt_data$individual_ID) %>% 
+  mutate(
+    pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y")) %>%  
+  pull(individual_ID)
+
+
+pike_mort_data <- 
+  BT_filt_data %>% 
+  filter(individual_ID %in% pike_ids)
+
+pike_mort_data <- 
+  with(pike_mort_data, 
+       data.frame(
+         "timestamp" = timestamp,                        
+         "location.long" = longitude,                         
+         "location.lat" = latitude, 
+         "GPS.HDOP" = HDOP,                               
+         "individual-local-identifier" = individual_ID))
+
+#create telemetry object for predated roach
+pike_mort_tel <- as.telemetry(pike_mort_data, 
+                               timezone = "Europe/Stockholm",   
+                               timeformat = "%Y-%m-%d %H:%M:%S",
+                               projection = NULL,               
+                               datum = "WGS84")
+
+ctmm::projection(pike_mort_tel) <- ctmm::median(pike_mort_tel)
+uere(pike_mort_tel) <- UERE
+
+#Initialize a parallel cluster to speed up model fitting for each fish individual.
+cl <- makeCluster(3)
+doParallel::registerDoParallel(cl)
+
+pike_mort_fits <- 
+  foreach(i = 1:length(pike_mort_tel), .packages = 'ctmm') %dopar% {
+    pike_mort_guess <- ctmm.guess(pike_mort_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pike_mort_tel[[i]], pike_mort_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_BT_pike_fits/", names(pike_mort_tel)[i], ".rds"))
+    model_fit
+  }
+
 
 #-----------------------------------------------------------------------------------------------------#
 #-----------------------------------------------------------------------------------------------------#
@@ -212,8 +259,8 @@ saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "p
 #CREATE CTMM LIST FOR BT ROACH
 
 ###
-open_ctmm_path = "./data/ctmm_fits/lake_BT_roach_fits/"
-save_ctmm_path = "./data/ctmm_fits/lake_BT_roach_fits/"
+open_ctmm_path = "./data/ctmm_fits/lake_BT_pike_fits/"
+save_ctmm_path = "./data/ctmm_fits/lake_BT_pike_fits/"
 
 # List all RDS files in the folder
 rds_files <- list.files(path = open_ctmm_path, pattern = "\\.rds$", full.names = TRUE)
@@ -233,27 +280,29 @@ print(names(rds_list))
 #OUF is already extracted. 
 #Use roach_pred_ids created earlier in the script
 
-lake_BT_roach_ctmm_fits <- rds_list[!names(rds_list) %in% roach_pred_ids]
-print(names(muddyfoot_roach_ctmm_fits))
+pike_pred_ids <- c("F59892", "F59886", "F59889")
+
+lake_BT_pike_ctmm_fits <- rds_list[!names(rds_list) %in% pike_pred_ids]
+print(names(lake_BT_pike_ctmm_fits))
 
 # Create a list of remaining elements
-remaining_list <- rds_list[names(rds_list) %in% roach_pred_ids]
-
+remaining_list <- rds_list[names(rds_list) %in% pike_pred_ids]
+print(names(remaining_list))
 
 # ------------------ Extract OUF models ----------------------- #
 
-lake_BT_roach_OUF_models <- list()
+lake_BT_pike_OUF_models <- list()
 
 #Iterate over each object in muddyfoot_roach_ctmm_fits and extract the 'OUF anisotropic error' models
-lake_BT_roach_OUF_models <- lapply(lake_BT_roach_ctmm_fits, function(x) x[['OUF anisotropic error']])
+lake_BT_pike_OUF_models <- lapply(lake_BT_pike_ctmm_fits, function(x) x[['OUF anisotropic error']])
 #check it worked
-summary(lake_BT_roach_OUF_models$F59766)
+summary(lake_BT_pike_OUF_models$F59887)
 
 #rejoin pred filtered models
-lake_BT_roach_OUF_models <- c(lake_BT_roach_OUF_models, remaining_list)[names(rds_list)]
+lake_BT_pike_OUF_models <- c(lake_BT_pike_OUF_models, remaining_list)[names(rds_list)]
 #check that ID are in chonological order
-names(lake_BT_roach_OUF_models)
+names(lake_BT_pike_OUF_models)
 
 #save
-saveRDS(lake_BT_roach_OUF_models, paste0(save_ctmm_path, "lake_BT_roach_OUF_models.rds"))
+saveRDS(lake_BT_pike_OUF_models, paste0(save_ctmm_path, "lake_BT_pike_OUF_models.rds"))
 

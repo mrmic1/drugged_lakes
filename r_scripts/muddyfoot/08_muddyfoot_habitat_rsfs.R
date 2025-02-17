@@ -14,12 +14,12 @@ library(foreach)     # Looping construct for parallel execution
 library(doParallel)  # Parallel backend for foreach loops
 
 ### DIRECTORIES ###
-polygon_path = "./data/lake_coords/muddyfoot/"
+polygon_path = "./data/lake_coords/"
 ctmm_path = "./data/ctmm_fits/"
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 telem_path <- "./data/telem_obj/muddyfoot/" 
 rec_data_path = "./data/lake_coords/reciever_and_habitat_locations/"
-enc_path <- "./data/encounters/"                  # Directory for encounter data
+enc_path <- "./data/encounters/muddyfoot/"                  # Directory for encounter data
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 rsf_path <- "./data/rsfs/habitats/"
 save_plots <- "./plots/muddyfoot/"  # Directory for saving utilization distribution plots
@@ -34,6 +34,19 @@ mud_hab_locs <- st_read(mud_rec_locs_kml)[6:7,]#receiver and habitat locations
 pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
 perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
 roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
+
+#remove poor tracking roach
+# Check predation event data (pre-identified predation events) for individual with many missing dates
+mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
+
+# Remove Roach individuals that were predated based on predation events
+roach_ids_remove <- mud_pred_mort_events %>%
+  filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
+  pull(individual_ID)               # Extract IDs of predated Roach
+
+# Update the Roach AKDE list and telemetry data, removing predated individuals
+roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
+roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
 
 #fish ctmms 
 pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
@@ -311,6 +324,7 @@ result_table <- do.call(rbind, lapply(unique_ids, function(id) {
 print(result_table)
 
 
+
 #telemetry objects
 roach_control_tel <- roach_muddyfoot_tel[1:14]
 roach_mix_tel <- roach_muddyfoot_tel[14:28]
@@ -340,7 +354,7 @@ pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
 ### CONTROL ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(15)
 doParallel::registerDoParallel(cl)
 rsf_perch_control_list <- list()
 
@@ -371,16 +385,15 @@ names(rsf_perch_control_list) <- names(perch_control_tel)
 summary(rsf_perch_control_list$F59702)
 summary(rsf_perch_control_list$F59697)
 
-#saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
+saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
 
 
 ### EXPOSED ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(15)
 doParallel::registerDoParallel(cl)
 rsf_perch_mix_list <- list()
 
-# Assuming perch_control_tel and perch_control_akdes are lists of corresponding elements
 rsf_perch_mix_list <- foreach(i = seq_along(perch_mix_tel), .packages = "ctmm") %dopar% {
   
   # Run the rsf.select model
@@ -412,7 +425,7 @@ saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list
 
 ### CONTROL ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 rsf_roach_control_list <- list()
 
@@ -440,8 +453,8 @@ stopCluster(cl)
 names(rsf_roach_control_list) <- names(roach_control_tel)
 
 #check
-summary(rsf_roach_control_list$F59702)
-summary(rsf_roach_control_list$F59697)
+summary(rsf_roach_control_list$F59683)
+summary(rsf_roach_control_list$F59684)
 
 saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
 
@@ -449,7 +462,7 @@ saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_cont
 
 ### EXPOSED ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 rsf_roach_mix_list <- list()
 

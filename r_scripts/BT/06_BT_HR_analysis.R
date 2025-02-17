@@ -18,7 +18,7 @@ telem_path <- "./data/telem_obj/BT/"       # Directory for telemetry objects
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
 filtered_data_path <- "./data/tracks_filtered/lake_BT/"
-
+enc_path <- "./data/encounters/BT/"
 
 ### LOAD DATA ###
 
@@ -78,7 +78,7 @@ pike_akdes_cg <- foreach(i = 1:length(pike_BT_tel), .packages = 'ctmm') %dopar% 
     grid = list(dr = pike_akde_ref$dr,             # Use reference grid resolution
                 align.to.origin = TRUE))      # Align the grid to the origin
   # Save the AKDE result for each individual pike
-  saveRDS(akde_fit_cg, file = paste0(akde_path, "BT_pike_akdes/akde_cg/", names(pike_BT_tel)[i], "_akde_cg.rds"))
+  saveRDS(akde_fit_cg, file = paste0(akde_path, "lake_BT_pike_akdes/akde_cg/", names(pike_BT_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
 }
 
@@ -92,7 +92,7 @@ names(pike_akdes_cg) <- names(pike_BT_tel)
 summary(pike_akdes_cg$F59880)
 
 # Save the complete list of Pike AKDEs with consistent grid
-saveRDS(pike_akdes_cg, paste0(akde_path, "BT_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
+saveRDS(pike_akdes_cg, paste0(akde_path, "lake_BT_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
 
 #------------------------------------------------#
 
@@ -109,8 +109,8 @@ perch_akde_ref <- akde(perch_BT_tel[[10]], perch_BT_ctmm_fits[[10]], weights = F
 # Initialize the list to store AKDEs with consistent grid for Perch
 perch_akdes_cg <- list()
 
-# Set up parallel processing using 3 cores
-cl <- makeCluster(3)
+# Set up parallel processing using 10 cores
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 
 # Estimate AKDE for each individual perch using the reference grid
@@ -124,7 +124,7 @@ perch_akdes_cg <- foreach(i = 1:length(perch_BT_tel), .packages = 'ctmm') %dopar
     grid = list(dr = perch_akde_ref$dr,             # Use reference grid resolution
                 align.to.origin = TRUE))      # Align the grid to the origin
   # Save the AKDE result for each individual perch
-  saveRDS(akde_fit_cg, file = paste0(akde_path, "BT_perch_akdes/akde_cg/", names(perch_BT_tel)[i], "_akde_cg.rds"))
+  saveRDS(akde_fit_cg, file = paste0(akde_path, "lake_BT_perch_akdes/akde_cg/", names(perch_BT_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
 }
 
@@ -135,10 +135,10 @@ stopCluster(cl)
 names(perch_akdes_cg) <- names(perch_BT_tel)
 
 # View summary of all perch AKDEs
-summary(perch_akdes_cg)
+summary(perch_akdes_cg$F59749)
 
 # Save the complete list of Perch AKDEs with consistent grid
-saveRDS(perch_akdes_cg, paste0(akde_path, "BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+saveRDS(perch_akdes_cg, paste0(akde_path, "lake_BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
 
 #----------------------------------------------------------#
 
@@ -170,7 +170,7 @@ roach_akdes_cg <- foreach(i = 1:length(roach_BT_tel), .packages = 'ctmm') %dopar
     grid = list(dr = roach_akde_ref$dr,             # Use reference grid resolution
                 align.to.origin = TRUE))      # Align the grid to the origin
   # Save the AKDE result for each individual roach
-  saveRDS(akde_fit_cg, file = paste0(akde_path, "BT_roach_akdes/akde_cg/", names(roach_BT_tel)[i], "_akde_cg.rds"))
+  saveRDS(akde_fit_cg, file = paste0(akde_path, "lake_BT_roach_akdes/akde_cg/", names(roach_BT_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
 }
 
@@ -184,7 +184,7 @@ names(roach_akdes_cg) <- names(roach_BT_tel)
 summary(roach_akdes_cg$F59683)
 
 # Save the complete list of Roach AKDEs with consistent grid
-saveRDS(roach_akdes_cg_list, paste0(akde_path, "BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+saveRDS(roach_akdes_cg, paste0(akde_path, "lake_BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
 #---------------------------------------------------------------------------------------------------------------#
 
@@ -196,21 +196,9 @@ saveRDS(roach_akdes_cg_list, paste0(akde_path, "BT_roach_akdes/akde_cg/roach_akd
 # for Pike, Perch, and Roach species, excluding individuals that were predated.
 
 # Load AKDEs for each species from previously saved files
-pike_akdes_cg_list <- readRDS(paste0(akde_path, "BT_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
-perch_akdes_cg_list <- readRDS(paste0(akde_path, "BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
-roach_akdes_cg_list <- readRDS(paste0(akde_path, "BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
-
-# Check predation event data (pre-identified predation events) for individual with many missing dates
-mud_pred_mort_events <- readRDS(paste0(enc_path, "BT_pred_encounter_summary_filtered.rds"))
-
-# Remove Roach individual that had poor tracking - if not already removed
-roach_ids_remove <- mud_pred_mort_events %>%
-  filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
-  pull(individual_ID)               # Extract IDs of predated Roach
-
-# Update the Roach AKDE list and telemetry data, removing predated individuals
-roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
-roach_BT_tel <- roach_BT_tel[!(names(roach_BT_tel) %in% roach_ids_remove)]
+pike_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
+perch_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
 
 #> 2.2. Pike  ####
@@ -233,7 +221,7 @@ pike_control_PKDE <- pkde(pike_control_tel,   # Telemetry data for the control g
                           SP.in = TRUE)       # Ensure the PKDE confines the movements within the polygon
 
 # Save the population-level AKDE for the control group
-saveRDS(pike_control_PKDE, paste0(akde_path, "BT_pike_akdes/population_akde/pike_control_PKDE.rds"))
+saveRDS(pike_control_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/pike_control_PKDE.rds"))
 
 # Calculate population-level AKDE for the mixed group
 pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed group
@@ -241,7 +229,7 @@ pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed gro
                       SP = BT_sp_data, # Spatial polygon for the lake boundary
                       SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
-saveRDS(pike_mix_PKDE, paste0(akde_path, "BT_pike_akdes/population_akde/pike_mix_PKDE.rds"))
+saveRDS(pike_mix_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/pike_mix_PKDE.rds"))
 
 # Calculate population-level AKDE for all pike - to be used as probability distribution raster
 pike_total_PKDE <- pkde(pike_BT_tel,           # Telemetry data for individuals
@@ -250,7 +238,7 @@ pike_total_PKDE <- pkde(pike_BT_tel,           # Telemetry data for individuals
                         SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
 # Save the population-level AKDE for the mixed group
-saveRDS(pike_total_PKDE, paste0(akde_path, "BT_pike_akdes/population_akde/pike_total_PKDE.rds"))
+saveRDS(pike_total_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/pike_total_PKDE.rds"))
 
 
 
@@ -294,14 +282,14 @@ perch_control_PKDE <- pkde(perch_control_tel,
                            SP = BT_sp_data,
                            SP.in = TRUE)
 
-saveRDS(perch_control_PKDE, paste0(akde_path, "BT_perch_akdes/population_akde/perch_control_PKDE.rds"))
+saveRDS(perch_control_PKDE, paste0(akde_path, "lake_BT_perch_akdes/population_akde/perch_control_PKDE.rds"))
 
 perch_mix_PKDE <- pkde(perch_mix_tel,
                        perch_mix_akdes, 
                        SP = BT_sp_data,
                        SP.in = TRUE)
 
-saveRDS(perch_mix_PKDE, paste0(akde_path, "BT_perch_akdes/population_akde/perch_mix_PKDE.rds"))
+saveRDS(perch_mix_PKDE, paste0(akde_path, "lake_BT_perch_akdes/population_akde/perch_mix_PKDE.rds"))
 
 # > 2.4. Roach ####
 
@@ -331,12 +319,12 @@ print(result_table)
 
 
 #telemetry objects
-roach_control_tel <- roach_BT_tel[1:14]
-roach_mix_tel <- roach_BT_tel[15:28]
+roach_control_tel <- roach_BT_tel[1:15]
+roach_mix_tel <- roach_BT_tel[16:30]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[1:14]
-roach_mix_akdes <- roach_akdes_cg_list[15:28]
+roach_control_akdes <- roach_akdes_cg_list[1:15]
+roach_mix_akdes <- roach_akdes_cg_list[16:30]
 
 #calculate population-level autocorrelated kernel density home range estimates
 roach_control_PKDE <- pkde(roach_control_tel,
@@ -344,14 +332,14 @@ roach_control_PKDE <- pkde(roach_control_tel,
                            SP = BT_sp_data,
                            SP.in = TRUE)
 
-saveRDS(roach_control_PKDE, paste0(akde_path, "BT_roach_akdes/population_akde/roach_control_PKDE.rds"))
+saveRDS(roach_control_PKDE, paste0(akde_path, "lake_BT_roach_akdes/population_akde/roach_control_PKDE.rds"))
 
 roach_mix_PKDE <- pkde(roach_mix_tel,
                        roach_mix_akdes, 
                        SP = BT_sp_data,
                        SP.in = TRUE)
 
-saveRDS(roach_mix_PKDE, paste0(akde_path, "BT_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+saveRDS(roach_mix_PKDE, paste0(akde_path, "lake_BT_roach_akdes/population_akde/roach_mix_PKDE.rds"))
 
 #-----------------------------------------------------------------------------------------------------#
 #-----------------------------------------------------------------------------------------------------#
