@@ -41,24 +41,24 @@ pike_deaths <- read.csv(paste0(enc_path, "pike_deaths.csv"))
 #-------------------------------------------------#
 
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
-pred_cols <- 
+cow_pred_cols <- 
   cow_pred_mort_events %>%
   filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
   mutate(
     first_date_over_50 = as.Date(first_date_over_50),
     death_date = as.Date(death_date)) %>% 
-  dplyr::select(individual_ID, first_date_over_50, death_date)
+  dplyr::select(individual_ID, Species, first_date_over_50, death_date)
 
 # Merge into single death_date column
-pred_cols$death_date <- ifelse(!is.na(pred_cols$first_date_over_50), pred_cols$first_date_over_50, pred_cols$death_date)
+cow_pred_cols$death_date <- ifelse(!is.na(cow_pred_cols$first_date_over_50), cow_pred_cols$first_date_over_50, cow_pred_cols$death_date)
 
 # Ensure the merged_date column is of Date type
-pred_cols$death_date <- as.Date(pred_cols$death_date, origin = "1970-01-01")
+cow_pred_cols$death_date <- as.Date(cow_pred_cols$death_date, origin = "1970-01-01")
 
 # Filter out data after the predation or mortality event for each individual.
 cow_telem_data_2 <- 
   cow_telem_data %>%
-  left_join(pred_cols, by = c("individual_ID" = "individual_ID")) %>%
+  left_join(cow_pred_cols, by = c("individual_ID" = "individual_ID")) %>%
   filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
 #pre-filter rows: 8860993
 #post-filter rows: 8824287
@@ -99,7 +99,7 @@ print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data_2) - nrow(co
 
 #save
 saveRDS(cow_filt_data, paste0(filtered_data_path, "04_lake_cow_sub.rds"))
-
+cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 
 #------------------------------------------------------------#
 # 3. Rerun ctmm models for individuals that were predated ####
@@ -137,17 +137,16 @@ summary(UERE)
 
 #> 2.1. Perch ####
 
-cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 
 #Extract predated individual from the data frame
 predated_perch_ID <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1 & Species == 'Perch') %>% 
+  cow_pred_cols %>%
+  filter(Species == 'Perch') %>% 
   pull(individual_ID)
 
 pred_perch_data <- 
   cow_filt_data %>% 
-  filter(individual_ID == predated_perch_ID)
+  filter(individual_ID %in% predated_perch_ID)
 
 pred_perch_data <- 
   with(pred_perch_data, 
@@ -168,16 +167,26 @@ pred_perch_tel <- as.telemetry(pred_perch_data,
 ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
 uere(pred_perch_tel) <- UERE
 
-pred_perch_guess <- ctmm.guess(pred_perch_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
-pred_perch_fit <- ctmm.fit(pred_perch_tel, pred_perch_guess, method = 'ML', trace = TRUE)
-saveRDS(pred_perch_fit, file = paste0(save_ctmm_path, "cow_perch_fits/", "F59692.rds"))
+#Initialize a parallel cluster to speed up model fitting for each fish individual.
+cl <- makeCluster(4)
+doParallel::registerDoParallel(cl)
+
+# Perform model fitting using ctmm for each individual in the telemetry data.
+cow_pred_perch_fits <- 
+  foreach(i = 1:length(pred_perch_tel), .packages = 'ctmm') %dopar% {
+    pred_perch_guess <- ctmm.guess(pred_perch_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_perch_tel[[i]], pred_perch_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_cow_perch_fits/", names(pred_perch_tel)[i],".rds"))
+    model_fit
+  }
 
 #> 2.2. Roach ####
 
 #Extract predated individual from the data frame
 predated_roach_IDs <- 
-  mud_pred_events %>%
-  filter(likely_predated == 1 & Species == 'Roach') %>% 
+  cow_pred_cols %>%
+  filter(Species == 'Roach') %>% 
   pull(individual_ID)
 
 pred_roach_data <- 
@@ -203,19 +212,11 @@ pred_roach_tel <- as.telemetry(pred_roach_data,
 ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
 uere(pred_roach_tel) <- UERE
 
-#Initialize a parallel cluster to speed up model fitting for each fish individual.
-cl <- makeCluster(5)
-doParallel::registerDoParallel(cl)
+pred_roach_guess <- ctmm.guess(pred_roach_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
+F59828_ctmm_fit <-   ctmm.fit(pred_roach_tel, pred_roach_guess, method = 'ML')
+saveRDS(F59828_ctmm_fit, file = paste0(save_ctmm_path, "lake_cow_roach_fits/", "F59828.rds"))
 
-# Perform model fitting using ctmm for each individual in the telemetry data.
-pred_roach_fits <- 
-  foreach(i = 1:length(pred_roach_tel), .packages = 'ctmm') %dopar% {
-    pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
-    model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
-    # Save individual model fits to a specified folder.
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "cow_roach_fits/", names(pred_roach_tel)[i], ".rds"))
-    model_fit
-  }
+
 
 #> 2.3. Pike ####
 
@@ -254,3 +255,170 @@ uere(pike_mort_tel) <- UERE
 mort_pike_guess <- ctmm.guess(pike_mort_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
 mort_pike_fit <- ctmm.fit(pike_mort_tel, mort_pike_guess, method = 'ML', trace = TRUE)
 saveRDS(mort_pike_fit, file = paste0(save_ctmm_path, "lake_cow_pike_fits/", "F59896.rds"))
+
+#------------------------------------------------------------------------------------------------#
+#------------------------------------------------------------------------------------------------#
+
+### PIKE ###
+
+#RE_EXTRACT OUF MODELS
+#RE_CREATE CTMM LIST FOR COW PARADISE WITH UPDATED CTMM MODELS
+
+###
+open_ctmm_path = "./data/ctmm_fits/lake_cow_pike_fits/"
+save_ctmm_path = "./data/ctmm_fits/lake_cow_pike_fits/"
+
+# List all RDS files in the folder
+rds_files <- list.files(path = open_ctmm_path, pattern = "\\.rds$", full.names = TRUE)
+
+# Read all RDS files into a list
+rds_list <- lapply(rds_files, readRDS)
+
+# Read all RDS files into a list
+names(rds_list) <- basename(rds_files)
+names(rds_list) <- sub("\\.rds$", "", names(rds_list))
+
+# Print the names of the loaded RDS files
+print(names(rds_list))
+
+#remove pred filtered ids 
+#these were rerun using ctmm.fit so we do not need to extract OUF
+#OUF is already extracted. 
+#Use roach_pred_ids created earlier in the script
+
+pike_pred_ids <- c("F59896")
+
+lake_cow_pike_ctmm_fits <- rds_list[!names(rds_list) %in% pike_pred_ids]
+print(names(lake_cow_pike_ctmm_fits))
+
+# Create a list of remaining elements
+remaining_list <- rds_list[names(rds_list) %in% pike_pred_ids]
+print(names(remaining_list))
+
+# ------------------ Extract OUF models ----------------------- #
+
+lake_cow_pike_OUF_models <- list()
+
+#Iterate over each object in muddyfoot_roach_ctmm_fits and extract the 'OUF anisotropic error' models
+lake_cow_pike_OUF_models <- lapply(lake_cow_pike_ctmm_fits, function(x) x[['OUF anisotropic error']])
+#check it worked
+summary(lake_cow_pike_OUF_models$F59894)
+
+#rejoin pred filtered models
+lake_cow_pike_OUF_models <- c(lake_cow_pike_OUF_models, remaining_list)[names(rds_list)]
+#check that ID are in chonological order
+names(lake_cow_pike_OUF_models)
+
+#save
+saveRDS(lake_cow_pike_OUF_models, paste0(save_ctmm_path, "lake_cow_pike_OUF_models.rds"))
+
+
+### perch ###
+
+#RE_EXTRACT OUF MODELS
+#RE_CREATE CTMM LIST FOR COW PARADISE WITH UPDATED CTMM MODELS
+
+###
+open_ctmm_path = "./data/ctmm_fits/lake_cow_perch_fits/"
+save_ctmm_path = "./data/ctmm_fits/lake_cow_perch_fits/"
+
+# List all RDS files in the folder
+rds_files <- list.files(path = open_ctmm_path, pattern = "\\.rds$", full.names = TRUE)
+
+# Read all RDS files into a list
+rds_list <- lapply(rds_files, readRDS)
+
+# Read all RDS files into a list
+names(rds_list) <- basename(rds_files)
+names(rds_list) <- sub("\\.rds$", "", names(rds_list))
+
+# Print the names of the loaded RDS files
+print(names(rds_list))
+
+#remove pred filtered ids 
+#these were rerun using ctmm.fit so we do not need to extract OUF
+#OUF is already extracted. 
+#Use roach_pred_ids created earlier in the script
+
+perch_pred_ids <- c("F59852", "F59878", "F59853", "F59847")
+
+lake_cow_perch_ctmm_fits <- rds_list[!names(rds_list) %in% perch_pred_ids]
+print(names(lake_cow_perch_ctmm_fits))
+
+# Create a list of remaining elements
+remaining_list <- rds_list[names(rds_list) %in% perch_pred_ids]
+print(names(remaining_list))
+
+# ------------------ Extract OUF models ----------------------- #
+
+lake_cow_perch_OUF_models <- list()
+
+#Iterate over each object in muddyfoot_roach_ctmm_fits and extract the 'OUF anisotropic error' models
+lake_cow_perch_OUF_models <- lapply(lake_cow_perch_ctmm_fits, function(x) x[['OUF anisotropic error']])
+#check it worked
+summary(lake_cow_perch_OUF_models$F59839)
+
+#rejoin pred filtered models
+lake_cow_perch_OUF_models <- c(lake_cow_perch_OUF_models, remaining_list)[names(rds_list)]
+#check that ID are in chonological order
+names(lake_cow_perch_OUF_models)
+
+#save
+saveRDS(lake_cow_perch_OUF_models, paste0(save_ctmm_path, "lake_cow_perch_OUF_models.rds"))
+
+### Roach ###
+
+#RE_EXTRACT OUF MODELS
+#RE_CREATE CTMM LIST FOR COW PARADISE WITH UPDATED CTMM MODELS
+
+###
+open_ctmm_path = "./data/ctmm_fits/lake_cow_roach_fits/"
+save_ctmm_path = "./data/ctmm_fits/lake_cow_roach_fits/"
+
+# List all RDS files in the folder
+rds_files <- list.files(path = open_ctmm_path, pattern = "\\.rds$", full.names = TRUE)
+
+# Read all RDS files into a list
+rds_list <- lapply(rds_files, readRDS)
+
+# Read all RDS files into a list
+names(rds_list) <- basename(rds_files)
+names(rds_list) <- sub("\\.rds$", "", names(rds_list))
+
+# Print the names of the loaded RDS files
+print(names(rds_list))
+
+#remove pred filtered ids 
+#these were rerun using ctmm.fit so we do not need to extract OUF
+#OUF is already extracted. 
+#Use roach_pred_ids created earlier in the script
+
+roach_pred_ids <- c("F59828", "F59819")
+
+lake_cow_roach_ctmm_fits <- rds_list[!names(rds_list) %in% roach_pred_ids]
+print(names(lake_cow_roach_ctmm_fits))
+
+# Create a list of remaining elements
+remaining_list <- rds_list[names(rds_list) %in% roach_pred_ids]
+print(names(remaining_list))
+
+# ------------------ Extract OUF models ----------------------- #
+
+lake_cow_roach_OUF_models <- list()
+
+#Iterate over each object in muddyfoot_roach_ctmm_fits and extract the 'OUF anisotropic error' models
+lake_cow_roach_OUF_models <- lapply(lake_cow_roach_ctmm_fits, function(x) x[['OUF anisotropic error']])
+#check it worked
+summary(lake_cow_roach_OUF_models$F59832)
+
+#rejoin pred filtered models
+lake_cow_roach_OUF_models <- c(lake_cow_roach_OUF_models, remaining_list)[names(rds_list)]
+#check that ID are in chonological order
+names(lake_cow_roach_OUF_models)
+
+summary(lake_cow_roach_OUF_models$F59819)
+
+#save
+saveRDS(lake_cow_roach_OUF_models, paste0(save_ctmm_path, "lake_cow_roach_OUF_models.rds"))
+
+
