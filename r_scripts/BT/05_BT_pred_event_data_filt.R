@@ -306,3 +306,80 @@ names(lake_BT_pike_OUF_models)
 #save
 saveRDS(lake_BT_pike_OUF_models, paste0(save_ctmm_path, "lake_BT_pike_OUF_models.rds"))
 
+#----------------------------------------------------------------------------------------------------------#
+#------------------------------------------------------------------------#
+# 4. Rerun telemetry object for all individuals with filtered dataset ####
+#------------------------------------------------------------------------#
+
+BT_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_BT_sub.rds"))
+
+BT_movebank <- 
+  with(BT_filt_data, 
+       data.frame(
+         "timestamp" = timestamp,                        
+         "location.long" = longitude,                         
+         "location.lat" = latitude, 
+         "GPS.HDOP" = HDOP,                               
+         "individual-local-identifier" = individual_ID, 
+         "Species" = Species,
+         "Treatment" = Treatment,                        
+         "Date" = Date,
+         "Exp_Stage" = Exp_Stage,
+         "Time_Of_Day" = Time_Of_Day
+       ))
+
+BT_tel <- as.telemetry(BT_movebank, 
+                        timezone = "Europe/Stockholm", 
+                        timeformat="%Y-%m-%d %H:%M:%S", 
+                        projection= NULL,
+                        datum="WGS84",
+                        keep = c("Species","Treatment", 
+                                 "Date", "Exp_Stage", "Time_Of_Day"))
+
+ctmm::projection(BT_tel) <- ctmm::median(BT_tel)
+
+# Remove outliers based on species maximum swim speeds #
+
+#Pike = 0.823
+#Perch = 0.977
+#Roach = 0.841
+
+#first seperate telemetry object by species 
+#check whether ids are in species order
+BT_movebank %>%
+  select(Species, individual.local.identifier) %>%
+  distinct() %>%
+  arrange(individual.local.identifier)
+
+#need to order them by id number
+BT_tel <- BT_tel[order(names(BT_tel))]
+names(BT_tel)
+
+#mostly in order except for the first perch
+pike_BT_tel <- BT_tel[61:66]
+perch_BT_tel <- BT_tel[c(1:15, 31:44, 46)]
+roach_BT_tel <- BT_tel[c(16:30, 45, 47:60)]
+
+#remove outliers based on speed
+#pike
+out_pike <- outlie(pike_BT_tel, plot = FALSE)
+sum(sapply(out_pike, function(x) sum(x$speed > 0.823)))
+
+saveRDS(pike_BT_tel , paste0(telem_path, "BT/pike_BT_tel.rds")) 
+
+#Perch
+out_perch <- outlie(perch_BT_tel, plot = FALSE)
+sum(sapply(out_perch, function(x) sum(x$speed > 0.977)))
+#11
+
+saveRDS(perch_BT_tel , paste0(telem_path, "BT/perch_BT_tel.rds"))
+
+#Roach
+out_roach <- outlie(roach_BT_tel, plot = FALSE)
+sum(sapply(out_roach, function(x) sum(x$speed > 0.841)))
+
+#save telemetry object
+saveRDS(roach_BT_tel , paste0(telem_path, "BT/roach_BT_tel.rds"))
+
+
+

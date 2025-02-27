@@ -421,4 +421,76 @@ summary(lake_cow_roach_OUF_models$F59819)
 #save
 saveRDS(lake_cow_roach_OUF_models, paste0(save_ctmm_path, "lake_cow_roach_OUF_models.rds"))
 
+#----------------------------------------------------------------------------------------------------------#
+#------------------------------------------------------------------------#
+# 4. Rerun telemetry object for all individuals with filtered dataset ####
+#------------------------------------------------------------------------#
 
+cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
+
+cow_movebank <- 
+  with(cow_filt_data, 
+       data.frame(
+         "timestamp" = timestamp,                        
+         "location.long" = longitude,                         
+         "location.lat" = latitude, 
+         "GPS.HDOP" = HDOP,                               
+         "individual-local-identifier" = individual_ID, 
+         "Species" = Species,
+         "Treatment" = Treatment,                        
+         "Date" = Date,
+         "Exp_Stage" = Exp_Stage,
+         "Time_Of_Day" = Time_Of_Day
+       ))
+
+cow_tel <- as.telemetry(cow_movebank, 
+                       timezone = "Europe/Stockholm", 
+                       timeformat="%Y-%m-%d %H:%M:%S", 
+                       projection= NULL,
+                       datum="WGS84",
+                       keep = c("Species","Treatment", 
+                                "Date", "Exp_Stage", "Time_Of_Day"))
+
+ctmm::projection(cow_tel) <- ctmm::median(cow_tel)
+
+# Remove outliers based on species maximum swim speeds #
+
+#Pike = 0.823
+#Perch = 0.977
+#Roach = 0.841
+
+#first seperate telemetry object by species 
+#check whether ids are in species order
+cow_movebank %>%
+  select(Species, individual.local.identifier) %>%
+  distinct() %>%
+  arrange(individual.local.identifier)
+
+#need to order them by id number
+cow_tel <- cow_tel[order(names(cow_tel))]
+names(cow_tel)
+
+#mostly in order except for the first perch
+pike_cow_tel <- cow_tel[61:65]
+perch_cow_tel <- cow_tel[c(1, 22:60)]
+roach_cow_tel <- cow_tel[c(2:21)]
+
+#remove outliers based on speed
+#pike
+out_pike <- outlie(pike_cow_tel, plot = FALSE)
+sum(sapply(out_pike, function(x) sum(x$speed > 0.823)))
+
+saveRDS(pike_cow_tel , paste0(telem_path, "cow_paradise/pike_cow_tel.rds")) 
+
+#Perch
+out_perch <- outlie(perch_cow_tel, plot = FALSE)
+sum(sapply(out_perch, function(x) sum(x$speed > 0.977)))
+
+saveRDS(perch_cow_tel , paste0(telem_path, "cow_paradise/perch_cow_tel.rds"))
+
+#Roach
+out_roach <- outlie(roach_cow_tel, plot = FALSE)
+sum(sapply(out_roach, function(x) sum(x$speed > 0.841)))
+
+#save telemetry object
+saveRDS(roach_cow_tel , paste0(telem_path, "cow_paradise/roach_cow_tel.rds"))

@@ -204,6 +204,90 @@ pred_roach_fits <-
 saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "muddyfoot_roach_fits/", "pred_roach_fits.rds"))
 
 
+#----------------------------------------------------------------------------------------------------------#
+#------------------------------------------------------------------------#
+# 3. Rerun telemetry object for all individuals with filtered dataset ####
+#------------------------------------------------------------------------#
+
+muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
+
+mud_movebank <- 
+  with(muddyfoot_filt_data, 
+       data.frame(
+         "timestamp" = timestamp,                        
+         "location.long" = longitude,                         
+         "location.lat" = latitude, 
+         "GPS.HDOP" = HDOP,                               
+         "individual-local-identifier" = individual_ID, 
+         "Species" = Species,
+         "Treatment" = Treatment,                        
+         "Date" = Date,
+         "Exp_Stage" = Exp_Stage,
+         "Time_Of_Day" = Time_Of_Day
+       ))
+
+mud_tel <- as.telemetry(mud_movebank, 
+                                   timezone = "Europe/Stockholm", 
+                                   timeformat="%Y-%m-%d %H:%M:%S", 
+                                   projection= NULL,
+                                   datum="WGS84",
+                                   keep = c("Species","Treatment", 
+                                            "Date", "Exp_Stage", "Time_Of_Day"))
+
+
+ctmm::projection(mud_tel_tpeqd$F59747)
+tz(mud_tel_tpeqd$F59747$timestamp)
+ctmm::projection(mud_tel_tpeqd) <- ctmm::median(mud_tel_tpeqd)
+
+# Remove outliers based on species maximum swim speeds #
+
+#Pike = 0.823
+#Perch = 0.977
+#Roach = 0.841
+
+#first seperate telemetry object by species 
+#check whether ids are in species order
+mud_movebank %>%
+  select(Species, individual.local.identifier) %>%
+  distinct() %>%
+  arrange(individual.local.identifier)
+
+#need to order them by id number
+mud_tel <- mud_tel[order(names(mud_tel))]
+names(mud_tel)
+
+#mostly in order except for the first perch
+pike_mud_tel <- mud_tel[60:65]
+perch_mud_tel <- mud_tel[c(1,4,5,7,8,10:12,15:17,20,25,28,29,31:33,35:37,40,41,43, 46:50)]
+roach_mud_tel <- mud_tel[c(2,3,6,9,13,14,18,19,21:24,26,27,30,34,38,42,44,45,51:59)]
+
+#remove outliers based on speed
+#pike
+out_pike <- outlie(pike_mud_tel, plot = FALSE)
+sum(sapply(out_pike, function(x) sum(x$speed > 0.823)))
+#14
+
+saveRDS(pike_mud_tel , paste0(telem_path, "muddyfoot/pike_muddyfoot_tel.rds")) 
+
+#Perch
+out_perch <- outlie(perch_mud_tel, plot = FALSE)
+sum(sapply(out_perch, function(x) sum(x$speed > 0.977)))
+#11
+
+saveRDS(perch_mud_tel , paste0(telem_path, "muddyfoot/perch_muddyfoot_tel.rds"))
+
+#Roach
+out_roach <- outlie(roach_mud_tel, plot = FALSE)
+sum(sapply(out_roach, function(x) sum(x$speed > 0.841)))
+#
+
+#Need to filter out unrealistic speeds
+#Making a logical vector
+which_lowSp <- lapply(out_roach, function(x) x$speed <= 0.841)
+#Combining the lists and removing observations for which the logical vector was false
+roach_mud_tel <- Map(function(x,y) x[y,], roach_mud_tel,which_lowSp)
+#save telemetry object
+saveRDS(roach_mud_tel , paste0(telem_path, "muddyfoot/roach_muddyfoot_tel.rds"))
 
 
 
