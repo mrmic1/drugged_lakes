@@ -89,10 +89,10 @@ stopCluster(cl)
 names(pike_akdes_cg) <- names(pike_BT_tel)
 
 # View summary of a specific individual's AKDE (e.g., F59880)
-summary(pike_akdes_cg$F59880)
+summary(pike_akdes_cg$F59886)
 
 # Save the complete list of Pike AKDEs with consistent grid
-saveRDS(pike_akdes_cg, paste0(akde_path, "lake_BT_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
+saveRDS(pike_akdes_cg, paste0(akde_path, "lake_BT_pike_akdes/akde_cg/lake_BT_pike_akdes_cg_list.rds"))
 
 #------------------------------------------------#
 
@@ -138,7 +138,7 @@ names(perch_akdes_cg) <- names(perch_BT_tel)
 summary(perch_akdes_cg$F59749)
 
 # Save the complete list of Perch AKDEs with consistent grid
-saveRDS(perch_akdes_cg, paste0(akde_path, "lake_BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+saveRDS(perch_akdes_cg, paste0(akde_path, "lake_BT_perch_akdes/akde_cg/lake_BT_perch_akdes_cg_list.rds"))
 
 #----------------------------------------------------------#
 
@@ -148,9 +148,9 @@ saveRDS(perch_akdes_cg, paste0(akde_path, "lake_BT_perch_akdes/akde_cg/perch_akd
 
 #Get reference akde for consistent grid
 #Pick individuals with full dataset
-unique(roach_BT_tel[[9]]$Date)
-nrow(roach_BT_tel[[9]])
-roach_akde_ref <- akde(roach_BT_tel[[9]], roach_BT_ctmm_fits[[9]], weights = FALSE)
+unique(roach_BT_tel[[10]]$Date)
+nrow(roach_BT_tel[[10]])
+roach_akde_ref <- akde(roach_BT_tel[[10]], roach_BT_ctmm_fits[[10]], weights = FALSE)
 
 # Initialize the list to store AKDEs with consistent grid for Roach
 roach_akdes_cg <- list()
@@ -181,10 +181,10 @@ stopCluster(cl)
 names(roach_akdes_cg) <- names(roach_BT_tel)
 
 # View summary of all roach AKDEs
-summary(roach_akdes_cg$F59683)
+summary(roach_akdes_cg$F59766)
 
 # Save the complete list of Roach AKDEs with consistent grid
-saveRDS(roach_akdes_cg, paste0(akde_path, "lake_BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+saveRDS(roach_akdes_cg, paste0(akde_path, "lake_BT_roach_akdes/akde_cg/lake_BT_roach_akdes_cg_list.rds"))
 
 #---------------------------------------------------------------------------------------------------------------#
 
@@ -204,7 +204,38 @@ roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/ro
 #> 2.2. Pike  ####
 
 # Separating Pike data into two groups: 'control' and 'mix'
-# 'control' refers to the first three individuals, 'mix' refers to the next three
+# Check that treatments are in the right order
+unique_ids <- names(pike_BT_tel)
+
+# Create a data frame to store ID and unique Treatment information
+result_table <- do.call(rbind, lapply(unique_ids, function(id) {
+  # Extract the unique Treatment value for the current ID
+  treatment_info <- unique(pike_BT_tel[[id]]$Treatment)
+  
+  # Ensure only one unique Treatment value is captured
+  if (length(treatment_info) > 1) {
+    warning(paste("Multiple treatments found for ID:", id, 
+                  "using the first value. Treatments:", paste(treatment_info, collapse = ", ")))
+    treatment_info <- treatment_info[1]
+  }
+  
+  # Create a data frame for the ID and its treatment
+  data.frame(ID = id, Treatment = treatment_info)
+}))
+
+# View the resulting table
+print(result_table)
+
+
+names(pike_BT_tel)
+names(pike_BT_ctmm_fits)
+
+#make sure pike ctmms are on the same trajectory
+ctmm_pike <- pike_BT_ctmm_fits$F59886
+ctmm::projection(pike_BT_ctmm_fits) <- ctmm::projection(ctmm_pike)
+#now for roach
+ctmm::projection(roach_BT_ctmm_fits) <- ctmm::projection(pike_BT_ctmm_fits)
+
 
 # Separate  telemetry objects
 pike_control_tel <- pike_BT_tel[1:3]   # Control group
