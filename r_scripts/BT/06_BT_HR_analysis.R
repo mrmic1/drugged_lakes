@@ -39,6 +39,24 @@ BT_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_BT_polygon.gpkg"))
 # Convert the simple features (sf) polygon data into a Spatial object for compatibility with other functions
 BT_sp_data <- as(BT_polygon, "Spatial")
 
+
+#Ctmm projections need to be the same within species
+ctmm_pike <- pike_akdes_cg_list$F59886
+ctmm::projection(pike_BT_ctmm_fits) <- ctmm::projection(ctmm_pike)
+#save
+#saveRDS(pike_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
+
+#perch already the same projection
+
+ctmm_roach <- roach_akdes_cg_list$F59811
+ctmm::projection(roach_BT_ctmm_fits) <- ctmm::projection(ctmm_roach)
+#save
+saveRDS(roach_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_roach_fits/lake_BT_roach_OUF_models.rds"))
+
+
+
+
+
 #-------------------------------------------------------------------------------------------------------#
 
 #--------------------------#                 
@@ -228,14 +246,6 @@ print(result_table)
 
 
 names(pike_BT_tel)
-names(pike_BT_ctmm_fits)
-
-#make sure pike ctmms are on the same trajectory
-ctmm_pike <- pike_BT_ctmm_fits$F59886
-ctmm::projection(pike_BT_ctmm_fits) <- ctmm::projection(ctmm_pike)
-#save
-#saveRDS(pike_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
-
 
 
 # Separate  telemetry objects
