@@ -233,8 +233,9 @@ names(pike_BT_ctmm_fits)
 #make sure pike ctmms are on the same trajectory
 ctmm_pike <- pike_BT_ctmm_fits$F59886
 ctmm::projection(pike_BT_ctmm_fits) <- ctmm::projection(ctmm_pike)
-#now for roach
-ctmm::projection(roach_BT_ctmm_fits) <- ctmm::projection(pike_BT_ctmm_fits)
+#save
+#saveRDS(pike_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
+
 
 
 # Separate  telemetry objects
