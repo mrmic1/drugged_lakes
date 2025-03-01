@@ -23,9 +23,9 @@ enc_path <- "./data/encounters/cow_paradise/"
 ### LOAD DATA ###
 
 # Load telemetry objects for pike, perch, and roach species in lake_cow lake
-pike_lake_cow_tel <- readRDS(paste0(telem_path, 'pike_lake_cow_tel.rds'))
-perch_lake_cow_tel <- readRDS(paste0(telem_path, 'perch_lake_cow_tel.rds'))
-roach_lake_cow_tel <- readRDS(paste0(telem_path, 'roach_lake_cow_tel.rds'))
+pike_lake_cow_tel <- readRDS(paste0(telem_path, 'pike_cow_tel.rds'))
+perch_lake_cow_tel <- readRDS(paste0(telem_path, 'perch_cow_tel.rds'))
+roach_lake_cow_tel <- readRDS(paste0(telem_path, 'roach_cow_tel.rds'))
 
 # Load ctmm model fits for pike, perch, and roach in lake_cow lake
 # The models include continuous-time movement fits using the Ornstein-Uhlenbeck Foraging (OUF) model
@@ -38,6 +38,20 @@ lake_cow_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_cow_polygon.gpkg
 
 # Convert the simple features (sf) polygon data into a Spatial object for compatibility with other functions
 lake_cow_sp_data <- as(lake_cow_polygon, "Spatial")
+
+#Ctmm projections need to be the same within species
+ctmm_pike <- ctmm::projection(pike_lake_cow_tel)
+ctmm::projection(pike_lake_cow_ctmm_fits) <- ctmm_pike
+
+#save
+#saveRDS(pike_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
+
+#perch already the same projection
+
+ctmm_roach <- roach_akdes_cg_list$F59811
+ctmm::projection(roach_BT_ctmm_fits) <- ctmm::projection(ctmm_roach)
+#save
+saveRDS(roach_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_roach_fits/lake_BT_roach_OUF_models.rds"))
 
 #-------------------------------------------------------------------------------------------------------#
 
