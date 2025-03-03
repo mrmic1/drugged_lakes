@@ -135,8 +135,6 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(perch_akdes_cg) <- names(perch_muddyfoot_tel)
 
-# View summary of all perch AKDEs
-summary(perch_akdes_cg)
 
 # Save the complete list of Perch AKDEs with consistent grid
 saveRDS(perch_akdes_cg, paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
