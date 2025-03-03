@@ -44,14 +44,22 @@ ctmm_pike <- ctmm::projection(pike_lake_cow_tel)
 ctmm::projection(pike_lake_cow_ctmm_fits) <- ctmm_pike
 
 #save
-#saveRDS(pike_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
+saveRDS(pike_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_pike_fits/lake_cow_pike_OUF_models.rds"))
 
-#perch already the same projection
+#Ctmm projections need to be the same within species
+ctmm_perch <- ctmm::projection(perch_lake_cow_tel)
+ctmm::projection(perch_lake_cow_ctmm_fits) <- ctmm_perch
 
-ctmm_roach <- roach_akdes_cg_list$F59811
-ctmm::projection(roach_BT_ctmm_fits) <- ctmm::projection(ctmm_roach)
 #save
-saveRDS(roach_BT_ctmm_fits, paste0(ctmm_path, "lake_BT_roach_fits/lake_BT_roach_OUF_models.rds"))
+saveRDS(perch_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_perch_fits/lake_cow_perch_OUF_models.rds"))
+
+
+#Ctmm projections need to be the same within species
+ctmm_roach <- ctmm::projection(roach_lake_cow_tel)
+ctmm::projection(roach_lake_cow_ctmm_fits) <- ctmm_roach
+
+#save
+saveRDS(roach_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_roach_fits/lake_cow_roach_OUF_models.rds"))
 
 #-------------------------------------------------------------------------------------------------------#
 
