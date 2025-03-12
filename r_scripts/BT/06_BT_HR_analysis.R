@@ -214,9 +214,9 @@ saveRDS(roach_akdes_cg, paste0(akde_path, "lake_BT_roach_akdes/akde_cg/lake_BT_r
 # for Pike, Perch, and Roach species, excluding individuals that were predated.
 
 # Load AKDEs for each species from previously saved files
-pike_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
-perch_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
-roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+pike_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/akde_cg/lake_BT_pike_akdes_cg_list.rds"))
+perch_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_perch_akdes/akde_cg/lake_BT_perch_akdes_cg_list.rds"))
+roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/lake_BT_roach_akdes_cg_list.rds"))
 
 
 #> 2.2. Pike  ####
@@ -263,7 +263,7 @@ pike_control_PKDE <- pkde(pike_control_tel,   # Telemetry data for the control g
                           SP.in = TRUE)       # Ensure the PKDE confines the movements within the polygon
 
 # Save the population-level AKDE for the control group
-saveRDS(pike_control_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/pike_control_PKDE.rds"))
+saveRDS(pike_control_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/lake_BT_pike_control_PKDE.rds"))
 
 # Calculate population-level AKDE for the mixed group
 pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed group

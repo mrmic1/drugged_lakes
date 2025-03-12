@@ -39,27 +39,26 @@ lake_cow_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_cow_polygon.gpkg
 # Convert the simple features (sf) polygon data into a Spatial object for compatibility with other functions
 lake_cow_sp_data <- as(lake_cow_polygon, "Spatial")
 
-#Ctmm projections need to be the same within species
-ctmm_pike <- ctmm::projection(pike_lake_cow_tel)
-ctmm::projection(pike_lake_cow_ctmm_fits) <- ctmm_pike
-
-#save
-saveRDS(pike_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_pike_fits/lake_cow_pike_OUF_models.rds"))
+#Need to ensure that projections are the same for ctmm and telemetry objects
+#Code below is to do this if required
 
 #Ctmm projections need to be the same within species
-ctmm_perch <- ctmm::projection(perch_lake_cow_tel)
-ctmm::projection(perch_lake_cow_ctmm_fits) <- ctmm_perch
-
+#ctmm_pike <- ctmm::projection(pike_lake_cow_tel)
+#ctmm::projection(pike_lake_cow_ctmm_fits) <- ctmm_pike
 #save
-saveRDS(perch_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_perch_fits/lake_cow_perch_OUF_models.rds"))
-
+#saveRDS(pike_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_pike_fits/lake_cow_pike_OUF_models.rds"))
 
 #Ctmm projections need to be the same within species
-ctmm_roach <- ctmm::projection(roach_lake_cow_tel)
-ctmm::projection(roach_lake_cow_ctmm_fits) <- ctmm_roach
-
+#ctmm_perch <- ctmm::projection(perch_lake_cow_tel)
+#ctmm::projection(perch_lake_cow_ctmm_fits) <- ctmm_perch
 #save
-saveRDS(roach_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_roach_fits/lake_cow_roach_OUF_models.rds"))
+#saveRDS(perch_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_perch_fits/lake_cow_perch_OUF_models.rds"))
+
+#Ctmm projections need to be the same within species
+#ctmm_roach <- ctmm::projection(roach_lake_cow_tel)
+#ctmm::projection(roach_lake_cow_ctmm_fits) <- ctmm_roach
+#save
+#saveRDS(roach_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_roach_fits/lake_cow_roach_OUF_models.rds"))
 
 #-------------------------------------------------------------------------------------------------------#
 
@@ -75,13 +74,7 @@ saveRDS(roach_lake_cow_ctmm_fits, paste0(ctmm_path, "lake_cow_roach_fits/lake_co
 
 #> 1.1. Pike ####
 
-#I need to remove pike with no tracking data from telemetry object
-names(pike_lake_cow_tel)
-names(pike_lake_cow_ctmm_fits)
-#remove F59893
-pike_lake_cow_tel <- pike_lake_cow_tel[names(pike_lake_cow_tel) != "F59893"]
-names(pike_lake_cow_tel)
-  
+
 # Pike AKDE estimation with parallel processing
 #Get reference akde for consistent grid
 #Pick individuals with full dataset
@@ -164,7 +157,7 @@ stopCluster(cl)
 names(perch_akdes_cg) <- names(perch_lake_cow_tel)
 
 # View summary of all perch AKDEs
-summary(perch_akdes_cg$F59749)
+summary(perch_akdes_cg$F59747)
 
 # Save the complete list of Perch AKDEs with consistent grid
 saveRDS(perch_akdes_cg, paste0(akde_path, "lake_cow_perch_akdes/akde_cg/lake_cow_perch_akdes_cg_list.rds"))
@@ -318,12 +311,12 @@ print(result_table)
 
 #telemetry objects
 
-perch_control_tel <- perch_lake_cow_tel[1:15]
-perch_mix_tel <- perch_lake_cow_tel[16:30]
+perch_control_tel <- perch_lake_cow_tel[c(1, 22:40)]
+perch_mix_tel <- perch_lake_cow_tel[2:21]
 
 #akdes
-perch_control_akdes <- perch_akdes_cg_list[1:15]
-perch_mix_akdes <- perch_akdes_cg_list[16:30]
+perch_control_akdes <- perch_akdes_cg_list[c(1, 22:40)]
+perch_mix_akdes <- perch_akdes_cg_list[2:21]
 
 #calculate population-level autocorrelated kernel density home range estimates for each treatment
 perch_control_PKDE <- pkde(perch_control_tel,
@@ -331,14 +324,37 @@ perch_control_PKDE <- pkde(perch_control_tel,
                            SP = lake_cow_sp_data,
                            SP.in = TRUE)
 
-saveRDS(perch_control_PKDE, paste0(akde_path, "lake_lake_cow_perch_akdes/population_akde/perch_control_PKDE.rds"))
+saveRDS(perch_control_PKDE, paste0(akde_path, "lake_cow_perch_akdes/population_akde/lake_cow_perch_control_PKDE.rds"))
 
 perch_mix_PKDE <- pkde(perch_mix_tel,
                        perch_mix_akdes, 
                        SP = lake_cow_sp_data,
                        SP.in = TRUE)
 
-saveRDS(perch_mix_PKDE, paste0(akde_path, "lake_lake_cow_perch_akdes/population_akde/perch_mix_PKDE.rds"))
+saveRDS(perch_mix_PKDE, paste0(akde_path, "lake_cow_perch_akdes/population_akde/lake_cow_perch_mix_PKDE.rds"))
+
+perch_mix_tel$F59838$iden
+sapply(perch_mix_akdes, function(x) COV)
+
+cov_list <- lapply(perch_mix_akdes, function(x) x$COV)
+cov_list <- lapply(perch_control_akdes, function(x) x$COV)
+names_list <- lapply(perch_mix_tel, function(x) x$identity)
+
+
+ctmm::projection(perch_mix_akdes)
+ctmm::projection(perch_control_akdes)
+ctmm::projection(perch_control_tel)
+ctmm::projection(perch_mix_tel)
+
+id_list <- sapply(perch_mix_tel, function(x) summary(x)[1])
+
+# Display the extracted identities
+id_list
+
+id_list <- sapply(perch_mix_tel, function(x) x$identity)
+
+# Display the extracted IDs
+id_list
 
 # > 2.4. Roach ####
 
@@ -381,14 +397,14 @@ roach_control_PKDE <- pkde(roach_control_tel,
                            SP = lake_cow_sp_data,
                            SP.in = TRUE)
 
-saveRDS(roach_control_PKDE, paste0(akde_path, "lake_cow_roach_akdes/population_akde/roach_control_PKDE.rds"))
+saveRDS(roach_control_PKDE, paste0(akde_path, "lake_cow_roach_akdes/population_akde/lake_cow_roach_control_PKDE.rds"))
 
 roach_mix_PKDE <- pkde(roach_mix_tel,
                        roach_mix_akdes, 
                        SP = lake_cow_sp_data,
                        SP.in = TRUE)
 
-saveRDS(roach_mix_PKDE, paste0(akde_path, "lake_cow_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+saveRDS(roach_mix_PKDE, paste0(akde_path, "lake_cow_roach_akdes/population_akde/lake_cow_roach_mix_PKDE.rds"))
 
 #-----------------------------------------------------------------------------------------------------#
 #-----------------------------------------------------------------------------------------------------#
