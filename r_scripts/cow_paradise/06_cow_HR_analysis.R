@@ -312,11 +312,24 @@ print(result_table)
 #telemetry objects
 
 perch_control_tel <- perch_lake_cow_tel[c(1, 22:40)]
-perch_mix_tel <- perch_lake_cow_tel[2:21]
+perch_mix_tel_3 <- perch_lake_cow_tel[12:16]
+perch_mix_tel_4 <- perch_lake_cow_tel[17:21]
+perch_mix_tel_5 <- perch_lake_cow_tel[12:14]
+perch_mix_tel_6 <- perch_lake_cow_tel[15]
+perch_mix_tel_7 <- perch_lake_cow_tel[c(12,16)]
+perch_mix_tel <- perch_lake_cow_tel[c(2:14, 16:21)]
 
 #akdes
 perch_control_akdes <- perch_akdes_cg_list[c(1, 22:40)]
-perch_mix_akdes <- perch_akdes_cg_list[2:21]
+perch_mix_akdes_1 <- perch_akdes_cg_list[2:11]
+perch_mix_akdes_2 <- perch_akdes_cg_list[12:21]
+perch_mix_akdes_3 <- perch_akdes_cg_list[12:16]
+perch_mix_akdes_4 <- perch_akdes_cg_list[17:21]
+perch_mix_akdes_5 <- perch_akdes_cg_list[12:14]
+perch_mix_akdes_6 <- perch_akdes_cg_list[15]
+perch_mix_akdes_7 <- perch_akdes_cg_list[c(12,16)]
+#remove 15
+perch_mix_akdes <- perch_akdes_cg_list[c(2:14, 16:21)]
 
 #calculate population-level autocorrelated kernel density home range estimates for each treatment
 perch_control_PKDE <- pkde(perch_control_tel,
@@ -326,10 +339,50 @@ perch_control_PKDE <- pkde(perch_control_tel,
 
 saveRDS(perch_control_PKDE, paste0(akde_path, "lake_cow_perch_akdes/population_akde/lake_cow_perch_control_PKDE.rds"))
 
-perch_mix_PKDE <- pkde(perch_mix_tel,
-                       perch_mix_akdes, 
+perch_mix_PKDE_1 <- pkde(perch_mix_tel_1,
+                       perch_mix_akdes_1, 
                        SP = lake_cow_sp_data,
-                       SP.in = TRUE)
+                       SP.in = TRUE) # worked
+
+perch_mix_PKDE_2 <- pkde(perch_mix_tel_2,
+                         perch_mix_akdes_2, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # did not work
+
+perch_mix_PKDE_3 <- pkde(perch_mix_tel_3,
+                         perch_mix_akdes_3, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # did not work
+
+perch_mix_PKDE_4 <- pkde(perch_mix_tel_4,
+                         perch_mix_akdes_4, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # worked
+
+perch_mix_PKDE_5 <- pkde(perch_mix_tel_5,
+                         perch_mix_akdes_5, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # worked
+
+perch_mix_PKDE_6 <- pkde(perch_mix_tel_6,
+                         perch_mix_akdes_6, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # did not work
+
+perch_mix_PKDE_7 <- pkde(perch_mix_tel_7,
+                         perch_mix_akdes_7, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # worked
+
+#perch F59851 in the list is the issue
+summary(perch_akdes_cg_list$F59851)
+summary(perch_lake_cow_tel$F59851)
+
+#re-run with individual removed
+perch_mix_PKDE <- pkde(perch_mix_tel,
+                         perch_mix_akdes, 
+                         SP = lake_cow_sp_data,
+                         SP.in = TRUE) # worked
 
 saveRDS(perch_mix_PKDE, paste0(akde_path, "lake_cow_perch_akdes/population_akde/lake_cow_perch_mix_PKDE.rds"))
 
@@ -384,11 +437,21 @@ print(result_table)
 
 
 #telemetry objects
-roach_control_tel <- roach_lake_cow_tel[1:10]
+roach_control_tel <- roach_lake_cow_tel[c(1,2,4:10)]
+roach_control_tel_2 <- roach_lake_cow_tel[1:5]
+roach_control_tel_3 <- roach_lake_cow_tel[6:10]
+roach_control_tel_4 <- roach_lake_cow_tel[2:3]
+
+
+
 roach_mix_tel <- roach_lake_cow_tel[11:20]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[1:10]
+roach_control_akdes <- roach_akdes_cg_list[c(1,2,4:10)]
+roach_control_akdes_2 <- roach_akdes_cg_list[1:5]
+roach_control_akdes_3 <- roach_akdes_cg_list[6:10]
+roach_control_akdes_4 <- roach_akdes_cg_list[2:3]
+
 roach_mix_akdes <- roach_akdes_cg_list[11:20]
 
 #calculate population-level autocorrelated kernel density home range estimates
@@ -396,6 +459,27 @@ roach_control_PKDE <- pkde(roach_control_tel,
                            roach_control_akdes,
                            SP = lake_cow_sp_data,
                            SP.in = TRUE)
+
+#Having issuse with running roach control - split analysis to see where the issue are
+roach_control_PKDE_2 <- pkde(roach_control_tel_2,
+                           roach_control_akdes_2,
+                           SP = lake_cow_sp_data,
+                           SP.in = TRUE) # did not work.
+
+#Issues could be with F59819 which had poor tracking
+#Will run pop akde with this individual
+
+roach_control_PKDE_4 <- pkde(roach_control_tel_4,
+                             roach_control_akdes_4,
+                             SP = lake_cow_sp_data,
+                             SP.in = TRUE) # did not work
+
+#run control PKDE with problematic individual removed
+roach_control_PKDE <- pkde(roach_control_tel,
+                           roach_control_akdes,
+                           SP = lake_cow_sp_data,
+                           SP.in = TRUE)
+
 
 saveRDS(roach_control_PKDE, paste0(akde_path, "lake_cow_roach_akdes/population_akde/lake_cow_roach_control_PKDE.rds"))
 
