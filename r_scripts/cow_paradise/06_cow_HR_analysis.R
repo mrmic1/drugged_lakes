@@ -437,20 +437,18 @@ print(result_table)
 
 
 #telemetry objects
-roach_control_tel <- roach_lake_cow_tel[c(1,2,4:10)]
+roach_control_tel <- roach_lake_cow_tel[1:10]
 roach_control_tel_2 <- roach_lake_cow_tel[1:5]
 roach_control_tel_3 <- roach_lake_cow_tel[6:10]
-roach_control_tel_4 <- roach_lake_cow_tel[2:3]
-
 
 
 roach_mix_tel <- roach_lake_cow_tel[11:20]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[c(1,2,4:10)]
+roach_control_akdes <- roach_akdes_cg_list[1:10]
 roach_control_akdes_2 <- roach_akdes_cg_list[1:5]
 roach_control_akdes_3 <- roach_akdes_cg_list[6:10]
-roach_control_akdes_4 <- roach_akdes_cg_list[2:3]
+
 
 roach_mix_akdes <- roach_akdes_cg_list[11:20]
 
@@ -464,21 +462,14 @@ roach_control_PKDE <- pkde(roach_control_tel,
 roach_control_PKDE_2 <- pkde(roach_control_tel_2,
                            roach_control_akdes_2,
                            SP = lake_cow_sp_data,
-                           SP.in = TRUE) # did not work.
-
-#Issues could be with F59819 which had poor tracking
-#Will run pop akde with this individual
-
-roach_control_PKDE_4 <- pkde(roach_control_tel_4,
-                             roach_control_akdes_4,
-                             SP = lake_cow_sp_data,
-                             SP.in = TRUE) # did not work
-
-#run control PKDE with problematic individual removed
-roach_control_PKDE <- pkde(roach_control_tel,
-                           roach_control_akdes,
-                           SP = lake_cow_sp_data,
                            SP.in = TRUE)
+
+roach_control_PKDE_3 <- pkde(roach_control_tel_3,
+                             roach_control_akdes_3,
+                             SP = lake_cow_sp_data,
+                             SP.in = TRUE) # worked
+
+
 
 
 saveRDS(roach_control_PKDE, paste0(akde_path, "lake_cow_roach_akdes/population_akde/lake_cow_roach_control_PKDE.rds"))
