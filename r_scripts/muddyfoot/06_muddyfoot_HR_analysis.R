@@ -11,14 +11,19 @@ library(doParallel)  # Parallel backend for foreach loops
 library(ggplot2)     
 library(sf)          
 library(terra)       
-library(raster)      
+library(raster)
+library(flextable)  # For creating and customizing tables.
+library(kableExtra)  # Additional table formatting options.
+library(officer)  # For exporting tables to Word documents.
 
 # Define paths to directories for loading/saving data
-ctmm_path <- "./data/ctmm_fits/"                  # Directory for ctmm model fits
-telem_path <- "./data/telem_obj/muddyfoot/"       # Directory for telemetry objects
-akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
-lake_polygon_path <- "./data/lake_coords/"        # Directory for lake polygon (boundary) data
+ctmm_path <- "./data/ctmm_fits/"                  
+telem_path <- "./data/telem_obj/muddyfoot/"       
+akde_path <- "./data/akdes/"                      
+lake_polygon_path <- "./data/lake_coords/"        
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
+plot_path <- "./plots/muddyfoot/"
+save_tables_path <- "./tables/muddyfoot/" 
 
 
 ### LOAD DATA ###
@@ -199,18 +204,8 @@ pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pi
 perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
 roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
-# Check predation event data (pre-identified predation events) for individual with many missing dates
-mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
-
-# Remove Roach individual that had poor tracking - if not already removed
-roach_ids_remove <- mud_pred_mort_events %>%
-  filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
-  pull(individual_ID)               # Extract IDs of predated Roach
-
-# Update the Roach AKDE list and telemetry data, removing predated individuals
-roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
-roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
-
+#Make sure that there are only 28 individuals in the telemetry and akdes lists for roach.
+#Individual died at the beginning of the tracking.
 
 #> 2.2. Pike  ####
 
@@ -364,8 +359,13 @@ saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/population_akde
 # Combining 'control' and 'mix' back into a 'total' list
 pike_akde_total <- list(Control = pike_control_akdes, Exposed = pike_mix_akdes)
 
-pike_akde_meta_data <- ctmm::meta(pike_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
+#all individuals
+pike_HR_meta <- ctmm::meta(pike_akdes_cg_list,col='black',sort=F, verbose = T)
+#seperated by treatment
+pike_akde_meta_data <- ctmm::meta(pike_akde_total, sort = F, verbose = T) 
 
+#isolate coefficients
+pike_HR_total <- as.data.frame(t(pike_HR_meta[1,]))
 pike_HR_control <- as.data.frame(t(pike_akde_meta_data$Control[1,]))
 pike_HR_exposed <- as.data.frame(t(pike_akde_meta_data$Exposed[1,]))
   
@@ -398,14 +398,30 @@ pike_HR_coefs <- rbind(pike_HR_control, pike_HR_exposed)
           panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
 )
 
+#save figure 
+
+# Save the plot
+ggsave(filename = paste0(plot_path, "mud_HR_pike_treat_diff.pdf"),
+       plot = pike_HR_coefs_plot, 
+       width = 10.5, 
+       height = 10.5,
+       units = 'cm')
+
+
+#-------------------------------------------------------------------------------#
 
 #> 3.2. Perch ####
 
 # Combining 'control' and 'mix' back into a 'total' list
 perch_akde_total <- list(Control = perch_control_akdes, Exposed = perch_mix_akdes)
 
+#all individuals
+perch_HR_meta <- ctmm::meta(perch_akdes_cg_list,col='black',sort=F, verbose = T, level.UD = 0.95)
+#seperated by treatment
 perch_akde_meta_data <- ctmm::meta(perch_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
 
+#isolate coefficients
+perch_HR_total <- as.data.frame(t(perch_HR_meta[1,]))
 perch_HR_control <- as.data.frame(t(perch_akde_meta_data$Control[1,]))
 perch_HR_exposed <- as.data.frame(t(perch_akde_meta_data$Exposed[1,]))
 
@@ -438,17 +454,33 @@ perch_HR_coefs <- rbind(perch_HR_control, perch_HR_exposed)
           panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
 )
 
+
+ggsave(filename = paste0(plot_path, "mud_HR_perch_treat_diff.pdf"),
+       plot = perch_HR_coefs_plot, 
+       width = 10.5, 
+       height = 10.5,
+       units = 'cm')
+
+
+
 #> 3.3. Roach ####
 
 # Combining 'control' and 'mix' back into a 'total' list
 roach_akde_total <- list(Control = roach_control_akdes, Exposed = roach_mix_akdes)
 
+#all individuals
+roach_HR_meta <- ctmm::meta(roach_akdes_cg_list,col='black',sort=F, verbose = T, level.UD = 0.95)
+#seperated by treatment
 roach_akde_meta_data <- ctmm::meta(roach_akde_total,col='black',sort=F, verbose = T, level.UD = 0.95)
 
+
+#isolate coefficients
+roach_HR_total <- as.data.frame(t(roach_HR_meta[1,]))
 roach_HR_control <- as.data.frame(t(roach_akde_meta_data$Control[1,]))
 roach_HR_exposed <- as.data.frame(t(roach_akde_meta_data$Exposed[1,]))
 
 # Add a treatment column to each dataset to distinguish between Control and Exposed in the final plot
+roach_HR_total$treatment <- "Combined"
 roach_HR_control$treatment <- "Control"
 roach_HR_exposed$treatment <- "Exposed"
 
@@ -476,4 +508,35 @@ roach_HR_coefs <- rbind(roach_HR_control, roach_HR_exposed)
           axis.text = element_text(size = 12, color = 'black'),
           panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
 )
+
+ggsave(filename = paste0(plot_path, "mud_HR_roach_treat_diff.pdf"),
+       plot = perch_HR_coefs_plot, 
+       width = 10.5, 
+       height = 10.5,
+       units = 'cm')
+
+#------------------------------------------------------------------------------#
+
+### Create combined HR coefficients table ###
+
+HR_coef_table <- 
+  rbind(cbind(pike_HR_coefs, Species = 'Pike'),
+                         cbind(perch_HR_coefs, Species = 'Perch'),
+                         cbind(roach_HR_coefs, Species = 'Roach')) %>% 
+  dplyr::select(Species, treatment, est, low, high)
+
+
+HR_coef_table <- 
+  flextable::flextable(HR_coef_table) %>% 
+  fontsize(part = "all", size = 11) %>% 
+  bold(part = 'header') %>% 
+  set_header_labels("Species" = 'Species',
+                    "Treatment" = 'Treatment',
+                    "est" = 'HR size',
+                    "low" = "lower 95%",
+                    "high" = 'higher 95%')
+
+
+save_as_docx(HR_coef_table, path = paste0(save_tables_path, "muddyfoot_HR_treatment_coef_table.docx"))
+
 
