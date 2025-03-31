@@ -29,55 +29,79 @@ muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, '04_muddyfoot_sub.rds'
 #Load akdes to extract effective sample sizes
 pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
 perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
-roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds")) #28 elements
 
 #Load telemetry objects for pike, perch, and roach species in Muddyfoot lake
 pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
 perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
-roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
+roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds')) #28 elements
 
 # Check predation event data (pre-identified predation events) for individual with many missing dates
 mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
 
-# Remove Roach individuals that were predated based on predation events
-roach_ids_remove <- mud_pred_mort_events %>%
-  filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
-  pull(individual_ID)               # Extract IDs of predated Roach
+#remove roach ID F59707 (control) from the main dataset
+#because it died soon after being introduced into the lake
 
-# Update the Roach AKDE list and telemetry data, removing predated individuals
-roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
-roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
 muddyfoot_filt_data <- muddyfoot_filt_data %>% 
-  filter(!individual_ID == roach_ids_remove)
+  filter(!individual_ID == 'F59707')
+#before: 10032122
+#after: 10027442
 
-saveRDS(roach_muddyfoot_tel, paste0(telem_path, "roach_muddyfoot_tel.rds"))
 
-#------------------------------------------------------------#
-# 1. Extract effective sample size information ###############
-#------------------------------------------------------------#
+#-------------------------------------------------------------------------------#
 
-#effective sample size
+#------------------------------------------------------------------------#
+# 1. Extract HR size and effective sample size information ###############
+#------------------------------------------------------------------------#
+
+# EXTRACT INDIVIDUAL HR SIZE
+
+#home range size
+summary(roach_akdes_cg_list$F59683)$CI[2]
+
+# Function to extract ID and HR
+
+extract_HR <- function(akdes_list) {
+  tibble(
+    individual_ID = names(akdes_list),
+    HR_size = map_dbl(akdes_list, ~ summary(.x)$CI[2])
+  )
+}
+
+# Extract for each species
+roach_HR_df <- extract_HR(roach_akdes_cg_list)
+#check
+head(roach_HR_df)
+summary(roach_akdes_cg_list$F59684)$CI[2]
+
+perch_HR_df <- extract_HR(perch_akdes_cg_list)
+pike_HR_df <- extract_HR(pike_akdes_cg_list)
+
+
+#EXTRACT INDIVIDUAL EFFECTIVE SAMPLE SIZE 
+
 roach_akdes_cg_list$F59683$DOF.area[1]
 
 # Function to extract ID anDOF.area# Function to extract ID and DOF.H from a given list
 extract_dofh <- function(akdes_list) {
   tibble(
-    individual_ID = names(akdes_list),
     effective_n = map_dbl(akdes_list, ~ .x$DOF.area[1])
   )
 }
 
 # Extract for each species
-roach_df <- extract_dofh(roach_akdes_cg_list)
+roach_eff_n_df <- extract_dofh(roach_akdes_cg_list)
 #check
-head(roach_df)
+head(roach_eff_n_df)
 summary(roach_akdes_cg_list$F59684)
 
-perch_df <- extract_dofh(perch_akdes_cg_list)
-pike_df <- extract_dofh(pike_akdes_cg_list)
+perch_eff_n_df <- extract_dofh(perch_akdes_cg_list)
+pike_eff_n_df <- extract_dofh(pike_akdes_cg_list)
 
 # Combine into a single dataframe
-akde_effective_n_df <- bind_rows(roach_df, perch_df, pike_df)
+akde_effective_n_df <- bind_rows(bind_cols(roach_HR_df, roach_eff_n_df), 
+                                 bind_cols(perch_HR_df, perch_eff_n_df),
+                                 bind_cols(pike_HR_df, pike_eff_n_df))
 
 # View the result
 print(akde_effective_n_df)
@@ -86,8 +110,9 @@ print(akde_effective_n_df)
 
 muddyfoot_filt_data <- merge(muddyfoot_filt_data, akde_effective_n_df, by = "individual_ID", all.x = TRUE)
 
-#save dataframe modified dataframe
+#save modified dataset
 saveRDS(muddyfoot_filt_data, paste0(filtered_data_path, "05_muddyfoot_sub.rds"))
+
 
 #--------------------------------------------------------#
 # 2. Calculate tracking summary metrics ##################
@@ -143,7 +168,7 @@ muddyfoot_species_positions_sum <-
 
 # Save the final summary table as a Word document.
 save_as_docx(muddyfoot_species_positions_sum, 
-             path = paste0(save_tables_path, "muddyfoot_species_location_summary_MS.docx"))
+             path = paste0(save_tables_path, "muddyfoot_final_tracking_summaries/muddyfoot_species_location_summary_MS.docx"))
 
 # Optional: Save the filtered dataset for future use.
 # saveRDS(muddyfoot_filt_data, paste0(data_filter_path, "04_muddyfoot_sub.rds"))
