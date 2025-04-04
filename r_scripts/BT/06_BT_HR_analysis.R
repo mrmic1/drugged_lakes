@@ -224,8 +224,8 @@ roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/la
 
 #remove F59889 from telemetry and cg list
 #this individual died in the lake early
-
-
+pike_akdes_cg_list <- pike_akdes_cg_list[names(pike_akdes_cg_list) != "F59889"]
+pike_BT_tel <- pike_BT_tel[names(pike_BT_tel) != "F59889"]
 
 # Separating Pike data into two groups: 'control' and 'mix'
 # Check that treatments are in the right order
@@ -256,11 +256,11 @@ names(pike_BT_tel)
 
 # Separate  telemetry objects
 pike_control_tel <- pike_BT_tel[1:3]   # Control group
-pike_mix_tel <- pike_BT_tel[4:6]       # Mixed group
+pike_mix_tel <- pike_BT_tel[4:5]       # Mixed group
 
 # Separate AKDEs for the two groups
 pike_control_akdes <- pike_akdes_cg_list[1:3]
-pike_mix_akdes <- pike_akdes_cg_list[4:6]
+pike_mix_akdes <- pike_akdes_cg_list[4:5]
 
 # Calculate population-level AKDE for the control group
 pike_control_PKDE <- pkde(pike_control_tel,   # Telemetry data for the control group
