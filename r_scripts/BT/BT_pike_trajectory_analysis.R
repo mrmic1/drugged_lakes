@@ -53,9 +53,9 @@ BT_pike_dat$Lat <- coords[, 2]
 BT_pike_dat <- BT_pike_dat %>%
   mutate(Date = as.Date(timestamp))
 
+#------------------------------------------------------------------------------#
 
-
-### F59889 ###
+#> F59889 ####
 
 #Tags were found outside of lake
 #May have been taken by an otter
@@ -76,30 +76,35 @@ ggplot() +
     x = "Longitude", y = "Latitude"
   )
 
-### F59891 ###
+#Died right at the beginning of the study
+
+
+#> F59892 ####
 
 #Tags were found outside of lake
 #May have been taken by an otter
 
-F59891_dat <- BT_pike_dat %>% 
-  filter(individual_ID == 'F59891')
+F59892_dat <- BT_pike_dat %>% 
+  filter(individual_ID == 'F59892')
 
 
 # Plot
 ggplot() +
   geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59891_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59891_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  geom_path(data = F59892_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59892_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
   facet_wrap(~ Date) +  # one panel per date
   coord_sf() +
   theme_minimal() +
   labs(
-    title = "Daily Movement Trajectories of Individual F59891 in BT Lake",
+    title = "Daily Movement Trajectories of Individual F59892 in BT Lake",
     x = "Longitude", y = "Latitude"
   )
 
+#Died around the 30 September
 
-### F59886 ###
+
+#> F59886 ####
 
 #This individual was not found
 
@@ -120,26 +125,4 @@ ggplot() +
     x = "Longitude", y = "Latitude"
   )
 
-
-### F59892 ###
-
-#This individual was not found
-
-F59892_dat <- BT_pike_dat %>% 
-  filter(individual_ID == 'F59892')
-
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59892_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59892_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59892 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-
+#Diet around 02 October

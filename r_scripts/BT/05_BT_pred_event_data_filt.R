@@ -2,10 +2,14 @@
 # Filter data to remove post-predation and mortality tracking - BT  #
 #-------------------------------------------------------------------#
 
+#SCRIPT DESCRIPTION
+
 #In this script we will remove data where individuals were tracked after being predated or had 
 #an identified mortality event
-#Predation events are identified in the 04_BT_pred_encounters script
-#We will then re-run ctmm movement models for these individuals
+#Predation events are identified in the `04_BT_calculate_pred_prey_ints` script
+#We will then re-run ctmm movement models for individuals that had their data filtered
+
+#----------------------------------------------------------------------------------------------#
 
 ### LIBRARIES ###
 # Loading required packages
@@ -23,53 +27,55 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 ### DIRECTORIES ###
 # Paths to directories containing the necessary data files
 filtered_data_path <- "./data/tracks_filtered/lake_BT/"
-telem_path <- "./data/telem_obj/"
-enc_path <- "./data/encounters/"
+telem_path <- "./data/telem_obj/BT/"
+enc_path <- "./data/encounters/BT/"
 save_ctmm_path = "./data/ctmm_fits/"
 
 ### DATA LOADING ###
 BT_telem_data <-  readRDS(paste0(filtered_data_path, "03_lake_BT_sub.rds"))
 # Load the predation event dataframe 
-BT_pred_mort_events <- readRDS(paste0(enc_path, "BT/BT_pred_encounter_summary_filtered.rds"))
+mortality_preds <- readxl::read_excel("./data/encounters/suspected_mortality_updated.xlsx")
 # Load suspected dates for pike deaths
-pike_deaths <- read.csv(paste0(enc_path, "pike_deaths.csv"))
+pike_deaths <- read.csv("./data/encounters/pike_deaths.csv")
 
+#------------------------------------------------------------------------------------------------------#
 
-#-------------------------------------------------#
-# 1. Filter out post-predation event data ####
-#-------------------------------------------------#
+#-------------------------------------------------------------------#
+# 1. Filter out post-predation and mortality tracking locations #####
+#-------------------------------------------------------------------#
 
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
-pred_cols <- 
-  BT_pred_mort_events %>%
-  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
-  mutate(
-    first_date_over_50 = as.Date(first_date_over_50),
-    death_date = as.Date(death_date)) %>% 
-  dplyr::select(individual_ID, first_date_over_50, death_date)
-
-# Merge into single death_date column
-pred_cols$death_date <- ifelse(!is.na(pred_cols$first_date_over_50), pred_cols$first_date_over_50, pred_cols$death_date)
+BT_pred_prey_cols <-
+  mortality_preds %>%
+  filter(lake == 'BT') %>% 
+  filter(species == 'Roach'| species == 'Perch') %>%
+  dplyr::select(individual_ID, species, first_date_over_25, revised_suspected_mortality, final_likely_death_date) %>% 
+  rename(death_date = final_likely_death_date)
 
 # Ensure the merged_date column is of Date type
-pred_cols$death_date <- as.Date(pred_cols$death_date, origin = "1970-01-01")
+BT_pred_prey_cols$death_date <- as.Date(BT_pred_prey_cols$death_date, origin = "1970-01-01")
 
 # Filter out data after the predation or mortality event for each individual.
 BT_telem_data_2 <- 
   BT_telem_data %>%
-  left_join(pred_cols, by = c("individual_ID" = "individual_ID")) %>%
-  filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
+  left_join(BT_pred_prey_cols, by = c("individual_ID" = "individual_ID")) %>%
+  filter(is.na(death_date)| Date < death_date)  # Keep locations only before the death date if one is recorded
 #pre-filter rows: 20165124
-#post-filter rows: 18824499
+#post-filter rows: 19941442
 
 #how many rows removed
+
 print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data) - nrow(BT_telem_data_2)))
-#1340625
+#223682
 
+#check removed data
+BT_removed_data <- 
+  BT_telem_data %>%
+  left_join(BT_pred_prey_cols, by = c("individual_ID" = "individual_ID")) %>%
+  filter(!is.na(death_date) & Date >= death_date)
 
 #------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------------------------------------------------------------------#
-
 #-------------------------------------------------#
 # 2. Filter out pike post-mortality data ####
 #-------------------------------------------------#
@@ -79,27 +85,23 @@ print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data) - nrow(BT_te
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
 pike_mort_cols <- 
   pike_deaths %>%
-  filter(individual_ID %in% BT_filt_data$individual_ID) %>% 
+  filter(individual_ID %in% BT_telem_data$individual_ID) %>% 
   mutate(
     pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y"))
 
-
-#check
-str(pike_mort_cols)
-
 # Filter out data after the predation or mortality event for each individual.
-BT_filt_data <- 
+BT_telem_data_3 <- 
   BT_telem_data_2 %>%
   left_join(pike_mort_cols, by = c("individual_ID" = "individual_ID")) %>%
-  filter(is.na(pike_death_date)| Date <= pike_death_date)  # Keep only pre-predation data
-#pre-filter rows: 18824499
-#post-filter rows: 18122803
+  filter(is.na(pike_death_date)| Date < pike_death_date)  # Keep locations only before the death date if one is recorded
+#pre-filter rows: 19941442
+#post-filter rows: 18838134
 
-print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data_2) - nrow(BT_filt_data)))
-#701696
+print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data_2) - nrow(BT_telem_data_3)))
+#1103308
 
 #save
-saveRDS(BT_filt_data, paste0(filtered_data_path, "04_lake_BT_sub.rds"))
+saveRDS(BT_telem_data_3, paste0(filtered_data_path, "04_lake_BT_sub.rds"))
 
 #--------------------------------------------------------------------------------------------#
 #--------------------------------------------------------------------------------------------#
@@ -115,7 +117,6 @@ get_ref_data <-  readRDS(paste0(filtered_data_path, "01_lake_BT_sub.rds"))
 ref_data <- get_ref_data %>% 
   filter(individual_ID == 'FReference'| Species == "Northern Pike" ) %>% 
   dplyr::select(individual_ID, HPE, timestamp_cest, Long, Lat)
-
 
 ref_data <- with(ref_data, 
                  data.frame(
@@ -133,39 +134,125 @@ ref_tel <- as.telemetry(ref_data,
                         projection = NULL,               
                         datum = "WGS84")
 
+
 ctmm::projection(ref_tel) <- ctmm::median(ref_tel)
 UERE <- uere.fit(ref_tel$FReference)
 summary(UERE)
+# low      est      high
+# all 0.37805 0.379299 0.3805479
+
+#save BT UERE for future use
+#saveRDS(UERE, paste0(filtered_data_path, 'BT_UERE.rds'))
+
+#-------------------------------------------------------------------------------#
+
+BT_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_BT_sub.rds"))
+#load UERE if needed
+BT_UERE <- readRDS(paste0(filtered_data_path, "BT_UERE.rds"))
 
 
 #> 2.1. Perch ####
 
-BT_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_BT_sub.rds"))
-
 perch_pred_ids <- 
-  BT_pred_mort_events %>%
+  BT_pred_prey_cols %>%
+  filter(species == 'Perch') %>% 
   filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
-  mutate(
-    first_date_over_50 = as.Date(first_date_over_50),
-    death_date = as.Date(death_date)) %>% 
-  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
-  filter(Species == 'Perch') %>% 
   pull(individual_ID)
 
-#No perch need to be re-analysed.
+#need to re-run ctmms for F59752, F59757 and F59792
+#first double check differences between unfiltered and filtered dataset
+# Count rows per ID in BT_filt_data
+filt_counts <- BT_filt_data %>%
+  filter(individual_ID %in% perch_pred_ids) %>%
+  count(individual_ID, name = "BT_filt_data_rows")
 
+# Count rows per ID in BT_telem_data
+telem_counts <- BT_telem_data %>%
+  filter(individual_ID %in% perch_pred_ids) %>%
+  count(individual_ID, name = "BT_telem_data_rows")
+
+# Combine results into one table
+row_comparison <- full_join(filt_counts, telem_counts, by = "individual_ID")
+
+# View result
+print(row_comparison)
+
+### Setup to re-run ctmms ###
+
+pred_perch_data <- 
+  BT_filt_data %>% 
+  filter(individual_ID == perch_pred_ids)
+
+pred_perch_data <- 
+  with(pred_perch_data, 
+       data.frame(
+         "timestamp" = timestamp,                        
+         "location.long" = longitude,                         
+         "location.lat" = latitude, 
+         "GPS.HDOP" = HDOP,                               
+         "individual-local-identifier" = individual_ID))
+
+#create telemetry object for predated perch
+pred_perch_tel <- as.telemetry(pred_perch_data, 
+                               timezone = "Europe/Stockholm",   
+                               timeformat = "%Y-%m-%d %H:%M:%S",
+                               projection = NULL,               
+                               datum = "WGS84")
+
+ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
+uere(pred_perch_tel) <- BT_UERE
+
+#Initialize a parallel cluster to speed up model fitting for each fish individual.
+cl <- makeCluster(7)
+doParallel::registerDoParallel(cl)
+
+pred_perch_fits <- 
+  foreach(i = 1:length(pred_perch_tel), .packages = 'ctmm') %dopar% {
+    pred_perch_guess <- ctmm.guess(pred_perch_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_perch_tel[[i]], pred_perch_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_BT_perch_fits/", names(pred_perch_tel)[i], ".rds"))
+    model_fit
+  }
+
+saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "lake_BT_perch_fits/", "pred_perch_fits.rds"))
+
+#-----------------------------------------------------------------------------------------------#
 
 #> 2.2. Roach ####
 
 roach_pred_ids <- 
-  BT_pred_mort_events %>%
+  BT_pred_prey_cols %>%
+  filter(species == 'Roach') %>% 
   filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
-  mutate(
-    first_date_over_50 = as.Date(first_date_over_50),
-    death_date = as.Date(death_date)) %>% 
-  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
-  filter(Species == 'Roach') %>% 
   pull(individual_ID)
+
+#need to re-run ctmms for F59783, F59803, F59809, F59810
+#need to also re-run ctmms for F59812, F59815, F59807, F59776
+
+# Additional IDs to include
+additional_ids <- c("F59812", "F59815", "F59807", "F59776")
+# Combine and ensure uniqueness
+roach_pred_ids <- union(roach_pred_ids, additional_ids)
+
+#first double check differences between unfiltered and filtered dataset
+# Count rows per ID in BT_filt_data
+filt_counts <- BT_filt_data %>%
+  filter(individual_ID %in% roach_pred_ids) %>%
+  count(individual_ID, name = "BT_filt_data_rows")
+
+# Count rows per ID in BT_telem_data
+telem_counts <- BT_telem_data %>%
+  filter(individual_ID %in% roach_pred_ids) %>%
+  count(individual_ID, name = "BT_telem_data_rows")
+
+# Combine results into one table
+row_comparison <- full_join(filt_counts, telem_counts, by = "individual_ID")
+
+print(row_comparison)
+
+
+### Setup to re-run ctmms ###
 
 pred_roach_data <- 
   BT_filt_data %>% 
@@ -188,7 +275,7 @@ pred_roach_tel <- as.telemetry(pred_roach_data,
                                datum = "WGS84")
 
 ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
-uere(pred_roach_tel) <- UERE
+uere(pred_roach_tel) <- BT_UERE
 
 #Initialize a parallel cluster to speed up model fitting for each fish individual.
 cl <- makeCluster(7)
@@ -204,6 +291,8 @@ pred_roach_fits <-
   }
 
 saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_BT_roach_fits/", "pred_roach_fits.rds"))
+
+#---------------------------------------------------------------------------------------------------------#
 
 #> 2.3. Pike ####
 
