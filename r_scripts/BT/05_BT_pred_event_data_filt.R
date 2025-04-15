@@ -256,7 +256,7 @@ print(row_comparison)
 
 pred_roach_data <- 
   BT_filt_data %>% 
-  filter(individual_ID == roach_pred_ids)
+  filter(individual_ID %in% roach_pred_ids)
 
 pred_roach_data <- 
   with(pred_roach_data, 
@@ -278,7 +278,7 @@ ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
 uere(pred_roach_tel) <- BT_UERE
 
 #Initialize a parallel cluster to speed up model fitting for each fish individual.
-cl <- makeCluster(7)
+cl <- makeCluster(8)
 doParallel::registerDoParallel(cl)
 
 pred_roach_fits <- 

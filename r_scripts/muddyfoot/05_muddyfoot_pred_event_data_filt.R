@@ -121,18 +121,31 @@ muddyfoot_UERE <- readRDS(paste0(filtered_data_path, "muddyfoot_UERE.rds"))
 
 #> 2.1. Perch ####
 
-muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
-muddyfoot_
-
 perch_pred_ids <- 
-  mud_pred_mort_events %>%
-  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated'| n_missing_dates > 24) %>% 
-  mutate(
-    first_date_over_50 = as.Date(first_date_over_50),
-    death_date = as.Date(death_date)) %>% 
-  dplyr::select(individual_ID, Species, first_date_over_50, death_date) %>% 
-  filter(Species == 'Perch') %>% 
+  muddyfoot_pred_prey_cols %>%
+  filter(species == 'Perch') %>% 
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
   pull(individual_ID)
+
+#need to re-run ctmms for F59752, F59757 and F59792
+#first double check differences between unfiltered and filtered dataset
+# Count rows per ID in muddyfoot_filt_data
+filt_counts <- muddyfoot_filt_data %>%
+  filter(individual_ID %in% perch_pred_ids) %>%
+  count(individual_ID, name = "muddyfoot_filt_data_rows")
+
+# Count rows per ID in muddyfoot_telem_data
+telem_counts <- muddyfoot_telem_data %>%
+  filter(individual_ID %in% perch_pred_ids) %>%
+  count(individual_ID, name = "muddyfoot_telem_data_rows")
+
+# Combine results into one table
+row_comparison <- full_join(filt_counts, telem_counts, by = "individual_ID")
+
+# View result
+print(row_comparison)
+
+### Setup to re-run ctmms ###
 
 pred_perch_data <- 
   muddyfoot_filt_data %>% 
@@ -149,13 +162,13 @@ pred_perch_data <-
 
 #create telemetry object for predated perch
 pred_perch_tel <- as.telemetry(pred_perch_data, 
-                        timezone = "Europe/Stockholm",   
-                        timeformat = "%Y-%m-%d %H:%M:%S",
-                        projection = NULL,               
-                        datum = "WGS84")
+                               timezone = "Europe/Stockholm",   
+                               timeformat = "%Y-%m-%d %H:%M:%S",
+                               projection = NULL,               
+                               datum = "WGS84")
 
 ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
-uere(pred_perch_tel) <- UERE
+uere(pred_perch_tel) <- muddyfoot_UERE
 
 #Initialize a parallel cluster to speed up model fitting for each fish individual.
 cl <- makeCluster(2)
