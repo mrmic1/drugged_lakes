@@ -8,12 +8,10 @@
 
 #--------------------------------------------------------------------------------------------#
 
-
 library(ctmm)
 library(tidyverse)
 library(move2)
 library(sf)         # spatial data handling
-
 
 ### DIRECTORIES ###
 # Define paths to various datasets and save locations for tables.
@@ -22,7 +20,7 @@ telem_path <- "./data/telem_obj/BT/"
 lake_polygon_path <- "./data/lake_coords/"
 
 ### Load data ###
-BT_filt_data <- readRDS(paste0(filtered_data_path, '04_lake_BT_sub.rds'))
+BT_filt_data <- readRDS(paste0(filtered_data_path, '03_lake_BT_sub.rds'))
 
 # Load the polygon representing the boundary of BT lake, in the form of a GeoPackage file
 BT_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_BT_polygon.gpkg"))
@@ -66,72 +64,7 @@ BT_perch_dat <- BT_perch_dat %>%
 
 #---------------------------------------------------------------------------#
 
-#> F59801 ####
-
-#Fish was not found
-#Has a very small home range estimate relative to the population
-
-F59801_dat <- BT_perch_dat %>% 
-  filter(individual_ID == 'F59801')
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59801_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59801_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59801 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-#not clear
-
-#> F59764 ###
-
-#Fish was not found
-#Has a very small home range estimate relative to the population
-
-F59764_dat <- BT_perch_dat %>% 
-  filter(individual_ID == 'F59764')
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59764_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59764_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59764 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-
-#> F59750 ####
-
-#Fish was not found
-
-F59750_dat <- BT_perch_dat %>% 
-  filter(individual_ID == 'F59750')
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59750_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59750_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59750 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-#looks like it circled the edges of the lake
+#### LIKELY MORTALITY ####
 
 #> F59752 ####
 
@@ -150,27 +83,6 @@ ggplot() +
   theme_minimal() +
   labs(
     title = "Daily Movement Trajectories of Individual F59752 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-
-#> F59755 ####
-
-#Fish was not found
-
-F59755_dat <- BT_perch_dat %>% 
-  filter(individual_ID == 'F59755')
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59755_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59755_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59755 in BT Lake",
     x = "Longitude", y = "Latitude"
   )
 
@@ -194,9 +106,55 @@ ggplot() +
     x = "Longitude", y = "Latitude"
   )
 
-#> F59764 ####
+
+#### UNCLEAR ####
+
+#> F59750 ####
 
 #Fish was not found
+
+F59750_dat <- BT_perch_dat %>% 
+  filter(individual_ID == 'F59750')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59750_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59750_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59750 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+#looks like it circled the edges of the lake
+
+#> F59755 ####
+
+#Fish was not found
+
+F59755_dat <- BT_perch_dat %>% 
+  filter(individual_ID == 'F59755')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59755_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59755_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59755 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+#> F59764 ###
+
+#Fish was not found
+#Has a very small home range estimate relative to the population
 
 F59764_dat <- BT_perch_dat %>% 
   filter(individual_ID == 'F59764')
@@ -213,7 +171,6 @@ ggplot() +
     title = "Daily Movement Trajectories of Individual F59764 in BT Lake",
     x = "Longitude", y = "Latitude"
   )
-
 
 #> F59790 ####
 
@@ -254,4 +211,46 @@ ggplot() +
     title = "Daily Movement Trajectories of Individual F59792 in BT Lake",
     x = "Longitude", y = "Latitude"
   )
+
+#> F59801 ####
+
+#Fish was not found
+#Has a very small home range estimate relative to the population
+
+F59801_dat <- BT_perch_dat %>% 
+  filter(individual_ID == 'F59801')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59801_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59801_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59801 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+#not clear
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

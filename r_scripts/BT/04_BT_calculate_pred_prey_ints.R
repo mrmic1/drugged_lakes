@@ -260,7 +260,7 @@ prey_pike_encounter_sum <-
 
 #save prey predator encounter summary
 saveRDS(prey_pike_encounter_sum, paste0(enc_path, "BT_prey_pike_encounter_summary_unfiltered.rds"))
-prey
+prey_pike_encounter_sum <- readRDS(paste0(enc_path, "BT_prey_pike_encounter_summary_unfiltered.rds"))
 
 #----------------------------------------------------------------------------------------------------#
 
@@ -305,7 +305,7 @@ prey_over_25_encounters <-
 
 #how many unique roach individuals
 unique(prey_over_25_encounters$Prey_ID)
-#42 unique individuals
+#18 unique individuals
 
 # Summarise prey-pike interactions: count days with > 25 encounters, consecutive days, and the first date
 BT_prey_pike_interactions <- 
@@ -335,7 +335,7 @@ BT_prey_pike_interactions <-
       if (length(dates_100) == 0) 0 else max(rle(c(1, diff(sort(dates_100)) == 1))$lengths)
     }
   )
-#69 rows
+#21 rows
 
 # Extract individual treatment and missing dates information from filtered data
 prey_sel_cols <- 
@@ -443,7 +443,7 @@ BT_prey_total_encounter_summary <-
 
 BT_prey_total_encounter_summary <-
   BT_prey_total_encounter_summary %>% 
-  mutate(days_tracked = 36 - n_missing_dates,  # Total tracking duration (max 34 days)
+  mutate(days_tracked = 34 - n_missing_dates,  # Total tracking duration (max 34 days)
          avg_daily_pred_encounter_rate = round(total_encounters / days_tracked, 0))
 
 head(BT_prey_total_encounter_summary)
@@ -462,7 +462,7 @@ saveRDS(BT_prey_daily_encounter_summary, paste0(enc_path, 'BT_prey_daily_encount
 BT_daily_encounter_summary_prey_not_found <- 
   BT_prey_daily_encounter_summary %>% 
   filter(found_alive == 0)
-#381 rows
+#511 rows
 
 
 #Add column to identify whether the date was irregularly sampled or dates were not tracked
@@ -502,7 +502,7 @@ BT_daily_encounter_summary_prey_not_found <- merged_df[, c("Prey_ID", "Date", "S
 saveRDS(BT_daily_encounter_summary_prey_not_found, paste0(enc_path, 'BT_daily_encounter_summaries_for_prey_not_found_unfiltered.rds'))
 
 length(unique(BT_daily_encounter_summary_prey_not_found$Prey_ID))
-#19
+#18
 
 #Total encounter summary for prey not found
 #This summarised dataframe will include information on
@@ -639,8 +639,8 @@ prey_encounter_sum_filtered <-
   prey_encounter_sum %>%
   left_join(BT_pred_prey_cols, c("Prey_ID" = "individual_ID")) %>% 
   filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
-#original number of rows: 10836
-#new: 10092
+#original number of rows: 6532
+#new: 6286
 
 # Recalculate the most encounter-heavy date 
 max_encounter_dates_filtered <-

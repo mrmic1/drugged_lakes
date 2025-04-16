@@ -67,6 +67,28 @@ BT_roach_dat <- BT_roach_dat %>%
 
 #--------------------------------------------------------------------------------#
 
+#### KNOWN PREDATED ####
+
+#> F59774 ####
+
+F59774_dat <- BT_roach_dat %>% 
+  filter(individual_ID == 'F59774')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59774_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59774_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59774 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+#### LIKELY PREDATED ####
+
 #> F59803 ####
 
 F59803_dat <- BT_roach_dat %>% 
@@ -86,6 +108,29 @@ ggplot() +
   )
 
 
+#> F59809 ####
+
+#Fish was not found
+#Likely predated
+
+F59809_dat <- BT_roach_dat %>% 
+  filter(individual_ID == 'F59809')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59809_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59809_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59809 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+
+#### LIKELY MORTALITY ####
 
 #> F59783 ####
 
@@ -106,6 +151,33 @@ ggplot() +
   )
 
 #Movement clearly changed around the 17-Oct or 18-Oct. Indicative of mortality
+
+#> F59810 ####
+
+#Fish was not found
+#Likely predated
+
+F59810_dat <- BT_roach_dat %>% 
+  filter(individual_ID == 'F59810')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59810_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59810_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59810 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+#Tracks pretty much stop after 10-04
+
+
+
+#### UNCLEAR ####
 
 #> F59776 ####
 
@@ -145,8 +217,6 @@ ggplot() +
     x = "Longitude", y = "Latitude"
   )
 
-
-
 #> F59807 ####
 
 F59807_dat <- BT_roach_dat %>% 
@@ -166,53 +236,6 @@ ggplot() +
   )
 
 #not clear
-
-
-#> F59809 ####
-
-#Fish was not found
-#Likely predated
-
-F59809_dat <- BT_roach_dat %>% 
-  filter(individual_ID == 'F59809')
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59809_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59809_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59809 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-
-#> F59810 ####
-
-#Fish was not found
-#Likely predated
-
-F59810_dat <- BT_roach_dat %>% 
-  filter(individual_ID == 'F59810')
-
-# Plot
-ggplot() +
-  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
-  geom_path(data = F59810_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
-  geom_point(data = F59810_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
-  facet_wrap(~ Date) +  # one panel per date
-  coord_sf() +
-  theme_minimal() +
-  labs(
-    title = "Daily Movement Trajectories of Individual F59810 in BT Lake",
-    x = "Longitude", y = "Latitude"
-  )
-
-#Tracks pretty much stop after 10-04
-
 
 #> F59812 ####
 
