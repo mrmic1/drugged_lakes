@@ -115,7 +115,7 @@ saveRDS(BT_telem_data_3, paste0(filtered_data_path, "04_lake_BT_sub.rds"))
 get_ref_data <-  readRDS(paste0(filtered_data_path, "01_lake_BT_sub.rds"))
 
 ref_data <- get_ref_data %>% 
-  filter(individual_ID == 'FReference'| Species == "Northern Pike" ) %>% 
+  filter(individual_ID == 'FReference' | Species == 'Northern Pike') %>% 
   dplyr::select(individual_ID, HPE, timestamp_cest, Long, Lat)
 
 ref_data <- with(ref_data, 
@@ -135,9 +135,9 @@ ref_tel <- as.telemetry(ref_data,
                         datum = "WGS84")
 
 
-ctmm::projection(ref_tel) <- ctmm::median(ref_tel)
-UERE <- uere.fit(ref_tel$FReference)
-summary(UERE)
+ctmm::projection(ref_tel$FReference) <- ctmm::median(ref_tel)
+BT_UERE <- uere.fit(ref_tel$FReference)
+summary(BT_UERE)
 # low      est      high
 # all 0.37805 0.379299 0.3805479
 
