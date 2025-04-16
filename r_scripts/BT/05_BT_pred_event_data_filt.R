@@ -49,8 +49,8 @@ BT_pred_prey_cols <-
   mortality_preds %>%
   filter(lake == 'BT') %>% 
   filter(species == 'Roach'| species == 'Perch') %>%
-  dplyr::select(individual_ID, species, first_date_over_25, revised_suspected_mortality, final_likely_death_date) %>% 
-  rename(death_date = final_likely_death_date)
+  dplyr::select(individual_ID, species, revised_suspected_mortality, revised_likely_death_date) %>% 
+  rename(death_date = revised_likely_death_date)
 
 # Ensure the merged_date column is of Date type
 BT_pred_prey_cols$death_date <- as.Date(BT_pred_prey_cols$death_date, origin = "1970-01-01")
@@ -61,12 +61,12 @@ BT_telem_data_2 <-
   left_join(BT_pred_prey_cols, by = c("individual_ID" = "individual_ID")) %>%
   filter(is.na(death_date)| Date < death_date)  # Keep locations only before the death date if one is recorded
 #pre-filter rows: 20165124
-#post-filter rows: 19941442
+#post-filter rows: 19936703
 
 #how many rows removed
 
 print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data) - nrow(BT_telem_data_2)))
-#223682
+#228421
 
 #check removed data
 BT_removed_data <- 
@@ -94,8 +94,8 @@ BT_telem_data_3 <-
   BT_telem_data_2 %>%
   left_join(pike_mort_cols, by = c("individual_ID" = "individual_ID")) %>%
   filter(is.na(pike_death_date)| Date < pike_death_date)  # Keep locations only before the death date if one is recorded
-#pre-filter rows: 19941442
-#post-filter rows: 18838134
+#pre-filter rows: 19936703
+#post-filter rows: 18833395
 
 print(paste0("Rows removed after  filtering: ", nrow(BT_telem_data_2) - nrow(BT_telem_data_3)))
 #1103308
