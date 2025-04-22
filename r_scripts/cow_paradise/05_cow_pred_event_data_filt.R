@@ -2,10 +2,14 @@
 # Filter data to remove post-predation and mortality tracking - Cow Paradise  #
 #-----------------------------------------------------------------------------#
 
+#SCRIPT DESCRIPTION
+
 #In this script we will remove data where individuals were tracked after being predated or had 
 #an identified mortality event
-#Predation events are identified in the 04_cow_pred_encounters script
-#We will then re-run ctmm movement models for these individuals
+#Predation events are identified in the `04_cow_calculate_pred_prey_ints` script
+#We will then re-run ctmm movement models for individuals that had their data filtered
+
+#----------------------------------------------------------------------------------------------#
 
 ### LIBRARIES ###
 # Loading required packages
@@ -20,87 +24,93 @@ library(doParallel)   # For registering parallel backend
 # Set the time zone environment to 'Europe/Stockholm' for consistent timestamp manipulation
 Sys.setenv(TZ = 'Europe/Stockholm')
 
+
 ### DIRECTORIES ###
 # Paths to directories containing the necessary data files
 filtered_data_path <- "./data/tracks_filtered/lake_cow_paradise/"
-telem_path <- "./data/telem_obj/"
-enc_path <- "./data/encounters/"
+telem_path <- "./data/telem_obj/cow_paradise/"
+enc_path <- "./data/encounters/cow_paradise/"
 save_ctmm_path = "./data/ctmm_fits/"
 
 ### DATA LOADING ###
 cow_telem_data <-  readRDS(paste0(filtered_data_path, "03_lake_cow_sub.rds"))
 # Load the predation event dataframe 
-cow_pred_mort_events <- readRDS(paste0(enc_path, "cow_paradise/cow_pred_encounter_summary_filtered.rds"))
+mortality_preds <- readxl::read_excel("./data/encounters/suspected_mortality_updated.xlsx")
 # Load suspected dates for pike deaths
-pike_deaths <- read.csv(paste0(enc_path, "pike_deaths.csv"))
+pike_deaths <- read.csv("./data/encounters/pike_deaths.csv")
 
+#------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------------------------------------------------------------#
 
-
-#-------------------------------------------------#
-# 1. Filter out post-predation event data ####
-#-------------------------------------------------#
+#-------------------------------------------------------------------#
+# 1. Filter out post-predation and mortality tracking locations #####
+#-------------------------------------------------------------------#
 
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
-cow_pred_cols <- 
-  cow_pred_mort_events %>%
-  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
-  mutate(
-    first_date_over_50 = as.Date(first_date_over_50),
-    death_date = as.Date(death_date)) %>% 
-  dplyr::select(individual_ID, Species, first_date_over_50, death_date)
-
-# Merge into single death_date column
-cow_pred_cols$death_date <- ifelse(!is.na(cow_pred_cols$first_date_over_50), cow_pred_cols$first_date_over_50, cow_pred_cols$death_date)
+cow_pred_prey_cols <-
+  mortality_preds %>%
+  filter(lake == 'cow paradise') %>% 
+  filter(species == 'Roach'| species == 'Perch') %>%
+  dplyr::select(individual_ID, species, revised_suspected_mortality, revised_likely_death_date) %>% 
+  rename(death_date = revised_likely_death_date)
 
 # Ensure the merged_date column is of Date type
-cow_pred_cols$death_date <- as.Date(cow_pred_cols$death_date, origin = "1970-01-01")
+cow_pred_prey_cols$death_date <- as.Date(cow_pred_prey_cols$death_date, origin = "1970-01-01")
 
 # Filter out data after the predation or mortality event for each individual.
 cow_telem_data_2 <- 
   cow_telem_data %>%
-  left_join(cow_pred_cols, by = c("individual_ID" = "individual_ID")) %>%
-  filter(is.na(death_date)| Date <= death_date)  # Keep only pre-predation data
+  left_join(cow_pred_prey_cols, by = c("individual_ID" = "individual_ID")) %>%
+  # Keep locations only before the death date if one is recorded
+  filter(is.na(death_date)| Date < death_date) %>% 
+  #Remove individuals with poor tracking
+  filter(revised_suspected_mortality != "poor_tracking_remove" | is.na(revised_suspected_mortality))
+
 #pre-filter rows: 8860993
-#post-filter rows: 8824287
-#36706 rows removed
+#post-filter rows: 8686231
+
+#how many rows removed
 
 print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data) - nrow(cow_telem_data_2)))
+#174762
+
+# #check removed data
+# cow_removed_data <- 
+#   cow_telem_data %>%
+#   left_join(cow_pred_prey_cols, by = c("individual_ID" = "individual_ID")) %>%
+#   filter(!is.na(death_date) & Date >= death_date)
 
 #------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------------------------------------------------------------------#
-
 #-------------------------------------------------#
 # 2. Filter out pike post-mortality data ####
 #-------------------------------------------------#
 
-#Some pike died in Lake Cow Paradise. Need to filter out date post-suspected mortality date
+#Some pike died in Lake cow. Need to filter out date post-suspected mortality date
 
 # Select relevant columns from predation event data to identify the first date the prey was tracked post-predation.
 pike_mort_cols <- 
   pike_deaths %>%
-  filter(individual_ID %in% cow_telem_data_2$individual_ID) %>% 
+  filter(individual_ID %in% cow_telem_data$individual_ID) %>% 
   mutate(
     pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y"))
 
-
-#check
-str(pike_mort_cols)
-
 # Filter out data after the predation or mortality event for each individual.
-cow_filt_data <- 
+cow_telem_data_3 <- 
   cow_telem_data_2 %>%
   left_join(pike_mort_cols, by = c("individual_ID" = "individual_ID")) %>%
-  filter(is.na(pike_death_date)| Date <= pike_death_date)  # Keep only pre-predation data
-#pre-filter rows: 8824287
-#post-filter rows: 8793919
+  filter(is.na(pike_death_date)| Date < pike_death_date)  # Keep locations only before the death date if one is recorded
+#pre-filter rows: 8686231
+#post-filter rows: 8649347
 
-print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data_2) - nrow(cow_filt_data)))
-#30368
+print(paste0("Rows removed after  filtering: ", nrow(cow_telem_data_2) - nrow(cow_telem_data_3)))
+#36884
 
 #save
-saveRDS(cow_filt_data, paste0(filtered_data_path, "04_lake_cow_sub.rds"))
-cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
+saveRDS(cow_telem_data_3, paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 
+#--------------------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------------------#
 #------------------------------------------------------------#
 # 3. Rerun ctmm models for individuals that were predated ####
 #------------------------------------------------------------#
@@ -110,7 +120,7 @@ cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
 get_ref_data <-  readRDS(paste0(filtered_data_path, "01_lake_cow_sub.rds"))
 
 ref_data <- get_ref_data %>% 
-  filter(individual_ID == 'FReference') %>% 
+  filter(individual_ID == 'FReference'| Species == 'Northern Pike') %>% 
   dplyr::select(individual_ID, HPE, timestamp_cest, Long, Lat)
 
 
@@ -131,12 +141,18 @@ ref_tel <- as.telemetry(ref_data,
                         datum = "WGS84")
 
 ctmm::projection(ref_tel) <- ctmm::median(ref_tel)
-UERE <- uere.fit(ref_tel)
-summary(UERE)
+cow_UERE <- uere.fit(ref_tel$FReference)
+summary(cow_UERE)
+# low       est      high
+# all 0.8200953 0.8265717 0.8330474
 
+#save BT UERE for future use
+saveRDS(cow_UERE, paste0(filtered_data_path, 'cow_UERE.rds'))
+cow_UERE <- readRDS(paste0(filtered_data_path, 'cow_UERE.rds'))
+#-----------------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------------#
 
 #> 2.1. Perch ####
-
 
 #Extract predated individual from the data frame
 predated_perch_ID <- 
