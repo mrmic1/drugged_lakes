@@ -29,12 +29,15 @@ save_tables_path <- "./tables/muddyfoot/"
 ### LOAD DATA ###
 
 # Load telemetry objects for pike, perch, and roach species in Muddyfoot lake
+#6 pike
 pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
+#30 perch
 perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
+#28 roach (1 died before study, 1 died at the start of the study)
 roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
 
 # Load ctmm model fits for pike, perch, and roach in Muddyfoot lake
-# The models include continuous-time movement fits using the Ornstein-Uhlenbeck Foraging (OUF) model
+# #make sure that number of telemetry objects is the same at ctmm objects. 
 pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
 perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
 roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
@@ -100,7 +103,7 @@ summary(pike_akdes_cg$F59880)
 # Save the complete list of Pike AKDEs with consistent grid
 saveRDS(pike_akdes_cg, paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
 
-#------------------------------------------------#
+#-------------------------------------------------------------------------------------------------------------#
 
 #> 1.2. Perch ####
 
@@ -160,7 +163,7 @@ roach_akde_ref <- akde(roach_muddyfoot_tel[[9]], roach_muddyfoot_ctmm_fits[[9]],
 roach_akdes_cg <- list()
 
 # Set up parallel processing using 3 cores
-cl <- makeCluster(10)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 
 # Estimate AKDE for each individual roach using the reference grid
