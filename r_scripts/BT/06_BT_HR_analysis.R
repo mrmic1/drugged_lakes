@@ -32,6 +32,12 @@ pike_BT_tel <- readRDS(paste0(telem_path, 'pike_BT_tel.rds'))
 perch_BT_tel <- readRDS(paste0(telem_path, 'perch_BT_tel.rds'))
 roach_BT_tel <- readRDS(paste0(telem_path, 'roach_BT_tel.rds'))
 
+#need removed dead pike from telemetry object
+#pike_BT_tel <- pike_BT_tel[names(pike_BT_tel) != "F59889"]
+#now resave pike_BT_tel
+#saveRDS(pike_BT_tel, paste0(telem_path, 'pike_BT_tel.rds'))
+
+
 # Load ctmm model fits for pike, perch, and roach in BT lake
 # The models include continuous-time movement fits using the Ornstein-Uhlenbeck Foraging (OUF) model
 pike_BT_ctmm_fits <- readRDS(paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
@@ -222,10 +228,6 @@ roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/la
 
 #> 2.2. Pike  ####
 
-#remove F59889 from telemetry and cg list
-#this individual died in the lake early
-pike_akdes_cg_list <- pike_akdes_cg_list[names(pike_akdes_cg_list) != "F59889"]
-pike_BT_tel <- pike_BT_tel[names(pike_BT_tel) != "F59889"]
 
 # Separating Pike data into two groups: 'control' and 'mix'
 # Check that treatments are in the right order

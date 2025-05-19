@@ -21,7 +21,7 @@ print(names(rds_list))
 #these were rerun using ctmm.fit so we do not need to extract OUF
 #OUF is already extracted. 
 
-exclude_ids <- c("F59752", "F59757", "F59792")
+exclude_ids <- c("F59752", "F59757", "F59792", "F59789")
 
 BT_perch_ctmm_fits <- rds_list[!names(rds_list) %in% exclude_ids]
 
@@ -68,7 +68,7 @@ BT_perch_OUF_models <- c(BT_perch_OUF_models, remaining_list)[names(rds_list)]
 #check that ID are in chonological order
 names(BT_perch_OUF_models)
 summary(BT_perch_OUF_models$F59792)
-
+summary(BT_perch_OUF_models$F59789)
 
 #save
 saveRDS(BT_perch_OUF_models, paste0(ctmm_path, "BT_perch_OUF_models.rds"))

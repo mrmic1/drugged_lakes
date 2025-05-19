@@ -235,6 +235,29 @@ ggplot() +
 
 #not clear
 
+#> F59789 ####
+
+#Fish was not found
+#Has a very small home range estimate relative to the population
+
+F59789_dat <- BT_perch_dat %>% 
+  filter(individual_ID == 'F59789')
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59789_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59789_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59789 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )
+
+#not clear
+
 
 
 

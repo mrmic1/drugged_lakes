@@ -148,21 +148,43 @@ summary(cow_UERE)
 
 #save BT UERE for future use
 saveRDS(cow_UERE, paste0(filtered_data_path, 'cow_UERE.rds'))
+#-----------------------------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------------------------#
+
+cow_filt_data <- readRDS(paste0(filtered_data_path, "04_lake_cow_sub.rds"))
+#load UERE if needed
 cow_UERE <- readRDS(paste0(filtered_data_path, 'cow_UERE.rds'))
-#-----------------------------------------------------------------------------------------------#
-#-----------------------------------------------------------------------------------------------#
 
 #> 2.1. Perch ####
 
-#Extract predated individual from the data frame
-predated_perch_ID <- 
-  cow_pred_cols %>%
-  filter(Species == 'Perch') %>% 
+perch_pred_ids <- 
+  cow_pred_prey_cols %>%
+  filter(species == 'Perch') %>% 
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated') %>% 
   pull(individual_ID)
+
+#first double check differences between unfiltered and filtered dataset
+# Count rows per ID in cow_filt_data
+filt_counts <- cow_filt_data %>%
+  filter(individual_ID %in% perch_pred_ids) %>%
+  count(individual_ID, name = "cow_filt_data_rows")
+
+# Count rows per ID in cow_telem_data
+telem_counts <- cow_telem_data %>%
+  filter(individual_ID %in% perch_pred_ids) %>%
+  count(individual_ID, name = "cow_telem_data_rows")
+
+# Combine results into one table
+row_comparison <- full_join(filt_counts, telem_counts, by = "individual_ID")
+
+# View result
+print(row_comparison)
+
+### Setup to re-run ctmms ###
 
 pred_perch_data <- 
   cow_filt_data %>% 
-  filter(individual_ID %in% predated_perch_ID)
+  filter(individual_ID %in% perch_pred_ids)
 
 pred_perch_data <- 
   with(pred_perch_data, 
@@ -181,33 +203,55 @@ pred_perch_tel <- as.telemetry(pred_perch_data,
                                datum = "WGS84")
 
 ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
-uere(pred_perch_tel) <- UERE
+uere(pred_perch_tel) <- cow_UERE
 
 #Initialize a parallel cluster to speed up model fitting for each fish individual.
-cl <- makeCluster(4)
+cl <- makeCluster(5)
 doParallel::registerDoParallel(cl)
 
-# Perform model fitting using ctmm for each individual in the telemetry data.
-cow_pred_perch_fits <- 
+pred_perch_fits <- 
   foreach(i = 1:length(pred_perch_tel), .packages = 'ctmm') %dopar% {
     pred_perch_guess <- ctmm.guess(pred_perch_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
     model_fit <- ctmm.fit(pred_perch_tel[[i]], pred_perch_guess, method = 'ML')
     # Save individual model fits to a specified folder.
-    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_cow_perch_fits/", names(pred_perch_tel)[i],".rds"))
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_cow_perch_fits/", names(pred_perch_tel)[i], ".rds"))
     model_fit
   }
 
+saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "lake_cow_perch_fits/", "pred_perch_fits.rds"))
+
+#-----------------------------------------------------------------------------------------------#
 #> 2.2. Roach ####
 
-#Extract predated individual from the data frame
-predated_roach_IDs <- 
-  cow_pred_cols %>%
-  filter(Species == 'Roach') %>% 
+roach_pred_ids <- 
+  cow_pred_prey_cols %>%
+  filter(species == 'Roach') %>% 
+  filter(revised_suspected_mortality == 'mortality' | revised_suspected_mortality == 'likely_predated'| revised_suspected_mortality == 'known_predated') %>% 
   pull(individual_ID)
+
+
+#first double check differences between unfiltered and filtered dataset
+# Count rows per ID in cow_filt_data
+filt_counts <- cow_filt_data %>%
+  filter(individual_ID %in% roach_pred_ids) %>%
+  count(individual_ID, name = "cow_filt_data_rows")
+
+# Count rows per ID in cow_telem_data
+telem_counts <- cow_telem_data %>%
+  filter(individual_ID %in% roach_pred_ids) %>%
+  count(individual_ID, name = "cow_telem_data_rows")
+
+# Combine results into one table
+row_comparison <- full_join(filt_counts, telem_counts, by = "individual_ID")
+
+print(row_comparison)
+
+
+### Setup to re-run ctmms ###
 
 pred_roach_data <- 
   cow_filt_data %>% 
-  filter(individual_ID %in% predated_roach_IDs)
+  filter(individual_ID %in% roach_pred_ids)
 
 pred_roach_data <- 
   with(pred_roach_data, 
@@ -218,7 +262,7 @@ pred_roach_data <-
          "GPS.HDOP" = HDOP,                               
          "individual-local-identifier" = individual_ID))
 
-#create telemetry object for predated perch
+#create telemetry object for predated roach
 pred_roach_tel <- as.telemetry(pred_roach_data, 
                                timezone = "Europe/Stockholm",   
                                timeformat = "%Y-%m-%d %H:%M:%S",
@@ -226,13 +270,24 @@ pred_roach_tel <- as.telemetry(pred_roach_data,
                                datum = "WGS84")
 
 ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
-uere(pred_roach_tel) <- UERE
+uere(pred_roach_tel) <- cow_UERE
 
-pred_roach_guess <- ctmm.guess(pred_roach_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
-F59828_ctmm_fit <-   ctmm.fit(pred_roach_tel, pred_roach_guess, method = 'ML')
-saveRDS(F59828_ctmm_fit, file = paste0(save_ctmm_path, "lake_cow_roach_fits/", "F59828.rds"))
+#Initialize a parallel cluster to speed up model fitting for each fish individual.
+cl <- makeCluster(3)
+doParallel::registerDoParallel(cl)
 
+pred_roach_fits <- 
+  foreach(i = 1:length(pred_roach_tel), .packages = 'ctmm') %dopar% {
+    pred_roach_guess <- ctmm.guess(pred_roach_tel[[i]], CTMM=ctmm(error=TRUE), interactive = FALSE)
+    model_fit <- ctmm.fit(pred_roach_tel[[i]], pred_roach_guess, method = 'ML')
+    # Save individual model fits to a specified folder.
+    saveRDS(model_fit, file = paste0(save_ctmm_path, "lake_cow_roach_fits/", names(pred_roach_tel)[i], ".rds"))
+    model_fit
+  }
 
+saveRDS(pred_roach_fits, file = paste0(save_ctmm_path, "lake_cow_roach_fits/", "pred_roach_fits.rds"))
+
+#-------------------------------------------------------------------------------------------------------------------------#
 
 #> 2.3. Pike ####
 
@@ -266,7 +321,7 @@ pike_mort_tel <- as.telemetry(pike_mort_data,
                               datum = "WGS84")
 
 ctmm::projection(pike_mort_tel) <- ctmm::median(pike_mort_tel)
-uere(pike_mort_tel) <- UERE
+uere(pike_mort_tel) <- cow_UERE
 
 mort_pike_guess <- ctmm.guess(pike_mort_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
 mort_pike_fit <- ctmm.fit(pike_mort_tel, mort_pike_guess, method = 'ML', trace = TRUE)
@@ -409,7 +464,7 @@ print(names(rds_list))
 #OUF is already extracted. 
 #Use roach_pred_ids created earlier in the script
 
-roach_pred_ids <- c("F59828", "F59819")
+roach_pred_ids <- c("F59826", "F59828", "F59817")
 
 lake_cow_roach_ctmm_fits <- rds_list[!names(rds_list) %in% roach_pred_ids]
 print(names(lake_cow_roach_ctmm_fits))
@@ -432,7 +487,7 @@ lake_cow_roach_OUF_models <- c(lake_cow_roach_OUF_models, remaining_list)[names(
 #check that ID are in chonological order
 names(lake_cow_roach_OUF_models)
 
-summary(lake_cow_roach_OUF_models$F59819)
+summary(lake_cow_roach_OUF_models$F59817)
 
 #save
 saveRDS(lake_cow_roach_OUF_models, paste0(save_ctmm_path, "lake_cow_roach_OUF_models.rds"))
