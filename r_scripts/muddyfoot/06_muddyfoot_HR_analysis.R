@@ -119,7 +119,7 @@ perch_akde_ref <- akde(perch_muddyfoot_tel[[9]], perch_muddyfoot_ctmm_fits[[9]],
 perch_akdes_cg <- list()
 
 # Set up parallel processing using 3 cores
-cl <- makeCluster(10)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 
 # Estimate AKDE for each individual perch using the reference grid
@@ -163,7 +163,7 @@ roach_akde_ref <- akde(roach_muddyfoot_tel[[9]], roach_muddyfoot_ctmm_fits[[9]],
 roach_akdes_cg <- list()
 
 # Set up parallel processing using 3 cores
-cl <- makeCluster(3)
+cl <- makeCluster(10)
 doParallel::registerDoParallel(cl)
 
 # Estimate AKDE for each individual roach using the reference grid

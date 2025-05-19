@@ -408,13 +408,13 @@ roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/la
 
 # Separate AKDEs for the two groups
 pike_control_akdes <- pike_akdes_cg_list[1:3]
-pike_mix_akdes <- pike_akdes_cg_list[5:6] #removing F59889
+pike_mix_akdes <- pike_akdes_cg_list[4:5]
 
 # Combining 'control' and 'mix' back into a 'total' list
 pike_akde_total <- list(Control = pike_control_akdes, Exposed = pike_mix_akdes)
 
 #all individuals
-pike_HR_meta <- ctmm::meta(pike_akdes_cg_list[c(1:3, 5,6)],col='black',sort=F, verbose = T, level.UD = 0.95)
+pike_HR_meta <- ctmm::meta(pike_akdes_cg_list[1:5],col='black',sort=F, verbose = T, level.UD = 0.95)
 #seperated by treatment
 pike_akde_meta_data <- ctmm::meta(pike_akde_total, col='black',sort=F, verbose = T, level.UD = 0.95) 
 
@@ -571,8 +571,8 @@ roach_HR_coefs <- rbind(roach_HR_control, roach_HR_exposed)
           panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))  # Set font size for axis labels
 )
 
-ggsave(filename = paste0(plot_path, "mud_HR_roach_treat_diff.pdf"),
-       plot = perch_HR_coefs_plot, 
+ggsave(filename = paste0(plot_path, "BT_HR_roach_treat_diff.pdf"),
+       plot = roach_HR_coefs_plot, 
        width = 10.5, 
        height = 10.5,
        units = 'cm')
