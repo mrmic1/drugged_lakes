@@ -13,5 +13,5 @@
 #Locations where prey were tracked after being predated filtered from the dataframe.
 
 #05_muddyfoot_sub.rds
-#Remove roach ID F59707 because it died soon after tracking began.Add columns for individual's home range size and effective sample size
+#Add columns for individual's home range size and effective sample size
 
