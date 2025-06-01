@@ -35,19 +35,6 @@ pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
 perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
 roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
 
-#remove poor tracking roach
-# Check predation event data (pre-identified predation events) for individual with many missing dates
-mud_pred_mort_events <- readRDS(paste0(enc_path, "muddyfoot_pred_encounter_summary_filtered.rds"))
-
-# Remove Roach individuals that were predated based on predation events
-roach_ids_remove <- mud_pred_mort_events %>%
-  filter(Species == "Roach" & revised_suspected_mortality == 'poor_tracking') %>%    # Filter for Roach species
-  pull(individual_ID)               # Extract IDs of predated Roach
-
-# Update the Roach AKDE list and telemetry data, removing predated individuals
-roach_akdes_cg_list <- roach_akdes_cg_list[!(names(roach_akdes_cg_list) %in% roach_ids_remove)]
-roach_muddyfoot_tel <- roach_muddyfoot_tel[!(names(roach_muddyfoot_tel) %in% roach_ids_remove)]
-
 #fish ctmms 
 pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
 perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
@@ -87,7 +74,7 @@ generate_ud_plot_whabitats <- function(pkde_data, bbox, hab_locs) {
   ggplot() +
     geom_sf(data = bbox, color = "black") +
     geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
-    geom_sf(data = hab_locs, color = "green", size = 1, fill = NA, shape = 3, stroke = 1) + 
+    geom_sf(data = hab_locs, color = "green", size = 2, fill = NA, shape = 3, stroke = 1) + 
     scale_fill_viridis_c(na.value = 'transparent', option = 'magma') +
     coord_sf() +
     theme_classic() +
@@ -354,7 +341,7 @@ pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
 ### CONTROL ###
 
-cl <- makeCluster(15)
+cl <- makeCluster(5)
 doParallel::registerDoParallel(cl)
 rsf_perch_control_list <- list()
 
