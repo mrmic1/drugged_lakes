@@ -244,6 +244,12 @@ plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 #Need to convert it from terra to raster to work with rsf.fit()
 habitat_raster <- raster::raster(habitat_raster)
 
+#save raster
+writeRaster(habitat_raster, "./data/lake_coords/muddyfoot_habitat_raster.grd", overwrite = TRUE)
+#open raster
+habtiat_raster <- rast("./data/lake_coords/muddyfoot_habitat_raster.grd")
+
+
 #---------------------------------------------------------------------------------------------------------#
 #---------------------------------------------------------------------------------------------------------#
 
@@ -341,7 +347,7 @@ pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
 ### CONTROL ###
 
-cl <- makeCluster(5)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 rsf_perch_control_list <- list()
 
@@ -377,7 +383,7 @@ saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_cont
 
 ### EXPOSED ###
 
-cl <- makeCluster(15)
+cl <- makeCluster(5)
 doParallel::registerDoParallel(cl)
 rsf_perch_mix_list <- list()
 
