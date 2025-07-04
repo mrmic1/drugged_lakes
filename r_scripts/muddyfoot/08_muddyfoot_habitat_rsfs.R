@@ -320,11 +320,11 @@ print(result_table)
 
 #telemetry objects
 roach_control_tel <- roach_muddyfoot_tel[1:14]
-roach_mix_tel <- roach_muddyfoot_tel[14:28]
+roach_mix_tel <- roach_muddyfoot_tel[15:28]
 
 #akdes
 roach_control_akdes <- roach_akdes_cg_list[1:14]
-roach_mix_akdes <- roach_akdes_cg_list[14:28]
+roach_mix_akdes <- roach_akdes_cg_list[15:28]
 
 
 #> 3.3 Pike ########################
@@ -383,7 +383,7 @@ saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_cont
 
 ### EXPOSED ###
 
-cl <- makeCluster(5)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 rsf_perch_mix_list <- list()
 
@@ -409,6 +409,10 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_perch_mix_list) <- names(perch_mix_tel)
 
+#check
+summary(rsf_perch_mix_list$F59714)
+summary(rsf_perch_mix_list$F59727)
+
 saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
 
 #-----------------------------------------------------------------------------------------#
@@ -418,7 +422,7 @@ saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list
 
 ### CONTROL ###
 
-cl <- makeCluster(10)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 rsf_roach_control_list <- list()
 
@@ -455,7 +459,7 @@ saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_cont
 
 ### EXPOSED ###
 
-cl <- makeCluster(10)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 rsf_roach_mix_list <- list()
 
