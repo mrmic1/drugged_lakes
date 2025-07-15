@@ -114,7 +114,11 @@ stopCluster(cl)
 names(pike_akdes_cg) <- names(pike_BT_tel)
 
 # View summary of a specific individual's AKDE (e.g., F59880)
-summary(pike_akdes_cg$F59886)
+summary(pike_akdes_cg$F59886) #low relative to the rest
+summary(pike_akdes_cg$F59887)
+summary(pike_akdes_cg$F59888)
+summary(pike_akdes_cg$F59891)
+summary(pike_akdes_cg$F59892)
 
 # Save the complete list of Pike AKDEs with consistent grid
 saveRDS(pike_akdes_cg, paste0(akde_path, "lake_BT_pike_akdes/akde_cg/lake_BT_pike_akdes_cg_list.rds"))
@@ -279,7 +283,7 @@ pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed gro
                       SP = BT_sp_data, # Spatial polygon for the lake boundary
                       SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
-saveRDS(pike_mix_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/pike_mix_PKDE.rds"))
+saveRDS(pike_mix_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/lake_BT_pike_mix_PKDE.rds"))
 
 # Calculate population-level AKDE for all pike - to be used as probability distribution raster
 pike_total_PKDE <- pkde(pike_BT_tel,           # Telemetry data for individuals
@@ -288,7 +292,7 @@ pike_total_PKDE <- pkde(pike_BT_tel,           # Telemetry data for individuals
                         SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
 # Save the population-level AKDE for the mixed group
-saveRDS(pike_total_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/pike_total_PKDE.rds"))
+saveRDS(pike_total_PKDE, paste0(akde_path, "lake_BT_pike_akdes/population_akde/lake_BT_pike_total_PKDE.rds"))
 
 
 
