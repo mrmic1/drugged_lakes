@@ -1,110 +1,337 @@
-<?xml version="1.0" encoding="utf-8"?>
-
-<kml xmlns="http://earth.google.com/kml/2.2">
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
 <Document>
-<name>Lake BT</name>
-<Style id="controlPoint">
-<IconStyle>
-<scale>0.5</scale>
-<Icon>
-<href>http://maps.google.com/mapfiles/kml/pal4/icon49.png</href>
-</Icon>
-</IconStyle>
-<LabelStyle><color>ff0000ff</color>
-<colorMode>normal</colorMode>
-<scale>0.6</scale>
-</LabelStyle>
-<BalloonStyle>
-<text><![CDATA[
-Point: <b><font color="#ff0000">$[name]</font></b>
-<br/>
-Code: $[description]
+	<name>BT_rec_hab_locations.csv</name>
+	<atom:link rel="app" href="https://www.google.com/earth/about/versions/#earth-pro" title="Google Earth Pro 7.3.6.10201"></atom:link>
+	<Schema name="BT_rec_hab_locations" id="S_BT_rec_hab_locations_SSS">
+		<SimpleField type="string" name="Station"><displayName>&lt;b&gt;Station&lt;/b&gt;</displayName>
+</SimpleField>
+		<SimpleField type="string" name="Latitude"><displayName>&lt;b&gt;Latitude&lt;/b&gt;</displayName>
+</SimpleField>
+		<SimpleField type="string" name="Longitude"><displayName>&lt;b&gt;Longitude&lt;/b&gt;</displayName>
+</SimpleField>
+	</Schema>
+	<Style id="hlightPointStyle">
+		<IconStyle>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle_highlight.png</href>
+			</Icon>
+		</IconStyle>
+		<BalloonStyle>
+			<text><![CDATA[<table border="0">
+  <tr><td><b>Station</b></td><td>$[BT_rec_hab_locations/Station]</td></tr>
+  <tr><td><b>Latitude</b></td><td>$[BT_rec_hab_locations/Latitude]</td></tr>
+  <tr><td><b>Longitude</b></td><td>$[BT_rec_hab_locations/Longitude]</td></tr>
+</table>
 ]]></text>
-</BalloonStyle>
-</Style>
-<Style id="standardPoint">
-<IconStyle>
-<scale>0.5</scale>
-<Icon>
-<href>http://maps.google.com/mapfiles/kml/pal4/icon57.png</href>
-</Icon>
-</IconStyle>
-<LabelStyle><color>ff0000ff</color>
-<colorMode>normal</colorMode>
-<scale>0.6</scale>
-</LabelStyle>
-<BalloonStyle>
-<text><![CDATA[
-Point: <b><font color="#ff0000">$[name]</font></b>
-<br/>
-Code: $[description]
+		</BalloonStyle>
+	</Style>
+	<Style id="normPointStyle">
+		<IconStyle>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+			</Icon>
+		</IconStyle>
+		<BalloonStyle>
+			<text><![CDATA[<table border="0">
+  <tr><td><b>Station</b></td><td>$[BT_rec_hab_locations/Station]</td></tr>
+  <tr><td><b>Latitude</b></td><td>$[BT_rec_hab_locations/Latitude]</td></tr>
+  <tr><td><b>Longitude</b></td><td>$[BT_rec_hab_locations/Longitude]</td></tr>
+</table>
 ]]></text>
-</BalloonStyle>
-</Style>
-<Placemark>
-<name>461861</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.047759281744,63.770988571907,86.790728733727</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>461367</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.047350166782,63.771001220505,87.256532797442</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>461571</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.047555182994,63.770775435588,86.759114094862</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>461577</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.047197597636,63.77072880868,87.062332901025</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>Habitat1</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.047174142372,63.77079327593,87.561793001221</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>Habitat2</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.047355965997,63.770843761023,87.636053591819</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>Habitat3</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.04750478733,63.770906846924,87.683387184368</coordinates>
-</Point>
-</Placemark>
-<Placemark>
-<name>Habitat4</name>
-<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
-<styleUrl>#standardPoint</styleUrl>
-<Point>
-<coordinates>20.0476464156,63.770965089963,87.307491816433</coordinates>
-</Point>
-</Placemark>
+		</BalloonStyle>
+	</Style>
+	<StyleMap id="pointStyleMap">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#normPointStyle</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#hlightPointStyle</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Folder id="layer 0">
+		<name>BT_rec_hab_locations</name>
+		<Placemark>
+			<name>461861</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">461861</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;15.55886&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;51.93341&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04775928055559,63.77098857222223,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>461367</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">461367</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;15.60439&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;50.46060&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04735016666666,63.77100121944441,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>461571</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">461571</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;14.79157&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;51.19866&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04755518333334,63.77077543611111,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>461577</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">461577</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;14.62371&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;49.91135&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04719759722222,63.77072880833335,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>461053</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">461053</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;14.64172&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;48.56880&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04682466666667,63.7707338111111,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>Habitat1</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">Habitat1</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;14.79579&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;49.58691&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04710747499998,63.77077660833335,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>Habitat2</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">Habitat2</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;14.97754&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;50.24148&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04728929999999,63.77082709444444,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>Habitat3</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">Habitat3</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;15.20465&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;50.77723&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04743811944444,63.77089018055558,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>Habitat4</name>
+			<styleUrl>#pointStyleMap</styleUrl>
+			<Style id="inline">
+				<IconStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+					<Icon>
+						<href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>
+					</Icon>
+				</IconStyle>
+				<LineStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</LineStyle>
+				<PolyStyle>
+					<color>ffffffff</color>
+					<colorMode>normal</colorMode>
+				</PolyStyle>
+			</Style>
+			<ExtendedData>
+				<SchemaData schemaUrl="#S_BT_rec_hab_locations_SSS">
+					<SimpleData name="Station">Habitat4</SimpleData>
+					<SimpleData name="Latitude">63°46&apos;15.41432&quot;N</SimpleData>
+					<SimpleData name="Longitude">20°02&apos;51.28710&quot;E</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<Point>
+				<coordinates>20.04757975,63.77094842222222,0</coordinates>
+			</Point>
+		</Placemark>
+	</Folder>
 </Document>
 </kml>
-
