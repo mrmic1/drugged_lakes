@@ -78,14 +78,7 @@ BT_sp_data <- as(BT_polygon, "Spatial")
 
 #> 1.1. Pike ####
 
-# Pike AKDE estimation with parallel processing
-#Get reference akde for consistent grid
-#Pick individuals with full dataset
-unique(pike_BT_tel[[2]]$Date) #1,4,6 incomplete dates
-nrow(pike_BT_tel[[2]])
-pike_akde_ref <- akde(pike_BT_tel[[2]], pike_BT_ctmm_fits[[2]], weights = FALSE)
-
-# Initialize the list to store AKDEs with consistent grid
+# Initialize the list to store AKDEs
 pike_akdes_cg <- list()
 
 # Set up parallel processing using 3 cores
@@ -99,9 +92,7 @@ pike_akdes_cg <- foreach(i = 1:length(pike_BT_tel), .packages = 'ctmm') %dopar% 
     pike_BT_ctmm_fits[[i]],            # Corresponding CTMM fit
     weights = FALSE,                          # No weighting
     SP = BT_sp_data,                   # Spatial polygon for the lake boundary
-    SP.in = TRUE,                             # Ensure AKDE confines the movement within the polygon
-    grid = list(dr = pike_akde_ref$dr,             # Use reference grid resolution
-                align.to.origin = TRUE))      # Align the grid to the origin
+    SP.in = TRUE)      # Align the grid to the origin
   # Save the AKDE result for each individual pike
   saveRDS(akde_fit_cg, file = paste0(akde_path, "lake_BT_pike_akdes/akde_cg/", names(pike_BT_tel)[i], "_akde_cg.rds"))
   akde_fit_cg
@@ -114,11 +105,18 @@ stopCluster(cl)
 names(pike_akdes_cg) <- names(pike_BT_tel)
 
 # View summary of a specific individual's AKDE (e.g., F59880)
-summary(pike_akdes_cg$F59886) #low relative to the rest
+summary(pike_akdes_cg_list$F59886) #low relative to the rest
+plot(pike_akdes_cg_list$F59886)
 summary(pike_akdes_cg$F59887)
-summary(pike_akdes_cg$F59888)
-summary(pike_akdes_cg$F59891)
-summary(pike_akdes_cg$F59892)
+
+summary(pike_akdes_cg_list$F59888)
+plot(pike_akdes_cg_list$F59888)
+
+summary(pike_akdes_cg_list$F59891)
+plot(pike_akdes_cg_list$F59891)
+
+summary(pike_akdes_cg_list$F59892)
+plot(pike_akdes_cg_list$F59892)
 
 # Save the complete list of Pike AKDEs with consistent grid
 saveRDS(pike_akdes_cg, paste0(akde_path, "lake_BT_pike_akdes/akde_cg/lake_BT_pike_akdes_cg_list.rds"))
@@ -261,12 +259,12 @@ names(pike_BT_tel)
 
 
 # Separate  telemetry objects
-pike_control_tel <- pike_BT_tel[1:3]   # Control group
-pike_mix_tel <- pike_BT_tel[4:5]       # Mixed group
+pike_control_tel <- pike_BT_tel[2:3]   # Control group
+pike_mix_tel <- pike_BT_tel[4]       # Mixed group
 
 # Separate AKDEs for the two groups
-pike_control_akdes <- pike_akdes_cg_list[1:3]
-pike_mix_akdes <- pike_akdes_cg_list[4:5]
+pike_control_akdes <- pike_akdes_cg_list[2:3]
+pike_mix_akdes <- pike_akdes_cg_list[4]
 
 # Calculate population-level AKDE for the control group
 pike_control_PKDE <- pkde(pike_control_tel,   # Telemetry data for the control group
