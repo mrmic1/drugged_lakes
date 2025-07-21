@@ -1,5 +1,5 @@
 # ---------------------------------------------------------#
-# RESOURCE SELECTION FOR ARTIFICIAL HABITATS - MUDDYFOOT ###
+# RESOURCE SELECTION FOR ARTIFICIAL HABITATS - LAKE BT ###
 # ---------------------------------------------------------#
 
 ### LIBRARIES ###
@@ -16,47 +16,48 @@ library(doParallel)  # Parallel backend for foreach loops
 ### DIRECTORIES ###
 polygon_path = "./data/lake_coords/"
 ctmm_path = "./data/ctmm_fits/"
-filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
-telem_path <- "./data/telem_obj/muddyfoot/" 
+filtered_data_path <- "./data/tracks_filtered/lake_BT/"
+telem_path <- "./data/telem_obj/BT/" 
 rec_data_path = "./data/lake_coords/reciever_and_habitat_locations/"
-enc_path <- "./data/encounters/muddyfoot/"                  # Directory for encounter data
+enc_path <- "./data/encounters/BT/"                  # Directory for encounter data
 akde_path <- "./data/akdes/"                      # Directory for AKDE (Autocorrelated Kernel Density Estimation) outputs
 rsf_path <- "./data/rsfs/habitats/"
-save_plots <- "./plots/muddyfoot/"  # Directory for saving utilization distribution plots
+save_plots <- "./plots/BT/"  # Directory for saving utilization distribution plots
 
 ### LOAD DATA ###
 #receiver and habitat locations
-mud_rec_locs_kml <- paste0(rec_data_path, "muddyfoot_rec_hab_locations.kml")
-mud_rec_locs <- st_read(mud_rec_locs_kml)[1:5,]
-mud_hab_locs <- st_read(mud_rec_locs_kml)[6:7,]#receiver and habitat locations
+BT_rec_locs_kml <- paste0(rec_data_path, "BT_rec_hab_locations.kml")
+BT_locs <- st_read(BT_rec_locs_kml)
+BT_rec_locs <- st_read(BT_rec_locs_kml)[1:5,]
+BT_hab_locs <- st_read(BT_rec_locs_kml)[6:9,]#receiver and habitat locations
 
 #fish telemetry data
-pike_muddyfoot_tel <- readRDS(paste0(telem_path, 'pike_muddyfoot_tel.rds'))
-perch_muddyfoot_tel <- readRDS(paste0(telem_path, 'perch_muddyfoot_tel.rds'))
-roach_muddyfoot_tel <- readRDS(paste0(telem_path, 'roach_muddyfoot_tel.rds'))
+pike_BT_tel <- readRDS(paste0(telem_path, 'pike_BT_tel.rds'))
+perch_BT_tel <- readRDS(paste0(telem_path, 'perch_BT_tel.rds'))
+roach_BT_tel <- readRDS(paste0(telem_path, 'roach_BT_tel.rds'))
 
 #fish ctmms 
-pike_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_OUF_models.rds"))
-perch_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_OUF_models.rds"))
-roach_muddyfoot_ctmm_fits <- readRDS(paste0(ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_OUF_models.rds"))
+pike_BT_ctmm_fits <- readRDS(paste0(ctmm_path, "lake_BT_pike_fits/lake_BT_pike_OUF_models.rds"))
+perch_BT_ctmm_fits <- readRDS(paste0(ctmm_path, "lake_BT_perch_fits/lake_BT_perch_OUF_models.rds"))
+roach_BT_ctmm_fits <- readRDS(paste0(ctmm_path, "lake_BT_roach_fits/lake_BT_roach_OUF_models.rds"))
 
 #fish akdes
-pike_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/akde_cg/pike_akdes_cg_list.rds"))
-perch_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
-roach_akdes_cg_list <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
+pike_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/akde_cg/lake_BT_pike_akdes_cg_list.rds"))
+perch_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_perch_akdes/akde_cg/perch_akdes_cg_list.rds"))
+roach_akdes_cg_list <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/akde_cg/roach_akdes_cg_list.rds"))
 
 #load pkdes if necessary
-perch_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_control_PKDE.rds"))
-perch_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_perch_akdes/population_akde/perch_mix_PKDE.rds"))
-roach_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_control_PKDE.rds"))
-roach_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_roach_akdes/population_akde/roach_mix_PKDE.rds"))
-pike_control_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_control_PKDE.rds"))
-pike_mix_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_mix_PKDE.rds"))
-pike_total_PKDE <- readRDS(paste0(akde_path, "muddyfoot_pike_akdes/population_akde/pike_total_PKDE.rds"))
+perch_control_PKDE <- readRDS(paste0(akde_path, "lake_BT_perch_akdes/population_akde/perch_control_PKDE.rds"))
+perch_mix_PKDE <- readRDS(paste0(akde_path, "lake_BT_perch_akdes/population_akde/perch_mix_PKDE.rds"))
+roach_control_PKDE <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/population_akde/roach_control_PKDE.rds"))
+roach_mix_PKDE <- readRDS(paste0(akde_path, "lake_BT_roach_akdes/population_akde/roach_mix_PKDE.rds"))
+pike_control_PKDE <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/population_akde/lake_BT_pike_control_PKDE.rds"))
+pike_mix_PKDE <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/population_akde/lake_BT_pike_mix_PKDE.rds"))
+pike_total_PKDE <- readRDS(paste0(akde_path, "lake_BT_pike_akdes/population_akde/lake_BT_pike_total_PKDE.rds"))
 
 
 #Load lake polygon
-muddyfoot_polygon <- st_read(paste0(polygon_path, "lake_muddyfoot_polygon.gpkg"))
+BT_polygon <- st_read(paste0(polygon_path, "lake_BT_polygon.gpkg"))
 
 #----------------------------------------------------------------------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------#
@@ -102,18 +103,18 @@ generate_ud_plot <- function(pkde_data, bbox, hab_locs) {
 }
 
 # Transform bbox
-muddyfoot_bbox_perch <- st_transform(muddyfoot_polygon, crs(raster(perch_control_PKDE)))
-muddyfoot_bbox_roach <- st_transform(muddyfoot_polygon, crs(raster(roach_control_PKDE)))
-muddyfoot_bbox_pike <- st_transform(muddyfoot_polygon, crs(raster(pike_total_PKDE)))
+BT_bbox_perch <- st_transform(BT_polygon, crs(raster(perch_control_PKDE)))
+BT_bbox_roach <- st_transform(BT_polygon, crs(raster(roach_control_PKDE)))
+BT_bbox_pike <- st_transform(BT_polygon, crs(raster(pike_total_PKDE)))
 
 # Generate the plots
 
 #> 1.1. Perch ####
 
 ## CONTROL ##
-perch_control_plot <- generate_ud_plot(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-perch_control_plot_habitats <- generate_ud_plot_whabitats(perch_control_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-ggsave(file = paste0(save_plots, "perch_control_UD_habitats_muddyfoot.png"), 
+perch_control_plot <- generate_ud_plot(perch_control_PKDE, BT_bbox_perch, BT_hab_locs)
+perch_control_plot_habitats <- generate_ud_plot_whabitats(perch_control_PKDE, BT_bbox_perch, BT_hab_locs)
+ggsave(file = paste0(save_plots, "perch_control_UD_habitats_BT.png"), 
        plot = perch_control_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -123,9 +124,9 @@ ggsave(file = paste0(save_plots, "perch_control_UD_habitats_muddyfoot.png"),
 
 
 ## EXPOSED ##
-perch_exposed_plot <- generate_ud_plot(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-perch_exposed_plot_habitats <- generate_ud_plot_whabitats(perch_mix_PKDE, muddyfoot_bbox_perch, mud_hab_locs)
-ggsave(file = paste0(save_plots, "perch_exposed_UD_habitats_muddyfoot.png"), 
+perch_exposed_plot <- generate_ud_plot(perch_mix_PKDE, BT_bbox_perch, BT_hab_locs)
+perch_exposed_plot_habitats <- generate_ud_plot_whabitats(perch_mix_PKDE, BT_bbox_perch, BT_hab_locs)
+ggsave(file = paste0(save_plots, "perch_exposed_UD_habitats_BT.png"), 
        plot = perch_exposed_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -137,9 +138,9 @@ ggsave(file = paste0(save_plots, "perch_exposed_UD_habitats_muddyfoot.png"),
 
 #> 1.2. Roach ####
 ## CONTROL ##
-roach_control_plot <- generate_ud_plot(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
-roach_control_plot_habitats <- generate_ud_plot_whabitats(roach_control_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
-ggsave(file = paste0(save_plots, "roach_control_UD_habitats_muddyfoot.png"), 
+roach_control_plot <- generate_ud_plot(roach_control_PKDE, BT_bbox_roach, BT_hab_locs)
+roach_control_plot_habitats <- generate_ud_plot_whabitats(roach_control_PKDE, BT_bbox_roach, BT_hab_locs)
+ggsave(file = paste0(save_plots, "roach_control_UD_habitats_BT.png"), 
        plot = roach_control_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -149,9 +150,9 @@ ggsave(file = paste0(save_plots, "roach_control_UD_habitats_muddyfoot.png"),
 
 
 ## EXPOSED ##
-roach_exposed_plot <- generate_ud_plot(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
-roach_exposed_plot_habitats <- generate_ud_plot_whabitats(roach_mix_PKDE, muddyfoot_bbox_roach, mud_hab_locs)
-ggsave(file = paste0(save_plots, "roach_exposed_UD_habitats_muddyfoot.png"), 
+roach_exposed_plot <- generate_ud_plot(roach_mix_PKDE, BT_bbox_roach, BT_hab_locs)
+roach_exposed_plot_habitats <- generate_ud_plot_whabitats(roach_mix_PKDE, BT_bbox_roach, BT_hab_locs)
+ggsave(file = paste0(save_plots, "roach_exposed_UD_habitats_BT.png"), 
        plot = roach_exposed_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -164,9 +165,9 @@ ggsave(file = paste0(save_plots, "roach_exposed_UD_habitats_muddyfoot.png"),
 #> 1.3. Pike ####
 
 ## CONTROL ##
-pike_control_plot <- generate_ud_plot(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-pike_control_plot_habitats <- generate_ud_plot_whabitats(pike_control_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-ggsave(file = paste0(save_plots, "pike_control_UD_habitats_muddyfoot.png"), 
+pike_control_plot <- generate_ud_plot(pike_control_PKDE, BT_bbox_pike, BT_hab_locs)
+pike_control_plot_habitats <- generate_ud_plot_whabitats(pike_control_PKDE, BT_bbox_pike, BT_hab_locs)
+ggsave(file = paste0(save_plots, "pike_control_UD_habitats_BT.png"), 
        plot = pike_control_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -175,10 +176,23 @@ ggsave(file = paste0(save_plots, "pike_control_UD_habitats_muddyfoot.png"),
        dpi = 300)
 
 
+
+library(ctmm)
+
+# Choose the individual to plot
+pike_ud <- pike_akdes_cg_list[["F59892"]]  # Replace "F12345" with the actual name
+# Or use index if unnamed: pike_ud <- pike_akdes_cg_list[[1]]
+
+# Plot the UD
+plot(pike_ud, col.level = "darkgreen")
+
+
+
+
 ## EXPOSED ##
-pike_exposed_plot <- generate_ud_plot(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-pike_exposed_plot_habitats <- generate_ud_plot_whabitats(pike_mix_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-ggsave(file = paste0(save_plots, "pike_exposed_UD_habitats_muddyfoot.png"), 
+pike_exposed_plot <- generate_ud_plot(pike_mix_PKDE, BT_bbox_pike, BT_hab_locs)
+pike_exposed_plot_habitats <- generate_ud_plot_whabitats(pike_mix_PKDE, BT_bbox_pike, BT_hab_locs)
+ggsave(file = paste0(save_plots, "pike_exposed_UD_habitats_BT.png"), 
        plot = pike_exposed_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -188,9 +202,9 @@ ggsave(file = paste0(save_plots, "pike_exposed_UD_habitats_muddyfoot.png"),
 
 
 ## TOTAL ##
-pike_total_plot <- generate_ud_plot(pike_total_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-pike_total_plot_habitats <- generate_ud_plot_whabitats(pike_total_PKDE, muddyfoot_bbox_pike, mud_hab_locs)
-ggsave(file = paste0(save_plots, "pike_total_UD_habitats_muddyfoot.png"), 
+pike_total_plot <- generate_ud_plot(pike_total_PKDE, BT_bbox_pike, BT_hab_locs)
+pike_total_plot_habitats <- generate_ud_plot_whabitats(pike_total_PKDE, BT_bbox_pike, BT_hab_locs)
+ggsave(file = paste0(save_plots, "pike_total_UD_habitats_BT.png"), 
        plot = pike_total_plot_habitats, 
        device = 'png',
        width = 9, 
@@ -208,7 +222,7 @@ ggsave(file = paste0(save_plots, "pike_total_UD_habitats_muddyfoot.png"),
 #Final raster is used in RSF models
 
 #Transform the CRS to UTM Zone 33N (EPSG:32633)
-polyProj <- st_transform(muddyfoot_polygon, crs = "EPSG:32633")
+polyProj <- st_transform(BT_polygon, crs = "EPSG:32633")
 
 # Create a raster object with the desired resolution and CRS (UTM Zone 33N)
 resolution <- 0.5
@@ -219,11 +233,11 @@ lake_raster <- rast(ext(polyProj),
 # Reproject the raster to WGS 84 (EPSG:4326)
 lake_raster <- terra::project(lake_raster, "EPSG:4326")
 
-# Ensure that the muddyfoot_polygon is also in WGS 84 (EPSG:4326)
-muddyfoot_polygon <- st_transform(muddyfoot_polygon, crs = "EPSG:4326")
+# Ensure that the BT_polygon is also in WGS 84 (EPSG:4326)
+BT_polygon <- st_transform(BT_polygon, crs = "EPSG:4326")
 
 # Rasterize the lake polygon (masking cells outside the lake)
-lake_raster <- rasterize(muddyfoot_polygon, lake_raster, background = NA)
+lake_raster <- rasterize(BT_polygon, lake_raster, background = NA)
 plot(lake_raster, main = "Lake Raster")
 
 #Plot habitats onto lake raster
@@ -237,7 +251,7 @@ plot(habitat_raster, main = "Habitat Raster")
 #To ensure that only the lake area is included in the habitat raster (and exclude areas outside the lake), 
 #mask the raster using the lake polygon:
 # Mask the habitat raster to the lake polygon
-habitat_raster <- mask(habitat_raster, muddyfoot_polygon)
+habitat_raster <- mask(habitat_raster, BT_polygon)
 plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 
 #convert to raster
@@ -245,9 +259,9 @@ plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 habitat_raster <- raster::raster(habitat_raster)
 
 #save raster
-writeRaster(habitat_raster, "./data/lake_coords/muddyfoot_habitat_raster.grd", overwrite = TRUE)
+writeRaster(habitat_raster, "./data/lake_coords/BT_habitat_raster.grd", overwrite = TRUE)
 #open raster
-habitat_raster <- rast("./data/lake_coords/muddyfoot_habitat_raster.grd")
+habitat_raster <- rast("./data/lake_coords/BT_habitat_raster.grd")
 
 
 #---------------------------------------------------------------------------------------------------------#
@@ -262,12 +276,12 @@ habitat_raster <- rast("./data/lake_coords/muddyfoot_habitat_raster.grd")
 #> 3.1 Perch ########################
 
 # Check that treatments are in the right order
-unique_ids <- names(perch_muddyfoot_tel)
+unique_ids <- names(perch_BT_tel)
 
 # Create a data frame to store ID and unique Treatment information
 result_table <- do.call(rbind, lapply(unique_ids, function(id) {
   # Extract the unique Treatment value for the current ID
-  treatment_info <- unique(perch_muddyfoot_tel[[id]]$Treatment)
+  treatment_info <- unique(perch_BT_tel[[id]]$Treatment)
   
   # Ensure only one unique Treatment value is captured
   if (length(treatment_info) > 1) {
@@ -285,8 +299,8 @@ print(result_table)
 
 #use perch as an example
 #telemetry objects
-perch_control_tel <- perch_muddyfoot_tel[1:15]
-perch_mix_tel <- perch_muddyfoot_tel[16:30]
+perch_control_tel <- perch_BT_tel[1:15]
+perch_mix_tel <- perch_BT_tel[16:30]
 
 #akdes
 perch_control_akdes <- perch_akdes_cg_list[1:15]
@@ -296,12 +310,12 @@ perch_mix_akdes <- perch_akdes_cg_list[16:30]
 #> 3.2 Roach ########################
 
 # Check that treatments are in the right order
-unique_ids <- names(roach_muddyfoot_tel)
+unique_ids <- names(roach_BT_tel)
 
 # Create a data frame to store ID and unique Treatment information
 result_table <- do.call(rbind, lapply(unique_ids, function(id) {
   # Extract the unique Treatment value for the current ID
-  treatment_info <- unique(roach_muddyfoot_tel[[id]]$Treatment)
+  treatment_info <- unique(roach_BT_tel[[id]]$Treatment)
   
   # Ensure only one unique Treatment value is captured
   if (length(treatment_info) > 1) {
@@ -319,8 +333,8 @@ print(result_table)
 
 
 #telemetry objects
-roach_control_tel <- roach_muddyfoot_tel[1:14]
-roach_mix_tel <- roach_muddyfoot_tel[15:28]
+roach_control_tel <- roach_BT_tel[1:14]
+roach_mix_tel <- roach_BT_tel[15:28]
 
 #akdes
 roach_control_akdes <- roach_akdes_cg_list[1:14]
@@ -330,8 +344,8 @@ roach_mix_akdes <- roach_akdes_cg_list[15:28]
 #> 3.3 Pike ########################
 
 # Separate telemetry objects
-pike_control_tel <- pike_muddyfoot_tel[1:3]   # Control group
-pike_mix_tel <- pike_muddyfoot_tel[4:6]       # Mixed group
+pike_control_tel <- pike_BT_tel[1:3]   # Control group
+pike_mix_tel <- pike_BT_tel[4:6]       # Mixed group
 
 # Separate AKDEs for the two groups
 pike_control_akdes <- pike_akdes_cg_list[1:3]
@@ -363,7 +377,7 @@ rsf_perch_control_list <- foreach(i = seq_along(perch_control_tel), .packages = 
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_control_model, 
-          file = paste0(rsf_path, "muddyfoot_perch/", names(perch_control_tel)[i], "_habitat_rsf.rds"))
+          file = paste0(rsf_path, "BT_perch/", names(perch_control_tel)[i], "_habitat_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_control_model
@@ -378,7 +392,7 @@ names(rsf_perch_control_list) <- names(perch_control_tel)
 summary(rsf_perch_control_list$F59702)
 summary(rsf_perch_control_list$F59697)
 
-saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
+saveRDS(rsf_perch_control_list, paste0(rsf_path, "BT_perch/rsf_perch_control_list.rds"))
 
 
 ### EXPOSED ###
@@ -398,7 +412,7 @@ rsf_perch_mix_list <- foreach(i = seq_along(perch_mix_tel), .packages = "ctmm") 
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_mix_model, 
-          file = paste0(rsf_path, "muddyfoot_perch/", names(perch_mix_tel)[i], "_habitat_rsf.rds"))
+          file = paste0(rsf_path, "BT_perch/", names(perch_mix_tel)[i], "_habitat_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_mix_model
@@ -413,7 +427,7 @@ names(rsf_perch_mix_list) <- names(perch_mix_tel)
 summary(rsf_perch_mix_list$F59714)
 summary(rsf_perch_mix_list$F59727)
 
-saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
+saveRDS(rsf_perch_mix_list, paste0(rsf_path, "BT_perch/rsf_perch_mix_list.rds"))
 
 #-----------------------------------------------------------------------------------------#
 #-----------------------------------------------------------------------------------------#
@@ -438,7 +452,7 @@ rsf_roach_control_list <- foreach(i = seq_along(roach_control_tel), .packages = 
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_control_model, 
-          file = paste0(rsf_path, "muddyfoot_roach/", names(roach_control_tel)[i], "_habitat_rsf.rds"))
+          file = paste0(rsf_path, "BT_roach/", names(roach_control_tel)[i], "_habitat_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_control_model
@@ -453,7 +467,7 @@ names(rsf_roach_control_list) <- names(roach_control_tel)
 summary(rsf_roach_control_list$F59683)
 summary(rsf_roach_control_list$F59684)
 
-saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
+saveRDS(rsf_roach_control_list, paste0(rsf_path, "BT_roach/rsf_roach_control_list.rds"))
 
 
 
@@ -475,7 +489,7 @@ rsf_roach_mix_list <- foreach(i = seq_along(roach_mix_tel), .packages = "ctmm") 
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_mix_model, 
-          file = paste0(rsf_path, "muddyfoot_roach/", names(roach_mix_tel)[i], "_habitat_rsf.rds"))
+          file = paste0(rsf_path, "BT_roach/", names(roach_mix_tel)[i], "_habitat_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_mix_model
@@ -486,7 +500,7 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_roach_mix_list) <- names(roach_mix_tel)
 
-saveRDS(rsf_roach_mix_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
+saveRDS(rsf_roach_mix_list, paste0(rsf_path, "BT_roach/rsf_roach_mix_list.rds"))
 
 #-----------------------------------------------------------------------------------------------------------#
 #-----------------------------------------------------------------------------------------------------------#
@@ -511,7 +525,7 @@ rsf_pike_control_list <- foreach(i = seq_along(pike_control_tel), .packages = "c
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_control_model, 
-          file = paste0(rsf_path, "muddyfoot_pike/", names(pike_control_tel)[i], "_habitat_rsf.rds"))
+          file = paste0(rsf_path, "BT_pike/", names(pike_control_tel)[i], "_habitat_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_control_model
@@ -523,7 +537,7 @@ stopCluster(cl)
 names(rsf_pike_control_list) <- names(pike_control_tel)
 
 
-saveRDS(rsf_pike_control_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_control_list.rds"))
+saveRDS(rsf_pike_control_list, paste0(rsf_path, "BT_pike/rsf_pike_control_list.rds"))
 
 
 ### EXPOSED ###
@@ -544,7 +558,7 @@ rsf_pike_mix_list <- foreach(i = seq_along(pike_mix_tel), .packages = "ctmm") %d
   
   # Save the model to the 'rsfs' folder with an appropriate name
   saveRDS(rsf_mix_model, 
-          file = paste0(rsf_path, "muddyfoot_pike/", names(pike_mix_tel)[i], "_habitat_rsf.rds"))
+          file = paste0(rsf_path, "BT_pike/", names(pike_mix_tel)[i], "_habitat_rsf.rds"))
   
   # Return the model in case you want to store it in a list
   rsf_mix_model
@@ -555,7 +569,7 @@ stopCluster(cl)
 # Assign individual IDs to the AKDE list
 names(rsf_pike_mix_list) <- names(pike_mix_tel)
 
-saveRDS(rsf_pike_mix_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_mix_list.rds"))
+saveRDS(rsf_pike_mix_list, paste0(rsf_path, "BT_pike/rsf_pike_mix_list.rds"))
 
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
@@ -567,8 +581,8 @@ saveRDS(rsf_pike_mix_list, paste0(rsf_path, "muddyfoot_pike/rsf_pike_mix_list.rd
 #> 5.1. Perch ####
 
 # Load the RSF (Resource Selection Function) results for control and exposed perch
-rsf_perch_control_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
-rsf_perch_exposed_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
+rsf_perch_control_list <- readRDS(paste0(rsf_path, "BT_perch/rsf_perch_control_list.rds"))
+rsf_perch_exposed_list <- readRDS(paste0(rsf_path, "BT_perch/rsf_perch_mix_list.rds"))
 
 # Calculate the mean of the RSF lists (assuming that each list is a collection of model objects)
 # This assumes 'mean()' can handle these model objects, modify if you need more specific behavior
@@ -612,7 +626,7 @@ perch_habitat_rsf_coefs <- rbind(rsf_coef_control_perch, rsf_coef_exposed_perch)
 )
 
 
-ggsave(file = paste0(save_ud_plots, "perch_habitats_rsf_muddyfoot.png"), 
+ggsave(file = paste0(save_ud_plots, "perch_habitats_rsf_BT.png"), 
        plot = perch_habitat_rsf_plot, 
        device = 'png',
        width = 8, 
@@ -627,8 +641,8 @@ ggsave(file = paste0(save_ud_plots, "perch_habitats_rsf_muddyfoot.png"),
 #> 5.2 Roach ####
 
 # Load the RSF (Resource Selection Function) results for control and exposed roach
-rsf_roach_control_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
-rsf_roach_exposed_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
+rsf_roach_control_list <- readRDS(paste0(rsf_path, "BT_roach/rsf_roach_control_list.rds"))
+rsf_roach_exposed_list <- readRDS(paste0(rsf_path, "BT_roach/rsf_roach_mix_list.rds"))
 
 # Calculate the mean of the RSF lists (assuming that each list is a collection of model objects)
 # This assumes 'mean()' can handle these model objects, modify if you need more specific behavior
@@ -672,7 +686,7 @@ roach_habitat_rsf_coefs <- rbind(rsf_coef_control_roach, rsf_coef_exposed_roach)
 )
 
 
-ggsave(file = paste0(save_ud_plots, "roach_habitats_rsf_muddyfoot.png"), 
+ggsave(file = paste0(save_ud_plots, "roach_habitats_rsf_BT.png"), 
        plot = roach_habitat_rsf_plot, 
        device = 'png',
        width = 8, 
@@ -687,8 +701,8 @@ ggsave(file = paste0(save_ud_plots, "roach_habitats_rsf_muddyfoot.png"),
 #> 5.3 Pike ####
 
 # Load the RSF (Resource Selection Function) results for control and exposed pike
-rsf_pike_control_list <- readRDS(paste0(rsf_path, "muddyfoot_pike/rsf_pike_control_list.rds"))
-rsf_pike_exposed_list <- readRDS(paste0(rsf_path, "muddyfoot_pike/rsf_pike_mix_list.rds"))
+rsf_pike_control_list <- readRDS(paste0(rsf_path, "BT_pike/rsf_pike_control_list.rds"))
+rsf_pike_exposed_list <- readRDS(paste0(rsf_path, "BT_pike/rsf_pike_mix_list.rds"))
 
 # Calculate the mean of the RSF lists (assuming that each list is a collection of model objects)
 # This assumes 'mean()' can handle these model objects, modify if you need more specific behavior
@@ -732,7 +746,7 @@ pike_habitat_rsf_coefs <- rbind(rsf_coef_control_pike, rsf_coef_exposed_pike)
 )
 
 
-ggsave(file = paste0(save_ud_plots, "pike_habitats_rsf_muddyfoot.png"), 
+ggsave(file = paste0(save_ud_plots, "pike_habitats_rsf_BT.png"), 
        plot = pike_habitat_rsf_plot, 
        device = 'png',
        width = 8, 

@@ -1,4 +1,6 @@
-### Exploring pike taken by otters in lake HR ###
+#--------------------------------------------------------------------------------------------#
+
+### LIBRARIES ###
 
 library(ctmm)
 library(tidyverse)
@@ -13,10 +15,12 @@ telem_path <- "./data/telem_obj/BT/"
 lake_polygon_path <- "./data/lake_coords/"
 
 ### Load data ###
-BT_filt_data <- readRDS(paste0(filtered_data_path, '04_lake_BT_sub.rds'))
+BT_filt_data <- readRDS(paste0(filtered_data_path, '03_lake_BT_sub.rds'))
 
 # Load the polygon representing the boundary of BT lake, in the form of a GeoPackage file
 BT_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_BT_polygon.gpkg"))
+
+#--------------------------------------------------------------------------------------------------#
 
 #filter for pike
 BT_pike_dat <- BT_filt_data %>% 
@@ -53,7 +57,7 @@ BT_pike_dat$Lat <- coords[, 2]
 BT_pike_dat <- BT_pike_dat %>%
   mutate(Date = as.Date(timestamp))
 
-#------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------#
 
 #> F59889 ####
 
@@ -126,3 +130,25 @@ ggplot() +
   )
 
 #Diet around 02 October
+
+
+#> F59891 ####
+
+#This individual was found, but didn't move much
+
+F59891_dat <- BT_pike_dat %>% 
+  filter(individual_ID == 'F59891')
+
+
+# Plot
+ggplot() +
+  geom_sf(data = BT_polygon, fill = "lightblue", color = "black", alpha = 0.3) +  # lake polygon
+  geom_path(data = F59891_dat, aes(x = Long, y = Lat, group = Date), color = "blue") +  # trajectory
+  geom_point(data = F59891_dat, aes(x = Long, y = Lat), color = "black", size = 0.5) +  # points
+  facet_wrap(~ Date) +  # one panel per date
+  coord_sf() +
+  theme_minimal() +
+  labs(
+    title = "Daily Movement Trajectories of Individual F59891 in BT Lake",
+    x = "Longitude", y = "Latitude"
+  )

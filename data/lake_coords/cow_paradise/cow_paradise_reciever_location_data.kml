@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://earth.google.com/kml/2.2">
+<Document>
+<name></name>
+<description><![CDATA[]]></description>
+
+<Style id="style1">
+  <IconStyle>
+    <Icon>
+      <href>http://www.gstatic.com/mapspro/images/stock/962-wht-diamond-blank.png</href>
+    </Icon>
+  </IconStyle>
+</Style>
+
+<Placemark>
+  <name>St01</name>
+  <description><![CDATA[]]></description>
+  <styleUrl>#style1</styleUrl>
+  <Point>
+    <coordinates>
+20.0632523484508,63.7719920866833
+    </coordinates>
+  </Point>
+</Placemark>
+<Placemark>
+  <name>St02</name>
+  <description><![CDATA[]]></description>
+  <styleUrl>#style1</styleUrl>
+  <Point>
+    <coordinates>
+20.0633650600928,63.7721463159069
+    </coordinates>
+  </Point>
+</Placemark>
+<Placemark>
+  <name>St03</name>
+  <description><![CDATA[]]></description>
+  <styleUrl>#style1</styleUrl>
+  <Point>
+    <coordinates>
+20.0637667507507,63.772243165206
+    </coordinates>
+  </Point>
+</Placemark>
+<Placemark>
+  <name>St04</name>
+  <description><![CDATA[]]></description>
+  <styleUrl>#style1</styleUrl>
+  <Point>
+    <coordinates>
+20.0641389880222,63.7721980023543
+    </coordinates>
+  </Point>
+</Placemark>
+<Placemark>
+  <name>St05</name>
+  <description><![CDATA[]]></description>
+  <styleUrl>#style1</styleUrl>
+  <Point>
+    <coordinates>
+20.0636246054494,63.7720503298464
+    </coordinates>
+  </Point>
+</Placemark>
+</Document>
+</kml>
