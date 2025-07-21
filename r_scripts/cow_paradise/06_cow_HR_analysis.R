@@ -263,7 +263,7 @@ pike_control_PKDE <- pkde(pike_control_tel,   # Telemetry data for the control g
                           SP.in = TRUE)       # Ensure the PKDE confines the movements within the polygon
 
 # Save the population-level AKDE for the control group
-saveRDS(pike_control_PKDE, paste0(akde_path, "lake_cow_pike_akdes/population_akde/pike_control_PKDE.rds"))
+saveRDS(pike_control_PKDE, paste0(akde_path, "lake_cow_pike_akdes/population_akde/lake_cow_pike_control_PKDE.rds"))
 
 # Calculate population-level AKDE for the mixed group
 pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed group
@@ -271,7 +271,7 @@ pike_mix_PKDE <- pkde(pike_mix_tel,           # Telemetry data for the mixed gro
                       SP = lake_cow_sp_data, # Spatial polygon for the lake boundary
                       SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
-saveRDS(pike_mix_PKDE, paste0(akde_path, "lake_cow_pike_akdes/population_akde/pike_mix_PKDE.rds"))
+saveRDS(pike_mix_PKDE, paste0(akde_path, "lake_cow_pike_akdes/population_akde/lake_cow_pike_mix_PKDE.rds"))
 
 # Calculate population-level AKDE for all pike - to be used as probability distribution raster
 pike_total_PKDE <- pkde(pike_lake_cow_tel,           # Telemetry data for individuals
@@ -280,7 +280,7 @@ pike_total_PKDE <- pkde(pike_lake_cow_tel,           # Telemetry data for indivi
                         SP.in = TRUE)           # Ensure the PKDE confines the movements within the polygon
 
 # Save the population-level AKDE for the mixed group
-saveRDS(pike_total_PKDE, paste0(akde_path, "lake_cow_pike_akdes/population_akde/pike_total_PKDE.rds"))
+saveRDS(pike_total_PKDE, paste0(akde_path, "lake_cow_pike_akdes/population_akde/lake_cow_pike_total_PKDE.rds"))
 
 
 
@@ -437,20 +437,20 @@ print(result_table)
 
 
 #telemetry objects
-roach_control_tel <- roach_lake_cow_tel[1:10]
-roach_control_tel_2 <- roach_lake_cow_tel[1:5]
-roach_control_tel_3 <- roach_lake_cow_tel[6:10]
+roach_control_tel <- roach_lake_cow_tel[1:9]
+#roach_control_tel_2 <- roach_lake_cow_tel[1:5]
+#roach_control_tel_3 <- roach_lake_cow_tel[6:10]
 
 
-roach_mix_tel <- roach_lake_cow_tel[11:20]
+roach_mix_tel <- roach_lake_cow_tel[10:19]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[1:10]
-roach_control_akdes_2 <- roach_akdes_cg_list[1:5]
-roach_control_akdes_3 <- roach_akdes_cg_list[6:10]
+roach_control_akdes <- roach_akdes_cg_list[1:9]
+#roach_control_akdes_2 <- roach_akdes_cg_list[1:5]
+#roach_control_akdes_3 <- roach_akdes_cg_list[6:10]
 
 
-roach_mix_akdes <- roach_akdes_cg_list[11:20]
+roach_mix_akdes <- roach_akdes_cg_list[10:19]
 
 #calculate population-level autocorrelated kernel density home range estimates
 roach_control_PKDE <- pkde(roach_control_tel,
@@ -459,15 +459,15 @@ roach_control_PKDE <- pkde(roach_control_tel,
                            SP.in = TRUE)
 
 #Having issuse with running roach control - split analysis to see where the issue are
-roach_control_PKDE_2 <- pkde(roach_control_tel_2,
-                           roach_control_akdes_2,
-                           SP = lake_cow_sp_data,
-                           SP.in = TRUE)
+#roach_control_PKDE_2 <- pkde(roach_control_tel_2,
+#                           roach_control_akdes_2,
+#                           SP = lake_cow_sp_data,
+#                           SP.in = TRUE)
 
-roach_control_PKDE_3 <- pkde(roach_control_tel_3,
-                             roach_control_akdes_3,
-                             SP = lake_cow_sp_data,
-                             SP.in = TRUE) # worked
+#roach_control_PKDE_3 <- pkde(roach_control_tel_3,
+#                             roach_control_akdes_3,
+#                             SP = lake_cow_sp_data,
+#                             SP.in = TRUE) # worked
 
 
 

@@ -220,6 +220,16 @@ pred_perch_fits <-
 
 saveRDS(pred_perch_fits, file = paste0(save_ctmm_path, "lake_cow_perch_fits/", "pred_perch_fits.rds"))
 
+#F59849
+
+F59849_tel <-pred_perch_tel$F59849
+
+F59849_guess <- ctmm.guess(F59849_tel, CTMM=ctmm(error=TRUE), interactive = FALSE)
+F59849_fit <- ctmm.fit(F59849_tel, F59849_guess, method = 'ML')
+saveRDS(F59849_fit, file = paste0(save_ctmm_path, "lake_cow_perch_fits/", "F59849.rds"))
+
+
+
 #-----------------------------------------------------------------------------------------------#
 #> 2.2. Roach ####
 
