@@ -242,7 +242,7 @@ plot(lake_raster, main = "Lake Raster")
 
 #Plot habitats onto lake raster
 
-habitat_patches <- vect(mud_hab_locs)
+habitat_patches <- vect(BT_hab_locs)
 
 # Assign a value of 1 to the habitat patches and leave other areas as 0 or NA
 habitat_raster <- rasterize(habitat_patches, lake_raster, field = 1, background = 0)
@@ -257,6 +257,7 @@ plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 #convert to raster
 #Need to convert it from terra to raster to work with rsf.fit()
 habitat_raster <- raster::raster(habitat_raster)
+plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 
 #save raster
 writeRaster(habitat_raster, "./data/lake_coords/BT_habitat_raster.grd", overwrite = TRUE)
@@ -333,12 +334,12 @@ print(result_table)
 
 
 #telemetry objects
-roach_control_tel <- roach_BT_tel[1:14]
-roach_mix_tel <- roach_BT_tel[15:28]
+roach_control_tel <- roach_BT_tel[1:15]
+roach_mix_tel <- roach_BT_tel[16:30]
 
 #akdes
-roach_control_akdes <- roach_akdes_cg_list[1:14]
-roach_mix_akdes <- roach_akdes_cg_list[15:28]
+roach_control_akdes <- roach_akdes_cg_list[1:15]
+roach_mix_akdes <- roach_akdes_cg_list[16:30]
 
 
 #> 3.3 Pike ########################
@@ -361,7 +362,7 @@ pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
 ### CONTROL ###
 
-cl <- makeCluster(3)
+cl <- makeCluster(5)
 doParallel::registerDoParallel(cl)
 rsf_perch_control_list <- list()
 
