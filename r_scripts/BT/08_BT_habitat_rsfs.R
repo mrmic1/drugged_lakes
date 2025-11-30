@@ -225,7 +225,7 @@ ggsave(file = paste0(save_plots, "pike_total_UD_habitats_BT.png"),
 polyProj <- st_transform(BT_polygon, crs = "EPSG:32633")
 
 # Create a raster object with the desired resolution and CRS (UTM Zone 33N)
-resolution <- 0.5
+resolution <- 1
 lake_raster <- rast(ext(polyProj), 
                     res = resolution, 
                     crs = "EPSG:32633")
@@ -258,6 +258,15 @@ plot(habitat_raster, main = "Habitat Raster Masked by Lake")
 #Need to convert it from terra to raster to work with rsf.fit()
 habitat_raster <- raster::raster(habitat_raster)
 plot(habitat_raster, main = "Habitat Raster Masked by Lake")
+
+ctmm::projection(habitat_raster)
+ctmm::projection(perch_BT_tel$F59749)
+
+#raster values
+raster_values <- values(habitat_raster)
+value_matrix <- as.matrix(raster_values)
+rows_with_1 <- which(apply(value_matrix, 1, function(x) any(x == 1)))
+
 
 #save raster
 writeRaster(habitat_raster, "./data/lake_coords/BT_habitat_raster.grd", overwrite = TRUE)
@@ -362,7 +371,7 @@ pike_mix_akdes <- pike_akdes_cg_list[4:6]
 
 ### CONTROL ###
 
-cl <- makeCluster(5)
+cl <- makeCluster(3)
 doParallel::registerDoParallel(cl)
 rsf_perch_control_list <- list()
 

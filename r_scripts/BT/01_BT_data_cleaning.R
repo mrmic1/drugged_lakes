@@ -10,12 +10,6 @@ library(move2)      # additional utilities for handling movement data
 library(mapedit)    # for interactive map editing
 library(sf)         # spatial data handling
 
-
-#set time zones to CEST (not CET because study was conducted in the summmer)
-#helpful timezone link: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-Sys.setenv(TZ = 'Europe/Stockholm')
-
-
 # Define file paths
 raw_tracking_data_path <- "./data/raw_tracking_data/"  # path to raw transmitter data
 save_filtered_data_path <- "./data/tracks_filtered/lake_BT/"  # path to save subsampled data
@@ -42,6 +36,7 @@ lake_BT <- lake_BT %>%
 #add column for time in CEST
 lake_BT$timestamp_cest <- with_tz(lake_BT$timestamp_utc, tzone = "Europe/Stockholm" )
 tz(lake_BT$timestamp_cest)
+
 head(lake_BT %>% 
        dplyr::select(timestamp_utc, timestamp_cest), n = 20)
 
@@ -52,9 +47,9 @@ lake_BT$date_cest <- as.Date(format(lake_BT$timestamp_cest, tz = "Europe/Stockho
 
 
 #find rows where date_utc and date_cest do not align
-print(lake_BT %>% 
-        filter(date_utc != date_cest))
-
+non_aligned_rows = lake_BT %>% 
+        filter(date_utc != date_cest)
+#1755991
 
 #Load fish biometric data
 biometrics <- fread(paste0(size_data_path, "biometric_data.csv"))
@@ -112,20 +107,103 @@ lake_BT_mv <- lake_BT_mv %>%
 
 
 ##------------------------------------------------------------------------------#
-# Handling spatial boundaries (polygon of Lake Muddyfoot) #
+# Handling spatial boundaries (polygon of Lake BT) #
 #------------------------------------------------------------------------------#
+
+fish1 <- filter_track_data(lake_BT_mv, .track_id = "FReference") #Reference tag
+lake_BT_map <- mapview::mapView(mt_track_lines(fish1)$geometry) 
+#good - for the reference tag no location fall outside of the lake, 
+#and it also looks like there is not a lot of error
+
+#drawing a polygon around the lake
+#devtools::install_github("r-spatial/mapedit")
+#library(mapedit)
+BT_map <- mapedit::drawFeatures(map = lake_BT_map)
+sf::st_write(BT_map, dsn="data/lake_coords/lake_BT_polygon.gpkg", driver="GPKG", delete_layer = TRUE) # for overwriting
 
 # Load the pre-drawn polygon representing Lake lake_BT's boundaries
 lake_BT_poly <- sf::st_read("./data/lake_coords/lake_BT_polygon.gpkg")
 
+#check coordinates of bounding box
+sf::st_bbox(lake_BT_poly)
+#view polygon coordinates
+sf::st_coordinates(lake_BT_poly)
+sf::st_crs(lake_BT_poly)
+sf::st_write(
+  lake_BT_poly,
+  "./data/lake_coords/lake_BT_polygon.kml",
+  delete_dsn = TRUE
+)
+
 # Subset the data to include only points that fall within the lake's polygon
 lake_BT_sub <- st_intersection(lake_BT_mv, lake_BT_poly)
+#Original: 20832375
+#New: 20709282
+
 
 # Save the subsampled data for future use
-# saveRDS(lake_BT_sub, file = paste0(save_data_sub_path, "lake_BT_sub_spatialfilt.rds"))
+saveRDS(lake_BT_sub, file = paste0(save_filtered_data_path, "lake_BT_sub_spatialfilt.rds"))
+saveRDS(lake_BT_sub_sum, file = paste0(save_filtered_data_path, "lake_BT_sub_spatialfilt_sum.rds"))
+
+# Calculate time differences between successive timestamps for each individual.
+lake_BT_sub_sum <- 
+  lake_BT_sub %>%
+  group_by(individual_ID) %>% 
+  mutate(time_diff = c(NA, diff(timestamp_cest)))  # First difference is NA.
+
+# Round the time differences to 3 decimal places for clarity.
+lake_BT_sub_sum$time_diff <- as.numeric(round(lake_BT_sub_sum$time_diff, digits = 3))
+
+# Check the first 20 rows to ensure time differences are calculated correctly.
+head(lake_BT_sub_sum %>% dplyr::select(timestamp_cest, time_diff), n = 20)
+
+# Calculate mean and median time differences per individual.
+lake_BT_sub_sum <- 
+  lake_BT_sub_sum %>%
+  group_by(individual_ID) %>% 
+  mutate(mean_time_diff = mean(time_diff, na.rm = TRUE),
+         median_time_diff = median(time_diff, na.rm = TRUE)) %>% 
+  ungroup()
+
+# Count the number of positions (i.e., tracking locations) for each individual.
+lake_BT_sub_sum <- 
+  lake_BT_sub_sum %>%
+  group_by(individual_ID) %>% 
+  mutate(n_positions = n()) %>% 
+  ungroup()
+
+# Calculate the number of unique days each individual was monitored.
+lake_BT_sub_sum <- 
+  lake_BT_sub_sum %>%
+  group_by(individual_ID) %>% 
+  mutate(n_days_tracked = length(unique(date_cest))) %>% 
+  ungroup()
+
+# Calculate the number of positions per day and median time differences between positions for each individual.
+lake_BT_sub_sum <- 
+  lake_BT_sub_sum %>%
+  group_by(individual_ID, date_cest) %>% 
+  mutate(n_positions_day = n(),
+         median_day_time_diff = median(time_diff, na.rm = TRUE)) %>%  # Median time difference per day.
+  ungroup()
+
+# Calculate the number of positions per hour and per minute.
+lake_BT_sub_sum <- 
+  lake_BT_sub_sum %>%
+  group_by(individual_ID, date_cest) %>% 
+  mutate(n_positions_hourly = n_positions_day / 24,  # Average number of positions per hour.
+         n_positions_per_min = n_positions_hourly / 60) %>%  # Average number of positions per minute.
+  ungroup()
+
+# Optional: Check the summary of number of days and positions per individual.
+BT_filt_data %>% 
+        dplyr::select(individual_ID, Treatment, n_positions, n_days_tracked) %>% 
+        distinct()
+
+
 
 # Optional: Thin the data to reduce size by filtering points that occur at least 25 seconds apart
-# lake_BT_sub <- lake_BT_sub %>% mt_filter_per_interval(unit = "25 seconds", criterion = "first")
+lake_BT_sub <- lake_BT_sub %>% mt_filter_per_interval(unit = "25 seconds", criterion = "first")
 
 #Convert to dataframe
 
