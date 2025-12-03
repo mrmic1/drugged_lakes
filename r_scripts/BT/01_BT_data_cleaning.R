@@ -9,6 +9,10 @@ library(move)       # useful for animal movement data analysis
 library(move2)      # additional utilities for handling movement data
 library(mapedit)    # for interactive map editing
 library(sf)         # spatial data handling
+library(flextable)  # For creating and customizing tables.
+library(kableExtra)  # Additional table formatting options.
+library(officer)  # For exporting tables to Word documents.
+
 
 # Define file paths
 raw_tracking_data_path <- "./data/raw_tracking_data/"  # path to raw transmitter data
@@ -140,75 +144,6 @@ lake_BT_sub <- st_intersection(lake_BT_mv, lake_BT_poly)
 #Original: 20832375
 #New: 20709282
 
-
-# Save the subsampled data for future use
-saveRDS(lake_BT_sub, file = paste0(save_filtered_data_path, "lake_BT_sub_spatialfilt.rds"))
-saveRDS(lake_BT_sub_sum, file = paste0(save_filtered_data_path, "lake_BT_sub_spatialfilt_sum.rds"))
-
-# Calculate time differences between successive timestamps for each individual.
-lake_BT_sub_sum <- 
-  lake_BT_sub %>%
-  group_by(individual_ID) %>% 
-  mutate(time_diff = c(NA, diff(timestamp_cest)))  # First difference is NA.
-
-# Round the time differences to 3 decimal places for clarity.
-lake_BT_sub_sum$time_diff <- as.numeric(round(lake_BT_sub_sum$time_diff, digits = 3))
-
-# Check the first 20 rows to ensure time differences are calculated correctly.
-head(lake_BT_sub_sum %>% dplyr::select(timestamp_cest, time_diff), n = 20)
-
-# Calculate mean and median time differences per individual.
-lake_BT_sub_sum <- 
-  lake_BT_sub_sum %>%
-  group_by(individual_ID) %>% 
-  mutate(mean_time_diff = mean(time_diff, na.rm = TRUE),
-         median_time_diff = median(time_diff, na.rm = TRUE)) %>% 
-  ungroup()
-
-# Count the number of positions (i.e., tracking locations) for each individual.
-lake_BT_sub_sum <- 
-  lake_BT_sub_sum %>%
-  group_by(individual_ID) %>% 
-  mutate(n_positions = n()) %>% 
-  ungroup()
-
-# Calculate the number of unique days each individual was monitored.
-lake_BT_sub_sum <- 
-  lake_BT_sub_sum %>%
-  group_by(individual_ID) %>% 
-  mutate(n_days_tracked = length(unique(date_cest))) %>% 
-  ungroup()
-
-# Calculate the number of positions per day and median time differences between positions for each individual.
-lake_BT_sub_sum <- 
-  lake_BT_sub_sum %>%
-  group_by(individual_ID, date_cest) %>% 
-  mutate(n_positions_day = n(),
-         median_day_time_diff = median(time_diff, na.rm = TRUE)) %>%  # Median time difference per day.
-  ungroup()
-
-# Calculate the number of positions per hour and per minute.
-lake_BT_sub_sum <- 
-  lake_BT_sub_sum %>%
-  group_by(individual_ID, date_cest) %>% 
-  mutate(n_positions_hourly = n_positions_day / 24,  # Average number of positions per hour.
-         n_positions_per_min = n_positions_hourly / 60) %>%  # Average number of positions per minute.
-  ungroup()
-
-# Optional: Check the summary of number of days and positions per individual.
-BT_filt_data %>% 
-        dplyr::select(individual_ID, Treatment, n_positions, n_days_tracked) %>% 
-        distinct()
-
-
-
-# Optional: Thin the data to reduce size by filtering points that occur at least 25 seconds apart
-lake_BT_sub <- lake_BT_sub %>% mt_filter_per_interval(unit = "25 seconds", criterion = "first")
-
-#Convert to dataframe
-
-lake_BT_sub <- as.data.frame(lake_BT_sub)
-
 #check time
 tz(lake_BT_sub$timestamp_cest) #Europe/Stockholm
 
@@ -253,7 +188,7 @@ lake_BT_sub %>%
 
 #Create day and night columns
 #import sunset and sunrise data
-sun_data <- fread(paste0(raw_tracking_data_path, "sunset_sunrise_data.csv"))
+sun_data <- fread(paste0("./raw_tracking_data/" , "sunset_sunrise_data.csv"))
 sun_data <- sun_data %>% 
   dplyr::select(Sunrise_timestamp, Sunset_timestamp) %>% 
   rename(sunrise = Sunrise_timestamp,
@@ -280,9 +215,9 @@ lake_BT_sub <- merge(lake_BT_sub, sun_data, by = "date_cest", all.x = TRUE)
 # Create the Day_time column based on the comparison of timestamp with sunrise and sunset
 lake_BT_sub$time_of_day <- 
   ifelse(
-  lake_BT_sub$timestamp_cest >= lake_BT_sub$sunrise & lake_BT_sub$timestamp_cest <= lake_BT_sub$sunset,
-  "Day", "Night"
-)
+    lake_BT_sub$timestamp_cest >= lake_BT_sub$sunrise & lake_BT_sub$timestamp_cest <= lake_BT_sub$sunset,
+    "Day", "Night"
+  )
 
 # Check entries classified as 'Day'
 # day_entries <- lake_BT_sub[lake_BT_sub$time_of_day == "Day", ]
@@ -292,6 +227,29 @@ lake_BT_sub$time_of_day <-
 # Check entries classified as 'Night'
 # night_entries <- lake_BT_sub[lake_BT_sub$time_of_day == "Night", ]
 # head(night_entries[, c("timestamp_cest", "sunrise", "sunset", "time_of_day")], 10)
+
+#-----------------------------------------------------------------------------------#
+# Dead or alive at end of experiment
+# ----------------------------------------------------------------------------------#
+
+#Add information as whether individual was found dead or alive at the end of the experiment
+#Load post-experiment biometric data to assess known deaths or survivals
+
+post_biometrics <- 
+  fread(paste0("./data/fish_size/", "biometric_post_exp_data.csv")) %>%
+  mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
+
+# Merge biometric data (e.g., whether the fish was found alive) with encounter summary
+post_size_cols <- 
+  post_biometrics %>%
+  filter(Lake == 'BT') %>%
+  dplyr::select(individual_ID, Found, Known_predated) %>% 
+  rename(found_alive = Found)
+
+lake_BT_sub <- 
+  lake_BT_sub %>%
+  left_join(post_size_cols, by = c("individual_ID" = "individual_ID"))
+
 
 #------------------------------------------------------------------------------#
 # Final save #
