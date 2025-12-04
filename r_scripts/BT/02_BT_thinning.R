@@ -1,59 +1,89 @@
-### LIBRARIES ###
-# Load necessary libraries
-library(data.table)   # For fast data manipulation
-library(tidyverse)    # For data wrangling
-library(ctmm)         # For continuous-time movement modeling
-library(sf)           # For handling spatial data
-library(parallel)     # For parallel processing
-library(foreach)      # For parallel for loops
-library(doParallel)   # For registering parallel backend
+#==============================================================================
+# Lake BT Detection Data - Outlier Removal and Temporal Thinning
+#==============================================================================
+# Purpose: Remove outliers, thin data, and filter mortality events
+# Author: Marcus Michelangeli
+#
+# Input files:
+#   - ./data/tracks_filtered/lake_BT/01_lake_BT_sub.rds
+#   - ./data/lake_coords/lake_BT_polygon.gpkg
+#   - ./data/pike_deaths.csv
+#
+# Output:
+#   - ./data/telem_obj/BT/lake_BT_UERE.rds
+#   - ./data/telem_obj/BT/[species]_lake_BT_tel_unthinned.rds (3 files)
+#   - ./data/tracks_filtered/lake_BT/02_lake_BT_sub.rds
+#   - ./data/tracks_filtered/lake_BT/03_lake_BT_sub.rds
+#   - ./daily_trajectory_plots/lake_BT/[individual]_daily_trajectory_plot.png
+#==============================================================================
+
+# Load required libraries ---------------------------------------------------
+library(data.table)
+library(tidyverse)
+library(ctmm)
+library(sf)
+library(parallel)
+library(foreach)
+library(doParallel)
 library(geosphere)
 library(move2)
 
-# Set the time zone to ensure consistent time handling
+# Set timezone globally -----------------------------------------------------
 Sys.setenv(TZ = 'Europe/Stockholm')
 
-# Define file paths for reading and saving filtered telemetry and ctmm model results
+# Define file paths ---------------------------------------------------------
 filtered_data_path <- "./data/tracks_filtered/lake_BT/"
 save_ctmm_path <- "./data/ctmm_fits/"
 save_telem_path <- "./data/telem_obj/"
 lake_polygon_path <- "./data/lake_coords/"
+plot_output_path <- "./daily_trajectory_plots/lake_BT/"
 
-
-#Load in the datasets
+# Import data ---------------------------------------------------------------
 lake_BT_sub <- readRDS(paste0(filtered_data_path, '01_lake_BT_sub.rds'))
 lake_BT_sub_dt <- as.data.table(lake_BT_sub)
-BT_polygon <- sf::st_read(paste0(lake_polygon_path, "lake_BT_polygon.gpkg"))
+BT_polygon <- st_read(paste0(lake_polygon_path, "lake_BT_polygon.gpkg"))
 
+message("Imported ", nrow(lake_BT_sub_dt), " detections for ", 
+        n_distinct(lake_BT_sub_dt$individual_ID), " individuals")
 
-#----------------------------------------------------------------------------------------#
+#==============================================================================
+# 1. ESTIMATE LOCATION ERROR FROM REFERENCE TAG
+#==============================================================================
 
-# Get an error scale from the reference tag
-
-
+# Extract reference tag detections ------------------------------------------
 ref <- lake_BT_sub_dt[individual_ID == "FReference"]
+message("Reference tag detections: ", nrow(ref)) #88576
 
-#Known fixed coordinates of the reference tag
+# Known fixed coordinates of reference tag ---------------------------------
 true_long <- 20.0472989
-true_lat <-  63.7707882
+true_lat <- 63.7707882
 
-# Distance between each detection and the true position (m)
+# Calculate distance between each detection and true position (m) -----------
 ref[, error_dist_m := distHaversine(
   cbind(Long, Lat),
   cbind(true_long, true_lat)
 )]
 
-summary(ref$error_dist_m)
+# Summarize positional error ------------------------------------------------
+message("\n=== Reference Tag Location Error (meters) ===")
+print(summary(ref$error_dist_m))
 # Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
 # 0.0003683 0.0810723 0.1092805 0.1117890 0.1363092 3.8638857
 
-sigma_error_med  <- median(ref$error_dist_m, na.rm = TRUE)
 
-#-----------------------------------------------------------------------------------#
+sigma_error_med <- median(ref$error_dist_m, na.rm = TRUE)
+message("Median error: ", round(sigma_error_med, 4), " m")
+# Median error: 0.1093 m
 
-# Look at how step lengths grow with time lag for fish
 
+#==============================================================================
+# 2. ANALYZE MOVEMENT SCALE VS TIME LAG
+#==============================================================================
+# Purpose: Determine optimal temporal thinning interval where movement
+# is reliably distinguishable from location error
 
+# Select representative individuals (2 per species) -------------------------
+set.seed(123)  # For reproducibility
 selected_ids <- lake_BT_sub_dt[
   Species != "FReference",
   .(individual_ID = sample(unique(individual_ID), min(2, .N))),
@@ -61,10 +91,9 @@ selected_ids <- lake_BT_sub_dt[
 ]$individual_ID
 
 subset_ids <- lake_BT_sub_dt[individual_ID %in% selected_ids]
-
-# Ensure sorted
 setorder(subset_ids, individual_ID, timestamp_cest)
 
+# Calculate step metrics ----------------------------------------------------
 # Time difference between successive fixes (seconds)
 subset_ids[, dt_sec := as.numeric(
   difftime(timestamp_cest, shift(timestamp_cest), units = "secs")
@@ -76,11 +105,8 @@ subset_ids[, step_dist_m := distHaversine(
   cbind(Long, Lat)
 ), by = individual_ID]
 
-#----------------------------------------------------------------------------------------#
-
-# Bin by time lage and compare movement to error
-
-# Define Δt bins (seconds)
+# Bin step lengths by time lag ----------------------------------------------
+# Define time lag bins (seconds)
 breaks <- c(0, 3, 7, 12, 18, 25, 40, 70, Inf)
 labels <- c("~2", "~5", "~10", "~15", "~20", "~30", ">30", ">70")
 
@@ -90,222 +116,224 @@ subset_ids[!is.na(step_dist_m),
                          labels = labels,
                          include.lowest = TRUE)]
 
+# Summarize movement by time lag bin ----------------------------------------
 step_summary <- subset_ids[!is.na(step_dist_m),
-                         .(
-                           n_steps      = .N,
-                           median_step  = median(step_dist_m),
-                           mean_step    = mean(step_dist_m),
-                           q25_step     = quantile(step_dist_m, 0.25),
-                           q75_step     = quantile(step_dist_m, 0.75)
-                         ),
-                         by = dt_bin
-]
+                           .(
+                             n_steps = .N,
+                             median_step = median(step_dist_m),
+                             mean_step = mean(step_dist_m),
+                             q25_step = quantile(step_dist_m, 0.25),
+                             q75_step = quantile(step_dist_m, 0.75)
+                           ),
+                           by = dt_bin]
 
-# enforce factor level order
 step_summary[, dt_bin := factor(dt_bin, levels = labels)]
-
-# order the summary table by dt_bin
 setorder(step_summary, dt_bin)
 
-step_summary
-
+# Calculate movement-to-error ratio -----------------------------------------
 step_summary[, movement_to_error := median_step / sigma_error_med]
-step_summary
 
-#Movement becomes reliably distinguisable from erro at 10 seconds or over
-#Relaibility stabilises at around 15-20 seconds
-#No meaningful improvement beyond 20-30s
+message("\n=== Movement vs Time Lag Analysis ===")
+print(step_summary)
 
-#-----------------------------------------------------------------------------------------------#
+message("\nConclusion: Movement becomes reliably distinguishable from error at 10s+")
+message("Reliability stabilizes at 15-20s. No meaningful improvement beyond 20-30s")
+message("Selected thinning interval: 10 seconds")
 
-#Based on analysis on above, I have chosen to thin the dataset by 15s
-#Before thinning, I will remove outliers for each species based on excessive speeds
+#==============================================================================
+# 3. PREPARE DATA FOR OUTLIER DETECTION
+#==============================================================================
 
-lake_BT_movebank <- 
-  with(lake_BT_sub, 
-       data.frame(
-         "timestamp" = timestamp_cest,                        
-         "location.long" = Long,                         
-         "location.lat" = Lat, 
-         "GPS.HDOP" = HPE,                               
-         "individual-local-identifier" = individual_ID,
-         "Species" = Species,
-         "Weight" = Weight,
-         "Total_length" = Total_length,
-         "Std_length" = Std_length,
-         "Treatment" = Treatment,                        
-         "Date" = date_cest,
-         "Exp_Stage" = Stage,
-         "Time_Of_Day" = time_of_day,
-         "found_alive" = found_alive,
-         "known_predated" = Known_predated
-       ))
+# Convert to Movebank format for ctmm package ------------------------------
+lake_BT_movebank <- with(
+  lake_BT_sub,
+  data.frame(
+    "timestamp" = timestamp_cest,
+    "location.long" = Long,
+    "location.lat" = Lat,
+    "GPS.HDOP" = HPE,
+    "individual-local-identifier" = individual_ID,
+    "Species" = Species,
+    "Weight" = Weight,
+    "Total_length" = Total_length,
+    "Std_length" = Std_length,
+    "Treatment" = Treatment,
+    "Date" = date_cest,
+    "Exp_Stage" = Stage,
+    "Time_Of_Day" = time_of_day,
+    "found_alive" = found_alive,
+    "known_predated" = Known_predated
+  )
+)
 
+# Convert to telemetry object -----------------------------------------------
+lake_BT_tels <- as.telemetry(
+  lake_BT_movebank,
+  timezone = "Europe/Stockholm",
+  timeformat = "%Y-%m-%d %H:%M:%S",
+  projection = NULL,
+  datum = "WGS84",
+  keep = c("Species", "Weight", "Total_length", "Std_length", "Treatment",
+           "Date", "Exp_Stage", "Time_Of_Day", "found_alive", "known_predated")
+)
 
-# Convert the dataframe to a telemetry object using the ctmm package's as.telemetry function
-# No projection is applied here, and the WGS84 datum is used (common geographic coordinate system)
-lake_BT_tels <- as.telemetry(lake_BT_movebank, 
-                                   timezone = "Europe/Stockholm",   # Set time zone
-                                   timeformat = "%Y-%m-%d %H:%M:%S",# Specify timestamp format
-                                   projection = NULL,               # No projection
-                                   datum = "WGS84",                 # World Geodetic System 1984
-                                   keep = c("Species", "Weight","Total_length", "Std_length", "Treatment", 
-                                            "Date", "Exp_Stage", "Time_Of_Day", "found_alive", "known_predated"))  # Retain extra columns
+# Center projection on geometric median -------------------------------------
+projection(lake_BT_tels) <- ctmm::median(lake_BT_tels)
 
+#==============================================================================
+# 4. INCORPORATE LOCATION ERROR MODEL
+#==============================================================================
 
-
-
-# Incoporate location error
-
-names(lake_BT_tels)
-
-#Center the projection on the geometric median of the data
-ctmm::projection(lake_BT_tels) <- ctmm::median(lake_BT_tels)
-
-### INCORPORATING LOCATION ERROR
-# fit error parameters to calibration data
+# Fit error parameters using reference tag ----------------------------------
 lake_BT_UERE <- uere.fit(lake_BT_tels$FReference)
-summary(lake_BT_UERE)
-#        low      est      high
-#all 0.37805 0.379299 0.3805479
+message("\n=== UERE Model Summary ===")
+print(summary(lake_BT_UERE))
+# low      est      high
+# all 0.37805 0.379299 0.3805479
 
-# apply error model to data
+# Apply error model to all telemetry objects -------------------------------
 uere(lake_BT_tels) <- lake_BT_UERE
-#new column now called VAR.xy
 
-#remove reference list
-names(lake_BT_tels)
+# Remove reference tag from analysis ---------------------------------------
 lake_BT_tels <- lake_BT_tels[1:66]
+message("Removed reference tag. Remaining individuals: ", length(lake_BT_tels))
 
-#save UERE
-saveRDS(lake_BT_UERE , paste0(save_telem_path, "BT/lake_BT_UERE.rds"))
+# Save UERE model -----------------------------------------------------------
+saveRDS(lake_BT_UERE, paste0(save_telem_path, "BT/lake_BT_UERE.rds"))
 
-#-----------------------------------------------------------------------------#
+#==============================================================================
+# 5. REMOVE SPEED-BASED OUTLIERS BY SPECIES
+#==============================================================================
+# Maximum sustained swimming speeds (Ucrit in m/s) from literature
+# Reference: "Key factors explaining critical swimming speed in freshwater fish:
+# A review and statistical analysis using Iberian species"
 
-# Remove outliers based on species maximum swim speeds ####
+speed_thresholds <- list(
+  Pike = 0.823,
+  Perch = 0.977,
+  Roach = 0.841
+)
 
-#Pike = 0.823
-#Perch = 0.977
-#Roach = 0.841
-#Ucrit speeds taken from 
-#KEY FACTORS EXPLAINING CRITICAL SWIMMING SPEED IN FRESHWATER FISH:  
-#A REVIEW AND STATISTICAL ANALYSIS USING IBERIAN SPECIES)
+# Organize telemetry objects by species ------------------------------------
+# First, verify and sort by individual ID
 
-#first seperate telemetry object by species 
-#check whether ids are in species order
-lake_BT_movebank %>%
-  select(Species, individual.local.identifier) %>%
-  distinct() %>%
-  arrange(individual.local.identifier)
-
-#need to order them by id number
-lake_BT_tels <- lake_BT_tels[order(names(lake_BT_tels))]
-names(lake_BT_tels)
-
-#mostly in order except for the first perch
+# Assign individuals to species groups
 pike_lake_BT_tel <- lake_BT_tels[61:66]
 perch_lake_BT_tel <- lake_BT_tels[c(1:15, 31:44, 46)]
 roach_lake_BT_tel <- lake_BT_tels[c(16:30, 45, 47:60)]
 
-#remove outliers based on speed
-#PIKE
-out_pike <- outlie(pike_lake_BT_tel, plot = FALSE)
-sum(sapply(out_pike, function(x) sum(x$speed > 0.823)))
-#11661
-#Need to filter out unrealistic speeds
-which_lowSp <- lapply(out_pike, function(x) x$speed <= 0.823)
-#Combining the lists and removing observations for which the logical vector was false
-pike_lake_BT_tel <- Map(function(x,y) x[y,], pike_lake_BT_tel,which_lowSp)
-#save telemetry object
-saveRDS(pike_lake_BT_tel, paste0(save_telem_path, "BT/pike_lake_BT_tel_unthinned.rds")) 
+message("\nSpecies distribution:")
+message("Pike: ", length(pike_lake_BT_tel), " individuals")
+message("Perch: ", length(perch_lake_BT_tel), " individuals")
+message("Roach: ", length(roach_lake_BT_tel), " individuals")
 
-#PERCH
-out_perch <- outlie(perch_lake_BT_tel, plot = FALSE)
-sum(sapply(out_perch, function(x) sum(x$speed > 0.977)))
-# 34023 
-#Need to filter out unrealistic speeds
-which_lowSp <- lapply(out_perch, function(x) x$speed <= 0.977)
-#Combining the lists and removing observations for which the logical vector was false
-perch_lake_BT_tel <- Map(function(x,y) x[y,], perch_lake_BT_tel,which_lowSp)
-#save telemetry object
-saveRDS(perch_lake_BT_tel , paste0(save_telem_path, "BT/perch_lake_BT_tel_unthinned.rds")) 
+# Function to remove speed outliers -----------------------------------------
+remove_speed_outliers <- function(telem_list, species_name, max_speed) {
+  
+  message("\n--- Processing ", species_name, " ---")
+  message("Max speed threshold: ", max_speed, " m/s")
+  
+  # Calculate speeds
+  out <- outlie(telem_list, plot = FALSE)
+  
+  # Count outliers
+  n_outliers <- sum(sapply(out, function(x) sum(x$speed > max_speed)))
+  message("Outliers detected: ", n_outliers)
+  
+  # Filter to retain only realistic speeds
+  which_lowSp <- lapply(out, function(x) x$speed <= max_speed)
+  filtered_telem <- Map(function(x, y) x[y, ], telem_list, which_lowSp)
+  
+  message("Filtering complete")
+  return(filtered_telem)
+}
 
-#ROACH
-out_roach <- outlie(roach_lake_BT_tel, plot = FALSE)
-sum(sapply(out_roach, function(x) sum(x$speed > 0.841)))
-#114783 
-#Need to filter out unrealistic speeds
-which_lowSp <- lapply(out_roach, function(x) x$speed <= 0.841)
-#Combining the lists and removing observations for which the logical vector was false
-roach_lake_BT_tel <- Map(function(x,y) x[y,], roach_lake_BT_tel,which_lowSp)
-#save telemetry object
-saveRDS(roach_lake_BT_tel , paste0(save_telem_path, "BT/roach_lake_BT_tel_unthinned.rds"))
+# Apply outlier removal to each species ------------------------------------
+pike_lake_BT_tel <- remove_speed_outliers(
+  pike_lake_BT_tel, "Pike", speed_thresholds$Pike
+) #outliers removed: 11538
+saveRDS(pike_lake_BT_tel, paste0(save_telem_path, "BT/pike_lake_BT_tel_unthinned.rds"))
 
-#------------------------------------------------------------------------------------------------------#
+perch_lake_BT_tel <- remove_speed_outliers(
+  perch_lake_BT_tel, "Perch", speed_thresholds$Perch
+) #outliers removed: 33878
+saveRDS(perch_lake_BT_tel, paste0(save_telem_path, "BT/perch_lake_BT_tel_unthinned.rds"))
 
-#Make combined dataframe with outliers for each species removed ####
+roach_lake_BT_tel <- remove_speed_outliers(
+  roach_lake_BT_tel, "Roach", speed_thresholds$Roach
+) #outlier removed: 114260
+saveRDS(roach_lake_BT_tel, paste0(save_telem_path, "BT/roach_lake_BT_tel_unthinned.rds"))
 
-# Create a function to extract the data and add the individual_id column
-# This function merges telemetry data from different individuals into a single dataframe.
+#==============================================================================
+# 6. COMBINE FILTERED DATA FROM ALL SPECIES
+#==============================================================================
+
+# Function to extract and combine telemetry data ---------------------------
 extract_data <- function(list_data) {
   data_combined <- do.call(rbind, lapply(names(list_data), function(id) {
     df <- list_data[[id]]
-    df$individual_ID <- id  # Add individual ID to each dataframe.
+    df$individual_ID <- id
     return(df)
   }))
   return(data_combined)
 }
 
-# Apply the function to each species' telemetry data and combine them into a single dataframe.
+# Extract and label data by species ----------------------------------------
 pike_data <- extract_data(pike_lake_BT_tel)
 perch_data <- extract_data(perch_lake_BT_tel)
 roach_data <- extract_data(roach_lake_BT_tel)
 
-# Combine all dataframes into one, with a species label added.
-BT_telem_data <- 
-  rbind(
-    cbind(pike_data, Species = 'Pike'), 
-    cbind(perch_data, Species = 'Perch'),
-    cbind(roach_data, Species = 'Roach')
-  )
-#Original: 20414167
-#New: 20165124
-#Difference: 249043 (which checks out with removal of reference tag data and outliers)
-
-saveRDS(BT_telem_data, paste0(filtered_data_path, "02_lake_BT_sub.rds"))
-
-#------------------------------------------------------------------------------#
-
-#remove unrequired large files
-rm(
-  lake_BT_movebank, lake_BT_sub, lake_BT_sub_dt, lake_BT_tels,
-  roach_data, perch_data, pike_data,
-  roach_lake_BT_tel, pike_lake_BT_tel, perch_lake_BT_tel,
-  out_perch, out_pike, out_roach, subset_ids, which_lowSp
+# Combine into single dataframe --------------------------------------------
+BT_telem_data <- rbind(
+  cbind(pike_data, Species = 'Pike'),
+  cbind(perch_data, Species = 'Perch'),
+  cbind(roach_data, Species = 'Roach')
 )
 
-#free up memory
+message("\n=== Data After Outlier Removal ===")
+message("Total detections: ", nrow(BT_telem_data)) #20019313
+message("Outliers removed: ", nrow(lake_BT_sub_dt) - nrow(ref) - nrow(BT_telem_data)) #159676
+
+# Save outlier-filtered data ------------------------------------------------
+saveRDS(BT_telem_data, paste0(filtered_data_path, "02_lake_BT_sub.rds"))
+
+# Clean up large objects ----------------------------------------------------
+rm(lake_BT_movebank, lake_BT_sub, lake_BT_sub_dt, lake_BT_tels,
+   roach_data, perch_data, pike_data,
+   roach_lake_BT_tel, pike_lake_BT_tel, perch_lake_BT_tel,
+   subset_ids, ref)
 gc()
 
-#Now I want to thin the data based on  15 second intervals
-#I need to first convert dataframe into a move object
-lake_BT_mv <- mt_as_move2(BT_telem_data, 
-                          coords = c("longitude", "latitude"),  # specify coordinate columns
-                          crs = "WGS84",  # use the WGS84 coordinate reference system
-                          time_column = "timestamp",  # specify the timestamp column
-                          track_id_column = "individual_ID",  # column identifying individual tracks
-                          na.fail = FALSE)  # allows rows with missing coordinates
+#==============================================================================
+# 7. TEMPORAL THINNING
+#==============================================================================
 
-# Sort the data by individual ID and timestamp for chronological consistency
+# Convert to move2 object ---------------------------------------------------
+lake_BT_mv <- mt_as_move2(
+  BT_telem_data,
+  coords = c("longitude", "latitude"),
+  crs = "WGS84",
+  time_column = "timestamp",
+  track_id_column = "individual_ID",
+  na.fail = FALSE
+)
+
 lake_BT_mv <- lake_BT_mv %>%
-  dplyr::arrange(individual_ID, timestamp)
+  arrange(individual_ID, timestamp)
 
-lake_BT_thin_data <- lake_BT_mv %>% mt_filter_per_interval(unit = "10 seconds", criterion = "first")
-#OLD: 20165124
-#NEW: 7400067
+# Apply temporal thinning ---------------------------------------------------
+thinning_interval <- "10 seconds"
+message("\nApplying temporal thinning: ", thinning_interval)
 
-lake_BT_thin_track_sum <-
-  lake_BT_thin_data %>%
+lake_BT_thin_data <- lake_BT_mv %>%
+  mt_filter_per_interval(unit = thinning_interval, criterion = "first")
+
+message("Before thinning: ", nrow(lake_BT_mv), " detections") #20019313 detections
+message("After thinning: ", nrow(lake_BT_thin_data), " detections") #7339440 detections
+message("Reduction: ", round(100 * (1 - nrow(lake_BT_thin_data) / nrow(lake_BT_mv)), 1), "%") #Reduction: 63.3%
+
+# Verify thinning intervals -------------------------------------------------
+lake_BT_thin_track_sum <- lake_BT_thin_data %>%
   group_by(individual_ID) %>%
   arrange(timestamp) %>%
   mutate(dt = as.numeric(difftime(timestamp, lag(timestamp), units = "secs"))) %>%
@@ -315,93 +343,195 @@ lake_BT_thin_track_sum <-
     max_dt = max(dt, na.rm = TRUE)
   )
 
-#find when the largest time gaps occur for each individual
-# If not already a data.table:
-lake_BT_thin_data <- as.data.table(lake_BT_thin_data)
+message("\n=== Temporal Resolution Summary ===")
+print(summary(lake_BT_thin_track_sum[, c("min_dt", "median_dt", "max_dt")]))
 
-# Sort by individual and time (important!)
+# min_dt         median_dt         max_dt                 geometry 
+# Min.   :0.7993   Min.   :10.05   Min.   :   1249   MULTIPOINT   :66  
+# 1st Qu.:1.7992   1st Qu.:10.18   1st Qu.:  29077   epsg:4326    : 0  
+# Median :1.7999   Median :10.28   Median :  47226   +proj=long...: 0  
+# Mean   :1.7089   Mean   :10.49   Mean   : 101684                     
+# 3rd Qu.:1.8004   3rd Qu.:10.47   3rd Qu.:  86707                     
+# Max.   :1.8009   Max.   :12.35   Max.   :1300537      
+
+#==============================================================================
+# 8. IDENTIFY TEMPORAL GAPS IN TRACKING
+#==============================================================================
+
+# Convert to data.table and calculate time gaps ----------------------------
+lake_BT_thin_data <- as.data.table(lake_BT_thin_data)
 setorder(lake_BT_thin_data, individual_ID, timestamp)
 
-# Time gap in seconds between successive fixes for each individual
+# Calculate time gaps between successive fixes (minutes)
 lake_BT_thin_data[, dt_mins := as.numeric(
   difftime(timestamp, shift(timestamp), units = "mins")
 ), by = individual_ID]
 
-# Also store the previous timestamp and its date (start of the gap)
-lake_BT_thin_data[, prev_time := shift(timestamp), by = individual_ID]
-lake_BT_thin_data[, prev_date := shift(Date), by = individual_ID]
+# Store previous timestamp and date (start of gap)
+lake_BT_thin_data[, `:=`(
+  prev_time = shift(timestamp),
+  prev_date = shift(Date)
+), by = individual_ID]
 
-max_gaps <- lake_BT_thin_data[!is.na(dt_sec),
-                              .SD[which.max(dt_sec)],
-                              by = individual_ID
-][
-  ,
-  .(
-    individual_ID,
-    gap_start_time = prev_time,
-    gap_start_date = prev_date,
-    gap_end_time   = timestamp,
-    gap_length_mins = dt_sec
-  )
-]
+# Find maximum gap for each individual --------------------------------------
+max_gaps <- lake_BT_thin_data[
+  !is.na(dt_mins),
+  .SD[which.max(dt_mins)],
+  by = individual_ID
+][, .(
+  individual_ID,
+  gap_start_time = prev_time,
+  gap_start_date = prev_date,
+  gap_end_time = timestamp,
+  gap_length_mins = dt_mins
+)]
 
-max_gaps
+message("\n=== Largest Temporal Gaps by Individual ===")
+print(max_gaps[order(-gap_length_mins)])
 
-# Extract the longitude and latitude columns from the geometry column
-coords <- st_coordinates(lake_BT_thin_data$geometry)
-lake_BT_thin_data$Long <- coords[, 1]
-lake_BT_thin_data$Lat <- coords[, 2]
+# Save temporal gaps to Excel -----------------------------------------------
+library(openxlsx)
 
-#------------------------------------------------------------------------------------------#
+# Create formatted Excel workbook
+wb <- createWorkbook()
+addWorksheet(wb, "Temporal Gaps Summary")
 
-#Explore daily movement trajectories
-#Remove any individuals that clearly that died early in the experiment
-#Identify any problematic individuals that might need some further exploration
+# Prepare data for export with formatted columns
+gaps_export <- max_gaps[order(-gap_length_mins)]
+gaps_export[, `:=`(
+  gap_start_time = format(gap_start_time, "%Y-%m-%d %H:%M:%S"),
+  gap_end_time = format(gap_end_time, "%Y-%m-%d %H:%M:%S"),
+  gap_length_hours = round(gap_length_mins / 60, 2),
+  gap_length_days = round(gap_length_mins / 1440, 2)
+)]
 
-#Function that takes data for a single individual and returns a ggplot
+# Reorder and rename columns for clarity
+gaps_export <- gaps_export[, .(
+  Individual_ID = individual_ID,
+  Gap_Start_Date = gap_start_date,
+  Gap_Start_Time = gap_start_time,
+  Gap_End_Time = gap_end_time,
+  Gap_Length_Minutes = round(gap_length_mins, 1),
+  Gap_Length_Hours = gap_length_hours,
+  Gap_Length_Days = gap_length_days
+)]
+
+# Write data to worksheet
+writeData(wb, "Temporal Gaps Summary", gaps_export, startRow = 1)
+
+# Format header row
+headerStyle <- createStyle(
+  fontSize = 12,
+  fontColour = "#FFFFFF",
+  halign = "center",
+  fgFill = "#4F81BD",
+  border = "TopBottomLeftRight",
+  borderColour = "#4F81BD",
+  textDecoration = "bold"
+)
+
+addStyle(wb, "Temporal Gaps Summary", headerStyle, rows = 1, cols = 1:7, gridExpand = TRUE)
+
+# Format data cells
+dataStyle <- createStyle(
+  halign = "left",
+  border = "TopBottomLeftRight",
+  borderColour = "#CCCCCC"
+)
+
+addStyle(wb, "Temporal Gaps Summary", dataStyle, 
+         rows = 2:(nrow(gaps_export) + 1), 
+         cols = 1:7, 
+         gridExpand = TRUE)
+
+# Format numeric columns
+numStyle <- createStyle(
+  halign = "right",
+  border = "TopBottomLeftRight",
+  borderColour = "#CCCCCC"
+)
+
+addStyle(wb, "Temporal Gaps Summary", numStyle,
+         rows = 2:(nrow(gaps_export) + 1),
+         cols = 5:7,
+         gridExpand = TRUE)
+
+# Highlight large gaps (> 24 hours)
+largeGapStyle <- createStyle(
+  fgFill = "#FFC7CE",
+  fontColour = "#9C0006"
+)
+
+large_gap_rows <- which(gaps_export$Gap_Length_Hours > 24) + 1
+if(length(large_gap_rows) > 0) {
+  addStyle(wb, "Temporal Gaps Summary", largeGapStyle,
+           rows = large_gap_rows,
+           cols = 1:7,
+           gridExpand = TRUE)
+}
+
+# Set column widths
+setColWidths(wb, "Temporal Gaps Summary", cols = 1:7, 
+             widths = c(15, 15, 20, 20, 18, 16, 15))
+
+# Freeze header row
+freezePane(wb, "Temporal Gaps Summary", firstRow = TRUE)
+
+# Save the workbook
+output_file <- paste0(filtered_data_path, "lake_BT_temporal_gaps_summary.xlsx")
+saveWorkbook(wb, output_file, overwrite = TRUE)
+
+message("\nTemporal gaps summary saved to Excel: ", output_file)
+message("Rows with gaps > 24 hours are highlighted in red")
+
+# Extract coordinates from geometry -----------------------------------------
+coords_data <- st_coordinates(lake_BT_thin_data$geometry)
+lake_BT_thin_data$Long <- coords_data[, 1]
+lake_BT_thin_data$Lat <- coords_data[, 2]
+
+#==============================================================================
+# 9. VISUALIZE DAILY MOVEMENT TRAJECTORIES
+#==============================================================================
+
+# Function to plot daily trajectories for one individual -------------------
 plot_daily_traj_individual <- function(dat, lake_poly) {
   
   this_id <- unique(dat$individual_ID)
   
   ggplot() +
-    # lake polygon
     geom_sf(data = lake_poly, fill = "lightblue", color = "black", alpha = 0.3) +
-    
-    # trajectories (grouped by date so each day's path is separate)
     geom_path(
       data = dat,
       aes(x = Long, y = Lat, group = Date),
       linewidth = 0.3
     ) +
-    
-    # points
     geom_point(
       data = dat,
       aes(x = Long, y = Lat),
       size = 0.4
     ) +
-    
     facet_wrap(~ Date) +
     coord_sf() +
     theme_minimal() +
     labs(
-      title = paste("Daily Movement Trajectories of", this_id, "in BT Lake"),
+      title = paste("Daily Movement Trajectories -", this_id),
       x = "Longitude",
       y = "Latitude"
     )
 }
 
-#Split data by individual and build a named list of plots
-traj_plots <- lake_BT_sub %>%
+# Generate plots for all individuals ----------------------------------------
+message("\n=== Generating Daily Trajectory Plots ===")
+
+traj_plots <- lake_BT_thin_data %>%
   group_by(individual_ID) %>%
-  group_split() %>%                                   # list of data frames, one per individual
-  set_names(map_chr(., ~ unique(.x$individual_ID))) %>%  # name each list element by the ID
-  map(~ plot_daily_traj_individual(.x, BT_polygon))  
+  group_split() %>%
+  set_names(map_chr(., ~ unique(.x$individual_ID))) %>%
+  map(~ plot_daily_traj_individual(.x, BT_polygon))
 
-
+# Save plots to files -------------------------------------------------------
 walk(names(traj_plots), function(id) {
-  
-  filename <- paste0("./daily_trajectory_plots/lake_BT/", id, "_daily_trajectory_plot.png")
+  filename <- paste0(plot_output_path, id, "_daily_trajectory_plot.png")
   
   ggsave(
     filename = filename,
@@ -414,33 +544,42 @@ walk(names(traj_plots), function(id) {
   message("Saved: ", filename)
 })
 
-#------------------------------------------------------------------------------#
+#==============================================================================
+# 10. FILTER MORTALITY EVENTS
+#==============================================================================
 
-#Filter out dead pike days
-
-#Filter out individual F59889 because it died on the first day of tracking
-lake_BT_sub <- lake_BT_sub %>% 
+# Remove individual that died on first day ----------------------------------
+n_before <- n_distinct(lake_BT_thin_data$individual_ID)
+lake_BT_thin_data <- lake_BT_thin_data %>%
   filter(individual_ID != "F59889")
 
-#load information about pike estimated death days
+message("\nRemoved F59889 (died on Day 1)")
+message("Individuals remaining: ", n_distinct(lake_BT_thin_data$individual_ID))
+
+# Load pike mortality information -------------------------------------------
 pike_deaths <- read.csv("./data/pike_deaths.csv")
 
-pike_mort_cols <- 
-  pike_deaths %>%
-  filter(individual_ID %in% lake_BT_sub$individual_ID) %>% 
-  mutate(
-    pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y"))
+pike_mort_cols <- pike_deaths %>%
+  filter(individual_ID %in% lake_BT_thin_data$individual_ID) %>%
+  mutate(pike_death_date = as.Date(likely_death_date, format = "%d/%m/%Y"))
 
-# Filter out data after the predation or mortality event for each individual.
-lake_BT_sub <- 
-  lake_BT_sub %>%
-  left_join(pike_mort_cols, by = c("individual_ID" = "individual_ID")) %>%
-  filter(is.na(pike_death_date)| Date < pike_death_date)  # Keep locations only before the death date if one is recorded
-#pre-filter rows: 7252120
-#post-filter rows: 7204217
+message("\nPike mortality records loaded: ", nrow(pike_mort_cols))
 
-print(paste0("Rows removed after  filtering: ", nrow(lake_BT_sub) - nrow(test)))
-#47903
+# Filter out detections after mortality events ------------------------------
+n_rows_before <- nrow(lake_BT_thin_data)
 
-saveRDS(lake_BT_sub, paste0(filtered_data_path, "03_lake_BT_sub.rds"))
+lake_BT_thin_data <- lake_BT_thin_data %>%
+  left_join(pike_mort_cols, by = "individual_ID") %>%
+  filter(is.na(pike_death_date) | Date < pike_death_date)
 
+n_rows_after <- nrow(lake_BT_thin_data)
+message("Detections removed after mortality events: ", n_rows_before - n_rows_after) #48037
+
+# Save final filtered dataset -----------------------------------------------
+saveRDS(lake_BT_thin_data, paste0(filtered_data_path, "03_lake_BT_sub.rds"))
+
+message("Final dataset: ", nrow(lake_BT_thin_data), " detections") #7143462 detections
+message("Number of individuals: ", n_distinct(lake_BT_thin_data$individual_ID)) #Number of individuals: 65
+message("Date range: ", min(lake_BT_thin_data$Date), " to ", 
+        max(lake_BT_thin_data$Date))
+message("Saved to: ", paste0(filtered_data_path, "03_lake_BT_sub.rds"))
