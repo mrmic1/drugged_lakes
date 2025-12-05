@@ -1,222 +1,237 @@
-#-------------------------------------------------------------#
-# Initial cleaning of the detection data in Lake Cow Paradise 
-#-------------------------------------------------------------#
+#==============================================================================
+# Lake Cow Paradise Detection Data - Initial Cleaning and Preparation
+#==============================================================================
+# Purpose: Clean and filter acoustic telemetry data from Lake Cow Paradise
+# Author: Marcus Michelangeli
+# Input files:
+#   - ./data/raw_tracking_data/cow_paradise_C/results/animal/all.csv
+#   - ./data/fish_size/biometric_data.csv
+#   - ./data/fish_size/biometric_post_exp_data.csv
+#   - ./data/raw_tracking_data/sunset_sunrise_data.csv
+#   - ./data/lake_coords/lake_cow_polygon.gpkg
+#
+# Output:
+#   - ./data/tracks_filtered/lake_cow_paradise/01_lake_cow_sub.rds
+#==============================================================================
 
-# Load necessary libraries
+# Load required libraries ---------------------------------------------------
 library(data.table)
-library(tidyverse)  # includes dplyr, ggplot2, and other utilities for data manipulation and visualization
-library(move)       # useful for animal movement data analysis
-library(move2)      # additional utilities for handling movement data
-library(mapedit)    # for interactive map editing
-library(sf)         # spatial data handling
+library(tidyverse)
+library(move)
+library(move2)
+library(mapedit)
+library(sf)
+library(lubridate)  # Explicit loading for date/time functions
 
-
-#set time zones to CEST (not CET because study was conducted in the summmer)
-#helpful timezone link: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+# Set timezone globally -----------------------------------------------------
 Sys.setenv(TZ = 'Europe/Stockholm')
 
+# Define file paths ---------------------------------------------------------
+raw_tracking_data_path <- "./data/raw_tracking_data/"
+save_filtered_data_path <- "./data/tracks_filtered/lake_cow_paradise/"
+size_data_path <- "./data/fish_size/"
 
-# Define file paths
-raw_tracking_data_path <- "./data/raw_tracking_data/"  # path to raw transmitter data
-save_filtered_data_path <- "./data/tracks_filtered/lake_cow_paradise/"  # path to save subsampled data
-size_data_path <- "./data/fish_size/" 
+cat("\014")  # Clear console
 
-cat("\014")
+#==============================================================================
+# 1. IMPORT AND INITIAL DATA PREPARATION
+#==============================================================================
 
-#----------------------------------------------------------------------------------------#
-#----------------------------------------------------------------------------------------#
+# Import raw detection data -------------------------------------------------
+lake_cow <- fread(paste0(raw_tracking_data_path, "cow_paradise_C/results/animal/all.csv"))
+message("Imported ", nrow(lake_cow), " raw detections") #Imported 10368804 raw detections
 
-#import BT data
-lake_cow = fread(paste0(raw_tracking_data_path, "cow_paradise_C/results/animal/all.csv"))
+# Fix swapped latitude/longitude columns ------------------------------------
+lake_cow <- lake_cow %>%
+  rename(Lat = Longitude,
+         Long = Latitude)
 
-#noticed that lat and long are in the wrong columns, need to rename them
-names(lake_cow)[names(lake_cow) == "Longitude"] <- "Lat"
-names(lake_cow)[names(lake_cow) == "Latitude"] <- "Long"
+# Prepare timestamp columns -------------------------------------------------
+# Original timestamps are in UTC; convert to local time (Europe/Stockholm)
+lake_cow <- lake_cow %>%
+  rename(timestamp_utc = Time) %>%
+  mutate(
+    timestamp_cest = with_tz(timestamp_utc, tzone = "Europe/Stockholm"),
+    date_utc = as.Date(timestamp_utc),
+    date_cest = as.Date(format(timestamp_cest, tz = "Europe/Stockholm"))
+  )
 
-#check time column
-tz(lake_cow$Time) #timestamps are in UTC
-#rename time column to time_utc
-lake_cow <- lake_cow %>% 
-  rename(timestamp_utc = Time)
+# Verify timezone conversions
+message("Non-aligned dates (UTC vs CEST): ",
+        sum(lake_cow$date_utc != lake_cow$date_cest))
 
-#add column for time in CEST
-lake_cow$timestamp_cest <- with_tz(lake_cow$timestamp_utc, tzone = "Europe/Stockholm" )
-tz(lake_cow$timestamp_cest)
-head(lake_cow %>% 
-       dplyr::select(timestamp_utc, timestamp_cest), n = 20)
+#==============================================================================
+# 2. MERGE WITH BIOMETRIC DATA
+#==============================================================================
 
-#date column for both utc and cest
-lake_cow$date_utc <- as.Date(lake_cow$timestamp_utc)
-lake_cow$date_cest <- as.Date(format(lake_cow$timestamp_cest, tz = "Europe/Stockholm"))
-
-#find rows where date_utc and date_cest do not align
-print(lake_cow %>% 
-        filter(date_utc != date_cest))
-
-
-#Load fish biometric data
+# Import fish biometric data ------------------------------------------------
 biometrics <- fread(paste0(size_data_path, "biometric_data.csv"))
 
-# Extract the last numeric part of 'Tag Number' to create a matching 'individual_ID' column
+# Extract individual ID from tag number and prepare for merging
 biometrics <- biometrics %>%
   mutate(individual_ID = as.numeric(sub(".*-.*-(\\d+)", "\\1", `Tag Number`)))
 
-# Rename the 'Id' column in lake_cow to 'individual_ID' for consistency in merging
-names(lake_cow)[names(lake_cow) == "Id"] <- "individual_ID"
-
-# Join biometric data with the detection data on 'individual_ID'
-lake_cow <- left_join(lake_cow, biometrics, by = "individual_ID")
-
-# Convert lake_cow to a data frame (optional but useful for further manipulation)
-lake_cow <- as.data.frame(lake_cow)
-
-# Identify and label the reference individual based on 'FullId' column
-lake_cow$individual_ID <- ifelse(lake_cow$FullId == 'H170-1802-65064', 'Reference', lake_cow$individual_ID)
-
-# Filter data to only include individuals within Lake lake_cow or the reference individual
+# Merge biometric data with detections --------------------------------------
 lake_cow <- lake_cow %>%
-  dplyr::filter(Lake == 'Cow Paradise' | individual_ID == 'Reference')
-#original rows: 10368804
-#after filtering: 10364909 
+  rename(individual_ID = Id) %>%
+  left_join(biometrics, by = "individual_ID")
 
-# Filter for observations after pike were introduced (post 2022-09-26) and remove unnecessary columns
+# Label reference tag and filter for Lake Cow Paradise individuals ---------
 lake_cow <- lake_cow %>%
-  filter(date_cest >= "2022-09-27") %>%
-  dplyr::select(-ID, -Notes, -Transmitter, -`Tag Number`, -`PIT Number`, - `Tag Type`, - `Biologger Number`,
-                -Station, -HPEm, -TempData, -DepthData, -AccelData, 
-                -RxDetected, -nRxDetected, -`Serial Number`, -nRxUsed, -RxUsed,
-                -timestamp_utc, -date_utc, -Date, -Lake) # removing redundant columns
-#original rows: 10364909
-#after filtering cest: 9431255 
+  mutate(individual_ID = if_else(FullId == 'H170-1802-65064',
+                                 'Reference',
+                                 as.character(individual_ID))) %>%
+  filter(Lake == 'Cow Paradise' | individual_ID == 'Reference')
 
-#Change individual_ID to include F at the front
-#This will make it easier for analysis later
-lake_cow$individual_ID <- paste0("F", lake_cow$individual_ID)
+message("After lake filter: ", nrow(lake_cow), " detections") #10364909 detections
 
+#==============================================================================
+# 3. TEMPORAL FILTERING AND DATA CLEANING
+#==============================================================================
 
-# Convert lake_cow to a move2 object for further spatial manipulation
-lake_cow_mv <- mt_as_move2(lake_cow, 
-                          coords = c("Long", "Lat"),  # specify coordinate columns
-                          crs = "WGS84",  # use the WGS84 coordinate reference system
-                          time_column = "timestamp_cest",  # specify the timestamp column
-                          track_id_column = "individual_ID",  # column identifying individual tracks
-                          na.fail = FALSE)  # allows rows with missing coordinates
+# Filter for post-introduction period (after pike introduction) -------------
+pike_intro_date <- as.Date("2022-09-27")
 
-# Sort the data by individual ID and timestamp for chronological consistency
-# It is also important because it place individual_ID in numerical order which will be beneficial for 
-# later parts of the analysis
+lake_cow <- lake_cow %>%
+  filter(date_cest >= pike_intro_date) %>%
+  # Remove unnecessary columns to reduce memory footprint
+  dplyr::select(-c(ID, Notes, Transmitter, `Tag Number`, `PIT Number`, `Tag Type`,
+            `Biologger Number`, Station, HPEm, TempData, DepthData, AccelData,
+            RxDetected, nRxDetected, `Serial Number`, nRxUsed, RxUsed,
+            timestamp_utc, date_utc, Date, Lake))
+
+message("After temporal filter: ", nrow(lake_cow), " detections") #9431255 detections
+
+# Standardize individual IDs ------------------------------------------------
+# Add 'F' prefix to distinguish fish individuals from reference
+lake_cow <- lake_cow %>%
+  mutate(individual_ID = paste0("F", individual_ID))
+
+#==============================================================================
+# 4. CONVERT TO MOVEMENT OBJECT AND SPATIAL FILTERING
+#==============================================================================
+
+# Convert to move2 object for spatial analysis -----------------------------
+lake_cow_mv <- mt_as_move2(
+  lake_cow,
+  coords = c("Long", "Lat"),
+  crs = "WGS84",
+  time_column = "timestamp_cest",
+  track_id_column = "individual_ID",
+  na.fail = FALSE  # Allow missing coordinates
+)
+
+# Sort chronologically by individual and timestamp --------------------------
 lake_cow_mv <- lake_cow_mv %>%
-  dplyr::arrange(individual_ID, timestamp_cest)
+  arrange(individual_ID, timestamp_cest)
 
+# Load lake boundary polygon ------------------------------------------------
+lake_cow_poly <- st_read("./data/lake_coords/lake_cow_polygon.gpkg")
 
-#------------------------------------------------------------------------------#
+# # Optional: Visualize reference tag to verify spatial accuracy
+# ref_tag <- filter_track_data(lake_cow_mv, .track_id = "F59818")
+# lake_cow_map <- mapview::mapView(mt_track_lines(ref_tag)$geometry)
 
-##------------------------------------------------------------------------------#
-# Handling spatial boundaries (polygon of Lake Muddyfoot) #
-#------------------------------------------------------------------------------#
+# Note: To create or update the lake polygon, uncomment and run:
+# lake_cow_map <- mapedit::drawFeatures(map = lake_cow_map)
+# st_write(lake_cow_map, dsn="data/lake_coords/lake_cow_polygon.gpkg",
+#          driver="GPKG", delete_layer = TRUE)
 
-# Load the pre-drawn polygon representing Lake lake_cow's boundaries
-lake_cow_poly <- sf::st_read("./data/lake_coords/lake_cow_polygon.gpkg")
+# Filter detections within lake boundaries ---------------------------------
+lake_cow_sub <- st_filter(lake_cow_mv, lake_cow_poly)
+message("After spatial filter: ", nrow(lake_cow_sub), " detections") #9089970 detections
 
+# Verify timezone preservation ----------------------------------------------
+message("Timezone check: ", tz(lake_cow_sub$timestamp_cest))
 
-# Subset the data to include only points that fall within the lake's polygon
-lake_cow_sub <- st_intersection(lake_cow_mv, lake_cow_poly)
-
-#before filtering: 9431255
-#after filtering: 9089970
-
-#Convert to dataframe
-lake_cow_sub <- as.data.frame(lake_cow_sub)
-
-#check time
-tz(lake_cow_sub$timestamp_cest) #Europe/Stockholm
-
-# Extract the longitude and latitude columns from the geometry column
+# Extract coordinates back to standard columns ------------------------------
 coords <- st_coordinates(lake_cow_sub$geometry)
 lake_cow_sub$Long <- coords[, 1]
 lake_cow_sub$Lat <- coords[, 2]
 
-# # Convert the dataframe to an sf object with the WGS84 CRS
-# data_sf <- st_as_sf(lake_cow_sub, coords = c("Long", "Lat"), crs = 4326)
-# 
-# # Define the UTM CRS (using zone 34 for this specific location)
-# utm_crs <- st_crs("+proj=utm +zone=34 +datum=WGS84 +units=m +no_defs")
-# 
-# # Transform the coordinates to UTM
-# data_sf_utm <- st_transform(data_sf, crs = utm_crs)
-# 
-# # Extract the UTM coordinates
-# utm_coords <- st_coordinates(data_sf_utm$geometry)
-# lake_cow_sub$Long_utm <- utm_coords[, 1]
-# lake_cow_sub$Lat_utm <- utm_coords[, 2]
+#==============================================================================
+# 5. CREATE TEMPORAL CLASSIFICATION VARIABLES
+#==============================================================================
+
+# Classify experiment stage (Early vs Late) ---------------------------------
+# Split dataset into two equal temporal periods
+unique_dates <- unique(sort(lake_cow_sub$date_cest))
+n_dates <- length(unique_dates)
+early_dates <- unique_dates[1:ceiling(n_dates/2)]
+
+message("\nTotal unique dates: ", n_dates) #Total unique dates: 35
+message("Early period dates: ", length(early_dates)) #Early period dates: 18
+
+lake_cow_sub <- lake_cow_sub %>%
+  mutate(Stage = if_else(date_cest %in% early_dates, 'Early', 'Late'))
+
+# Verify stage classification
+message("\nStage distribution:")
+print(table(lake_cow_sub$Stage))
+# Early    Late 
+# 6718978 2370992 
 
 
-
-#------------------------------------------------------------------------------#
-# Create temporal columns #
-#-------------------------------------------------------------------------------
-
-#Split data in half by date
-unique(lake_cow_sub$date_cest) #35 unique dates
-class(lake_cow_sub$date_cest)
-
-#Create column called stage to split dataset into 'early' and 'late'
-lake_cow_sub <- 
-  lake_cow_sub %>%
-  # Find the unique dates, arrange them, and assign 'Early' or 'Late'
-  mutate(Stage = if_else(date_cest %in% unique(sort(date_cest))[1:17], 'Early', 'Late'))
-
-#check outcome
-lake_cow_sub %>% 
-  group_by(date_cest, Stage) %>% 
-  summarise(n = n()) %>% 
-  print(n = 35) #worked
-
-#Create day and night columns
-#import sunset and sunrise data
+# Classify time of day (Day vs Night) --------------------------------------
+# Import sunrise/sunset data
 sun_data <- fread(paste0(raw_tracking_data_path, "sunset_sunrise_data.csv"))
-sun_data <- sun_data %>% 
-  dplyr::select(Sunrise_timestamp, Sunset_timestamp) %>% 
-  rename(sunrise = Sunrise_timestamp,
-         sunset = Sunset_timestamp)
 
-# Convert Sunrise_timestamp and Sunset_timestamp to POSIXct format with timezone
-sun_data[, sunrise := dmy_hm(sunrise, tz = "Europe/Stockholm")]
-sun_data[, sunset := dmy_hm(sunset, tz = "Europe/Stockholm")]
-
-# Convert the timestamps in sun_data to POSIXct with the same timezone
-sun_data$sunrise <- as.POSIXct(sun_data$sunrise, format = "%Y-%m-%d %H:%M:%S", tz = "Europe/Stockholm")
-sun_data$sunset <- as.POSIXct(sun_data$sunset, format = "%Y-%m-%d %H:%M:%S", tz = "Europe/Stockholm")
-
-# Verify the timezone is consistent
-# attr(lake_cow_sub$timestamp_cest, "tzone")
-# attr(sun_data$sunset, "tzone")
-
-#create date column in sun_data
-sun_data$date_cest <- as.Date(sun_data$sunset)
-
-# Merge the sun_data with lake_cow_sub to get the sunrise and sunset times for each fish location timestamp
-lake_cow_sub <- merge(lake_cow_sub, sun_data, by = "date_cest", all.x = TRUE)
-
-# Create the Day_time column based on the comparison of timestamp with sunrise and sunset
-lake_cow_sub$time_of_day <- 
-  ifelse(
-    lake_cow_sub$timestamp_cest >= lake_cow_sub$sunrise & lake_cow_sub$timestamp_cest <= lake_cow_sub$sunset,
-    "Day", "Night"
+sun_data <- sun_data %>%
+  dplyr::select(Sunrise_timestamp, Sunset_timestamp) %>%
+  rename(sunrise = Sunrise_timestamp, sunset = Sunset_timestamp) %>%
+  mutate(
+    sunrise = dmy_hm(sunrise, tz = "Europe/Stockholm"),
+    sunset = dmy_hm(sunset, tz = "Europe/Stockholm"),
+    date_cest = as.Date(sunset)
   )
 
-# Check entries classified as 'Day'
-# day_entries <- lake_cow_sub[lake_cow_sub$time_of_day == "Day", ]
-# head(day_entries[, c("timestamp_cest", "sunrise", "sunset", "time_of_day")], 20)
+# Merge sun data and classify day/night -------------------------------------
+lake_cow_sub <- lake_cow_sub %>%
+  left_join(sun_data, by = "date_cest") %>%
+  mutate(
+    time_of_day = if_else(
+      timestamp_cest >= sunrise & timestamp_cest <= sunset,
+      "Day",
+      "Night"
+    )
+  )
+
+# Verify day/night classification
+message("\nTime of day distribution:")
+print(table(lake_cow_sub$time_of_day))
+
+# Day   Night 
+# 4388787 4699445 
 
 
-# Check entries classified as 'Night'
-# night_entries <- lake_cow_sub[lake_cow_sub$time_of_day == "Night", ]
-# head(night_entries[, c("timestamp_cest", "sunrise", "sunset", "time_of_day")], 10)
+#==============================================================================
+# 6. MERGE POST-EXPERIMENT SURVIVAL DATA
+#==============================================================================
 
-#------------------------------------------------------------------------------#
-# Final save #
-#------------------------------------------------------------------------------#
+# Import post-experiment biometric data -------------------------------------
+post_biometrics <- fread(paste0(size_data_path, "biometric_post_exp_data.csv"))
 
-# Save the cleaned and filtered dataset
-saveRDS(lake_cow_sub, file = paste0(save_filtered_data_path, "01_lake_cow_sub.rds"))
+post_size_cols <- post_biometrics %>%
+  filter(Lake == 'Cow Paradise') %>%
+  mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number))) %>%
+  dplyr::select(individual_ID, Found, Known_predated) %>%
+  rename(found_alive = Found)
+
+# Merge survival information ------------------------------------------------
+lake_cow_sub <- lake_cow_sub %>%
+  left_join(post_size_cols, by = "individual_ID")
+
+#==============================================================================
+# 7. SAVE CLEANED DATASET
+#==============================================================================
+
+# Save as RDS file ----------------------------------------------------------
+output_file <- paste0(save_filtered_data_path, "01_lake_cow_sub.rds")
+saveRDS(lake_cow_sub, file = output_file)
+
+message("\n=== Data cleaning complete ===")
+message("Final dataset: ", nrow(lake_cow_sub), " detections") #9089970 detections
+message("Number of individuals: ", n_distinct(lake_cow_sub$individual_ID)) #Number of individuals: 67 (including the reference tag)
+message("Date range: ", min(lake_cow_sub$date_cest), " to ",
+        max(lake_cow_sub$date_cest)) #Date range: 2022-09-27 to 2022-10-31
+message("Saved to: ", output_file)
