@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document id="root_doc">
+<Schema name="lake_cow_paradise_polygon" id="lake_cow_paradise_polygon">
+	<SimpleField name="X_leaflet_id" type="int"></SimpleField>
+	<SimpleField name="feature_type" type="string"></SimpleField>
+</Schema>
+<Folder><name>lake_cow_paradise_polygon</name>
+  <Placemark id="lake_cow_paradise_polygon.1">
+	<Style><LineStyle><color>ff0000ff</color></LineStyle><PolyStyle><fill>0</fill></PolyStyle></Style>
+	<ExtendedData><SchemaData schemaUrl="#lake_cow_paradise_polygon">
+		<SimpleData name="X_leaflet_id">369</SimpleData>
+		<SimpleData name="feature_type">polygon</SimpleData>
+	</SchemaData></ExtendedData>
+      <Polygon><outerBoundaryIs><LinearRing><coordinates>20.063181,63.772184 20.063356,63.772244 20.063654,63.77225 20.063851,63.77227 20.064041,63.77229 20.064126,63.772296 20.064195,63.772305 20.064275,63.772299 20.064309,63.772293 20.064341,63.772249 20.064275,63.772217 20.06418,63.772175 20.064073,63.772136 20.064007,63.772124 20.063909,63.772134 20.063846,63.772106 20.06378,63.772074 20.063693,63.772028 20.063639,63.772007 20.06349,63.771977 20.063329,63.771932 20.063186,63.771901 20.063086,63.771902 20.063037,63.771953 20.063032,63.772109 20.063159,63.772175 20.063181,63.772184</coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+</Folder>
+</Document></kml>

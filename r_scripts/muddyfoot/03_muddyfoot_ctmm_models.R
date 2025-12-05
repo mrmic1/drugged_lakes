@@ -372,7 +372,7 @@ fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "m
 }
 
 # Function to verify model fits ---------------------------------------------
-verify_fits <- function(telem_list, fit_list, species_name, n_check = 1) {
+verify_fits <- function(telem_list, fit_list, species_name, n_check = NULL) {
   
   message("\n=== Verifying ", species_name, " Model Fits ===")
   
@@ -381,15 +381,86 @@ verify_fits <- function(telem_list, fit_list, species_name, n_check = 1) {
     return(invisible())
   }
   
-  # Print summary of first model
-  message("\nSummary of first individual (", names(fit_list)[1], "):")
-  print(summary(fit_list[[1]]))
-  
-  # Optional: create diagnostic plot for first individual
-  if (n_check > 0) {
-    message("\nGenerating diagnostic plot for ", names(fit_list)[1])
-    plot(telem_list[[names(fit_list)[1]]], fit_list[[1]], error = FALSE)
+  # If n_check is NULL, check all individuals
+  if (is.null(n_check)) {
+    n_check <- length(fit_list)
   }
+  
+  # Ensure n_check doesn't exceed available fits
+  n_check <- min(n_check, length(fit_list))
+  
+  message(sprintf("\nChecking %d out of %d individuals", n_check, length(fit_list)))
+  
+  # Loop through individuals to check
+  for (i in 1:n_check) {
+    id_i <- names(fit_list)[i]
+    
+    message("\n", strrep("-", 80))
+    message(sprintf("Individual %d/%d: %s", i, n_check, id_i))
+    message(strrep("-", 80))
+    
+    # Print summary
+    print(summary(fit_list[[i]]))
+    
+    # Create diagnostic plot
+    message("\nGenerating diagnostic plot...")
+    plot(telem_list[[id_i]], fit_list[[i]], error = FALSE)
+    
+    # Pause for user to review (except for last one)
+    if (i < n_check) {
+      message("\nPress [Enter] to continue to next individual, or type 'q' to quit verification...")
+      user_input <- readline()
+      if (tolower(trimws(user_input)) == 'q') {
+        message("Verification stopped by user.")
+        break
+      }
+    }
+  }
+  
+  message("\n", strrep("=", 80))
+  message("Verification complete!")
+  message(strrep("=", 80))
+}
+
+# Quick verification function (summaries only, no plots) -------------------
+verify_fits_quick <- function(fit_list, species_name) {
+  
+  message("\n=== Quick Summary of ", species_name, " Model Fits ===")
+  
+  if (length(fit_list) == 0) {
+    message("No fits to verify!")
+    return(invisible())
+  }
+  
+  # Create a summary dataframe
+  summary_df <- data.frame(
+    ID = names(fit_list),
+    Model = character(length(fit_list)),
+    AIC = numeric(length(fit_list)),
+    DOF_area = numeric(length(fit_list)),
+    DOF_speed = numeric(length(fit_list)),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(fit_list)) {
+    model_sum <- summary(fit_list[[i]])
+    summary_df$Model[i] <- names(fit_list[[i]]$tau)[1]
+    summary_df$AIC[i] <- model_sum$AIC
+    
+    # Extract DOF information if available
+    if ("DOF" %in% names(model_sum)) {
+      summary_df$DOF_area[i] <- model_sum$DOF["area"]
+      summary_df$DOF_speed[i] <- ifelse("speed" %in% names(model_sum$DOF), 
+                                        model_sum$DOF["speed"], NA)
+    }
+  }
+  
+  print(summary_df)
+  
+  message("\nModel type distribution:")
+  print(table(summary_df$Model))
+  
+  return(invisible(summary_df))
 }
 
 #==============================================================================
@@ -412,7 +483,7 @@ if (length(pike_lake_muddyfoot_tel) > 0) {
   lake_muddyfoot_pike_ctmm_fits <- pike_results$fits
   
   # Verify fits -----------------------------------------------------------
-  verify_fits(pike_lake_muddyfoot_tel, lake_muddyfoot_pike_ctmm_fits, "Pike")
+verify_fits(pike_lake_muddyfoot_tel, lake_muddyfoot_pike_ctmm_fits, "Pike")
 } else {
   message("\n*** No pike individuals found in Muddyfoot dataset ***")
   lake_muddyfoot_pike_ctmm_fits <- list()
