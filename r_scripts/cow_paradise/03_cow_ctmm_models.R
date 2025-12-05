@@ -501,13 +501,13 @@ verify_fits(pike_lake_cow_paradise_tel, lake_cow_paradise_pike_ctmm_fits, "Pike"
 # Option to reload if needed ------------------------------------------------
 # perch_lake_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/perch_lake_cow_paradise_tel_thinned.rds"))
 
-if (length(perch_lake_cow_paradise_tel) > 0) {
+if (length(perch_lake_cow_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
   # Adjust max_cores based on number of individuals
-  perch_cores <- ifelse(length(perch_lake_cow_paradise_tel) > 15, 6, 3)
+  perch_cores <- ifelse(length(perch_lake_cow_tel) > 15, 3, 3)
   
   perch_results <- fit_ctmm_species_parallel(
-    perch_lake_cow_paradise_tel,
+    perch_lake_cow_tel,
     "perch",
     lake_name = "cow_paradise",
     max_cores = perch_cores
@@ -527,13 +527,13 @@ if (length(perch_lake_cow_paradise_tel) > 0) {
 # Option to reload if needed ------------------------------------------------
 # roach_lake_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/roach_lake_cow_paradise_tel_thinned.rds"))
 
-if (length(roach_lake_cow_paradise_tel) > 0) {
+if (length(roach_lake_cow_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
   # Adjust max_cores based on number of individuals
-  roach_cores <- ifelse(length(roach_lake_cow_paradise_tel) > 15, 6, 3)
+  roach_cores <- ifelse(length(roach_lake_cow_tel) > 15, 6, 3)
   
   roach_results <- fit_ctmm_species_parallel(
-    roach_lake_cow_paradise_tel,
+    roach_lake_cow_tel,
     "roach",
     lake_name = "cow_paradise",
     max_cores = roach_cores
