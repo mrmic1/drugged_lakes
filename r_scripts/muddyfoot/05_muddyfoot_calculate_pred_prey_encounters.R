@@ -356,7 +356,7 @@ if (file.exists(roach_pike_file)) {
     prey_species = "Roach",
     strike_dist = params$strike_distance,
     parallel = TRUE,
-    n_cores = NULL  # Auto-detect
+    n_cores = 16  # Auto-detect
   )
   saveRDS(roach_pike_distances_df, roach_pike_file)
 }
@@ -377,7 +377,7 @@ if (file.exists(perch_pike_file)) {
     prey_species = "Perch",
     strike_dist = params$strike_distance,
     parallel = TRUE,
-    n_cores = NULL
+    n_cores = 16
   )
   saveRDS(perch_pike_distances_df, perch_pike_file)
 }
