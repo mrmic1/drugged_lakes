@@ -321,9 +321,9 @@ create_encounter_summary <- function(daily_encounters, metadata) {
 # ===================================================================
 
 ## 3.1 Load Telemetry Objects ----
-pike_tel <- readRDS(file.path(paths$telem, 'pike_BT_tel.rds'))
-perch_tel <- readRDS(file.path(paths$telem, 'perch_BT_tel.rds'))
-roach_tel <- readRDS(file.path(paths$telem, 'roach_BT_tel.rds'))
+pike_tel <- readRDS(file.path(paths$telem, 'pike_BT_tel_thinned.rds'))
+perch_tel <- readRDS(file.path(paths$telem, 'perch_BT_tel_thinned.rds'))
+roach_tel <- readRDS(file.path(paths$telem, 'roach_BT_tel_thinned.rds'))
 
 ## 3.2 Load CTMM Fits ----
 pike_fits <- readRDS(file.path(paths$ctmm, "BT_pike_fits/BT_pike_ctmm_fits.rds"))
@@ -356,7 +356,7 @@ if (file.exists(roach_pike_file)) {
     prey_species = "Roach",
     strike_dist = params$strike_distance,
     parallel = TRUE,
-    n_cores = NULL  # Auto-detect
+    n_cores = 20  # Auto-detect
   )
   saveRDS(roach_pike_distances_df, roach_pike_file)
 }
@@ -377,7 +377,7 @@ if (file.exists(perch_pike_file)) {
     prey_species = "Perch",
     strike_dist = params$strike_distance,
     parallel = TRUE,
-    n_cores = NULL
+    n_cores = 20
   )
   saveRDS(perch_pike_distances_df, perch_pike_file)
 }
