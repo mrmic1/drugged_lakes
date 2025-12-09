@@ -4,11 +4,14 @@
 # 
 # ANALYSIS OVERVIEW:
 # This script identifies potential predation events by analyzing movement 
-# tracking data for prey (roach/perch) and predators (pike). Predation is 
-# inferred from:
+# tracking data for prey (roach/perch) and predators (pike). Enhanced to use
+# ctmm::proximity() to detect non-independent movement patterns.
+#
+# Predation is inferred from:
 #   1. Close proximity (<0.45m - pike strike distance)
 #   2. Sustained encounters over consecutive days
-#   3. Movement pattern changes suggesting predation
+#   3. Movement pattern changes suggesting predation (proximity analysis)
+#   4. Non-independent movement detected by ctmm::proximity()
 #
 # Author: Marcus Michelangeli
 # ===================================================================
@@ -25,9 +28,11 @@ suppressPackageStartupMessages({
   library(data.table)
   library(sf)
   library(flextable)
-  library(parallel)      # For parallel processing
-  library(future.apply)  # For parallelized apply functions
-  library(progressr)     # For progress bars
+  library(parallel)
+  library(future.apply)
+  library(progressr)
+  library(ggplot2)
+  library(openxlsx)
 })
 
 # Configure time zone
@@ -40,18 +45,25 @@ paths <- list(
   ctmm          = "./data/ctmm_fits/",
   telem         = "./data/telem_obj/muddyfoot/",
   encounters    = "./data/encounters/muddyfoot/",
+  proximity     = "./data/proximity/muddyfoot/",  # New directory for proximity results
   size          = "./data/fish_size/",
   tables        = "./tables/muddyfoot/",
   figures       = "./figures/muddyfoot/" 
 )
 
+# Create proximity directory if it doesn't exist
+if (!dir.exists(paths$proximity)) {
+  dir.create(paths$proximity, recursive = TRUE)
+}
+
 ## 1.3 Define Analysis Parameters ----
 params <- list(
   strike_distance = 0.45,      # Pike max strike distance (m)
-  encounter_threshold_low = 25,  # Minimum encounters for suspected predation
+  encounter_threshold_low = 20,  # Minimum encounters for suspected predation
   encounter_threshold_high = 100, # High encounter count threshold
-  min_distance_threshold = 0.2,   # Minimum distance threshold (m)
-  consecutive_days_threshold = 2  # Consecutive days for likely predation
+  min_distance_threshold = 0.45,   # Minimum distance threshold (m)
+  consecutive_days_threshold = 2,  # Consecutive days for likely predation
+  proximity_encounter_threshold = 100  # Total encounters threshold for proximity analysis
 )
 
 # ===================================================================
@@ -70,9 +82,6 @@ params <- list(
 #' @param n_cores Number of cores for parallel processing
 #' 
 #' @return Data frame with pairwise distances and encounter flags
-#' 
-#' @details This function performs the computationally intensive distance
-#' calculation. Parallelization significantly reduces runtime for large datasets.
 calculate_pairwise_distances <- function(prey_tel, pred_tel, 
                                          prey_fits, pred_fits,
                                          prey_species = "Prey",
@@ -139,26 +148,21 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
     }
     message(sprintf("Using %d cores for parallel processing", n_cores))
     
-    # Set up parallel backend
     cl <- parallel::makeCluster(n_cores)
     on.exit(parallel::stopCluster(cl), add = TRUE)
     
-    # Export necessary objects to cluster
     parallel::clusterExport(cl, c("prey_tel", "pred_tel", "prey_fits", 
                                   "pred_fits", "strike_dist", "prey_species",
                                   "combinations"),
                             envir = environment())
     
-    # Load required packages on each worker
     parallel::clusterEvalQ(cl, {
       library(ctmm)
       library(dplyr)
     })
     
-    # Run parallel computation
     results <- parallel::parLapply(cl, 1:nrow(combinations), calc_dist)
   } else {
-    # Sequential processing with progress bar
     results <- lapply(1:nrow(combinations), function(idx) {
       if (idx %% 10 == 0) message(sprintf("Processing %d/%d", idx, nrow(combinations)))
       calc_dist(idx)
@@ -176,6 +180,115 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
   message(sprintf("Completed: %d distance calculations", nrow(distances_df)))
   
   return(as.data.frame(distances_df))
+}
+
+
+#' Summarize Daily Encounters
+#' 
+#' @param distances_df Data frame with distance calculations
+#' @return Daily encounter summary
+summarize_daily_encounters <- function(distances_df) {
+  daily_summary <- distances_df %>%
+    group_by(Prey_ID, Pred_ID, Date) %>%
+    summarise(
+      Species = first(Species),
+      encounter_count = sum(encounter, na.rm = TRUE),
+      daily_avg_dist = mean(est, na.rm = TRUE),
+      daily_min_dist = min(est, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  return(daily_summary)
+}
+
+
+#' Calculate Total Encounters Per Prey-Predator Pair
+#' 
+#' @param distances_df Data frame with distance calculations
+#' @return Summary with total encounters
+calculate_total_encounters <- function(distances_df) {
+  total_encounters <- distances_df %>%
+    group_by(Prey_ID, Pred_ID, Species) %>%
+    summarise(
+      total_encounters = sum(encounter, na.rm = TRUE),
+      min_distance = min(est, na.rm = TRUE),
+      mean_distance = mean(est, na.rm = TRUE),
+      n_days = n_distinct(Date),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(total_encounters))
+  
+  return(total_encounters)
+}
+
+
+#' Perform Proximity Analysis on Prey-Predator Pair
+#' 
+#' @param prey_tel Telemetry object for single prey
+#' @param pred_tel Telemetry object for single predator
+#' @param prey_fit CTMM fit for prey
+#' @param pred_fit CTMM fit for predator
+#' @param prey_id ID of prey individual
+#' @param pred_id ID of predator individual
+#' 
+#' @return List containing proximity results and statistics
+perform_proximity_analysis <- function(prey_tel, pred_tel, 
+                                       prey_fit, pred_fit,
+                                       prey_id, pred_id) {
+  
+  tryCatch({
+    # Ensure matching projections
+    projection(prey_tel) <- projection(pred_tel)
+    projection(prey_fit) <- projection(pred_fit)
+    
+    # Combine telemetry and fits
+    combined_tel <- c(prey_tel, pred_tel)
+    combined_fits <- c(prey_fit, pred_fit)
+    
+    # Run proximity analysis
+    message(sprintf("  Running proximity for %s - %s", prey_id, pred_id))
+    proximity_result <- ctmm::proximity(combined_tel, combined_fits)
+    
+    # Extract key statistics
+    proximity_stats <- list(
+      prey_id = prey_id,
+      pred_id = pred_id,
+      z_statistic = proximity_result$CI[1, "est"],  # Z-statistic
+      z_lower = proximity_result$CI[1, "low"],
+      z_upper = proximity_result$CI[1, "high"],
+      p_value = proximity_result$P,  # P-value for independence test
+      independent = proximity_result$P > 0.05,  # Movement is independent if p > 0.05
+      proximity_object = proximity_result
+    )
+    
+    return(proximity_stats)
+    
+  }, error = function(e) {
+    warning(sprintf("Proximity analysis failed for %s - %s: %s", 
+                    prey_id, pred_id, e$message))
+    return(list(
+      prey_id = prey_id,
+      pred_id = pred_id,
+      z_statistic = NA,
+      z_lower = NA,
+      z_upper = NA,
+      p_value = NA,
+      independent = NA,
+      error = e$message
+    ))
+  })
+}
+
+
+#' Calculate Maximum Consecutive Days
+#' 
+#' @param dates Vector of dates
+#' @return Maximum number of consecutive days
+calc_max_consecutive <- function(dates) {
+  if (length(dates) == 0) return(0)
+  sorted_dates <- sort(dates)
+  consecutive <- rle(c(1, diff(sorted_dates) == 1))$lengths
+  return(max(consecutive, na.rm = TRUE))
 }
 
 
@@ -208,113 +321,27 @@ identify_predation_events <- function(distances_df,
   predation_summary <- high_encounter_days %>%
     group_by(Prey_ID, Pred_ID) %>%
     summarise(
-      # Count days exceeding thresholds
       num_days_25_encounters = sum(encounter_count >= enc_threshold_low),
       num_days_100_encounters = sum(encounter_count >= enc_threshold_high),
       num_days_min_dist_less_0.2m = sum(daily_min_dist < min_dist_threshold),
       
-      # Identify key dates
       first_date_over_25 = if(any(encounter_count >= enc_threshold_low)) 
         min(Date[encounter_count >= enc_threshold_low]) else as.Date(NA),
       first_date_over_100 = if(any(encounter_count >= enc_threshold_high)) 
         min(Date[encounter_count >= enc_threshold_high]) else as.Date(NA),
       
-      # Calculate consecutive days
       consecutive_days_25 = calc_max_consecutive(Date[encounter_count >= enc_threshold_low]),
       consecutive_days_100 = calc_max_consecutive(Date[encounter_count >= enc_threshold_high]),
       
-      # Compile encounter dates
       encounter_dates = paste(format(Date, "%d/%m/%Y"), collapse = ", "),
       
       .groups = "drop"
     ) %>%
-    # Flag likely predation events
     mutate(likely_predated = ifelse(consecutive_days_100 >= consec_days_threshold, 1, 0))
   
   return(predation_summary)
 }
 
-
-#' Calculate Maximum Consecutive Days
-#' 
-#' @param dates Vector of dates
-#' @return Maximum number of consecutive days
-calc_max_consecutive <- function(dates) {
-  if (length(dates) == 0) return(0)
-  sorted_dates <- sort(dates)
-  consecutive <- rle(c(1, diff(sorted_dates) == 1))$lengths
-  return(max(consecutive, na.rm = TRUE))
-}
-
-
-#' Summarize Daily Encounters
-#' 
-#' @param distances_df Data frame with distance calculations
-#' @return Daily encounter summary
-summarize_daily_encounters <- function(distances_df) {
-  daily_summary <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, Date) %>%
-    summarise(
-      Species = first(Species),
-      encounter_count = sum(encounter, na.rm = TRUE),
-      daily_avg_dist = mean(est, na.rm = TRUE),
-      daily_min_dist = min(est, na.rm = TRUE),
-      .groups = "drop"
-    )
-  
-  return(daily_summary)
-}
-
-
-#' Filter Post-Predation Data
-#' 
-#' @param encounter_df Encounter summary data frame
-#' @param mortality_data Data frame with mortality dates
-#' @return Filtered data frame excluding post-predation encounters
-filter_post_predation <- function(encounter_df, mortality_data) {
-  
-  encounter_filtered <- encounter_df %>%
-    left_join(
-      mortality_data %>% select(individual_ID, death_date = revised_likely_death_date),
-      by = c("Prey_ID" = "individual_ID")
-    ) %>%
-    filter(is.na(death_date) | Date <= death_date)
-  
-  message(sprintf("Filtered from %d to %d rows (removed post-predation data)",
-                  nrow(encounter_df), nrow(encounter_filtered)))
-  
-  return(encounter_filtered)
-}
-
-
-#' Create Encounter Summary Statistics
-#' 
-#' @param daily_encounters Daily encounter data
-#' @param metadata Individual metadata (treatment, tracking quality)
-#' @return Summary statistics by individual
-create_encounter_summary <- function(daily_encounters, metadata) {
-  
-  summary_stats <- daily_encounters %>%
-    group_by(Prey_ID) %>%
-    summarise(
-      Species = first(Species),
-      total_encounters = sum(encounter_count, na.rm = TRUE),
-      mean_daily_encounters = mean(encounter_count, na.rm = TRUE),
-      max_daily_encounters = max(encounter_count, na.rm = TRUE),
-      max_encounter_date = Date[which.max(encounter_count)],
-      min_distance_overall = min(daily_min_dist, na.rm = TRUE),
-      mean_distance = mean(daily_avg_dist, na.rm = TRUE),
-      n_tracking_days = n_distinct(Date),
-      .groups = "drop"
-    ) %>%
-    left_join(metadata, by = c("Prey_ID" = "individual_ID")) %>%
-    mutate(
-      days_tracked = 36 - n_missing_dates,
-      avg_daily_encounter_rate = round(total_encounters / days_tracked, 2)
-    )
-  
-  return(summary_stats)
-}
 
 # ===================================================================
 # 3. DATA LOADING
@@ -324,6 +351,9 @@ create_encounter_summary <- function(daily_encounters, metadata) {
 pike_tel <- readRDS(file.path(paths$telem, 'pike_muddyfoot_tel.rds'))
 perch_tel <- readRDS(file.path(paths$telem, 'perch_muddyfoot_tel.rds'))
 roach_tel <- readRDS(file.path(paths$telem, 'roach_muddyfoot_tel.rds'))
+
+message(sprintf("Loaded telemetry: %d pike, %d perch, %d roach", 
+                length(pike_tel), length(perch_tel), length(roach_tel)))
 
 ## 3.2 Load CTMM Fits ----
 pike_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_pike_fits/muddyfoot_pike_ctmm_fits.rds"))
@@ -335,9 +365,26 @@ muddyfoot_filt_data <- readRDS(file.path(paths$filtered_data, "03_muddyfoot_sub.
 post_biometrics <- fread(file.path(paths$size, "biometric_post_exp_data.csv")) %>%
   mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
 
+# Create post-biometric columns for filtering
+post_biometric_cols <- post_biometrics %>%
+  filter(Lake == 'Muddyfoot', Species %in% c('Roach', 'Perch')) %>%
+  select(individual_ID, Found, Known_predated) %>%
+  rename(found_alive = Found, found_predated = Known_predated)
+
+
 # ===================================================================
-# 4. DISTANCE CALCULATIONS
+# 4. DISTANCE CALCULATIONS (Already Completed)
 # ===================================================================
+
+message("\n=== LOADING DISTANCE CALCULATIONS ===")
+
+## 4.1 Load Pre-calculated Distances ----
+roach_pike_file <- file.path(paths$encounters, "muddyfoot_pike_roach_distances_df.rds")
+perch_pike_file <- file.path(paths$encounters, "muddyfoot_pike_perch_distances_df.rds")
+
+if (!file.exists(roach_pike_file) || !file.exists(perch_pike_file)) {
+  stop("Distance files not found. Please run distance calculations first.")
+}
 
 ## 4.1 Roach-Pike Distances ----
 # Check if already calculated
@@ -382,24 +429,218 @@ if (file.exists(perch_pike_file)) {
   saveRDS(perch_pike_distances_df, perch_pike_file)
 }
 
+roach_pike_distances_df <- readRDS(roach_pike_file)
+perch_pike_distances_df <- readRDS(perch_pike_file)
+
+message(sprintf("Loaded distances: %d roach-pike, %d perch-pike observations",
+                nrow(roach_pike_distances_df), nrow(perch_pike_distances_df)))
+
 
 # ===================================================================
-# 5. ENCOUNTER ANALYSIS
+# 5. IDENTIFY CANDIDATE PAIRS FOR PROXIMITY ANALYSIS
 # ===================================================================
 
-message("Analyzing encounters...")
+message("\n=== IDENTIFYING CANDIDATES FOR PROXIMITY ANALYSIS ===")
 
-## 5.1 Daily Encounter Summaries ----
+## 5.1 Calculate Total Encounters ----
+roach_total <- calculate_total_encounters(roach_pike_distances_df)
+perch_total <- calculate_total_encounters(perch_pike_distances_df)
+
+all_encounters <- bind_rows(roach_total, perch_total)
+
+## 5.2 Filter for High-Risk Pairs ----
+# Criteria: Not found alive AND high encounter rate (>100 total encounters)
+candidate_pairs <- all_encounters %>%
+  left_join(post_biometric_cols, by = c("Prey_ID" = "individual_ID")) %>%
+  filter(
+    found_alive == 0,  # Not recovered alive
+    total_encounters > params$proximity_encounter_threshold  # High encounter rate
+  ) %>%
+  arrange(desc(total_encounters))
+
+message(sprintf("Identified %d candidate prey-predator pairs for proximity analysis",
+                nrow(candidate_pairs)))
+
+# Save candidate pairs
+saveRDS(candidate_pairs, 
+        file.path(paths$proximity, "muddyfoot_proximity_candidate_pairs.rds"))
+
+
+# ===================================================================
+# 6. PROXIMITY ANALYSIS - TEST EXAMPLE
+# ===================================================================
+
+message("\n=== TESTING PROXIMITY ANALYSIS (TOP 3 PAIRS) ===")
+
+## 6.1 Select Test Cases ----
+# Take top 3 pairs with highest encounters for testing
+test_pairs <- candidate_pairs %>%
+  slice_head(n = 3)
+
+message("Test pairs:")
+print(test_pairs %>% select(Prey_ID, Pred_ID, Species, total_encounters))
+
+## 6.2 Run Proximity Analysis on Test Cases ----
+test_proximity_results <- list()
+
+for (i in 1:nrow(test_pairs)) {
+  prey_id <- test_pairs$Prey_ID[i]
+  pred_id <- test_pairs$Pred_ID[i]
+  species <- test_pairs$Species[i]
+  
+  message(sprintf("\nTest %d/%d: %s (%s) vs %s", 
+                  i, nrow(test_pairs), prey_id, species, pred_id))
+  
+  # Get appropriate telemetry objects
+  if (species == "Roach") {
+    prey_tel_single <- roach_tel[[prey_id]]
+    prey_fit_single <- roach_fits[[prey_id]]
+  } else {
+    prey_tel_single <- perch_tel[[prey_id]]
+    prey_fit_single <- perch_fits[[prey_id]]
+  }
+  
+  pred_tel_single <- pike_tel[[pred_id]]
+  pred_fit_single <- pike_fits[[pred_id]]
+  
+  # Run proximity analysis
+  prox_result <- perform_proximity_analysis(
+    prey_tel_single, pred_tel_single,
+    prey_fit_single, pred_fit_single,
+    prey_id, pred_id
+  )
+  
+  test_proximity_results[[i]] <- prox_result
+  
+  # Print results
+  if (!is.na(prox_result$p_value)) {
+    message(sprintf("  Z-statistic: %.3f [%.3f, %.3f]",
+                    prox_result$z_statistic,
+                    prox_result$z_lower,
+                    prox_result$z_upper))
+    message(sprintf("  P-value: %.4f", prox_result$p_value))
+    message(sprintf("  Movement independent: %s", prox_result$independent))
+    message(sprintf("  Interpretation: %s",
+                    ifelse(prox_result$independent,
+                           "No evidence of predation (movements independent)",
+                           "POTENTIAL PREDATION (movements non-independent)")))
+  }
+}
+
+# Convert test results to data frame
+test_proximity_df <- do.call(rbind, lapply(test_proximity_results, function(x) {
+  data.frame(
+    Prey_ID = x$prey_id,
+    Pred_ID = x$pred_id,
+    z_statistic = x$z_statistic,
+    z_lower = x$z_lower,
+    z_upper = x$z_upper,
+    p_value = x$p_value,
+    independent = x$independent,
+    stringsAsFactors = FALSE
+  )
+}))
+
+# Save test results
+saveRDS(test_proximity_results, 
+        file.path(paths$proximity, "test_proximity_results_detailed.rds"))
+write.csv(test_proximity_df, 
+          file.path(paths$proximity, "test_proximity_results_summary.csv"),
+          row.names = FALSE)
+
+message("\nTest proximity analysis complete!")
+message(sprintf("Results saved to: %s", paths$proximity))
+
+
+# ===================================================================
+# 7. FULL PROXIMITY ANALYSIS (ALL CANDIDATE PAIRS)
+# ===================================================================
+
+message("\n=== RUNNING FULL PROXIMITY ANALYSIS ===")
+message("This may take considerable time depending on number of pairs...")
+message(sprintf("Analyzing %d candidate pairs", nrow(candidate_pairs)))
+
+## 7.1 Run Proximity on All Candidates ----
+all_proximity_results <- list()
+
+for (i in 1:nrow(candidate_pairs)) {
+  prey_id <- candidate_pairs$Prey_ID[i]
+  pred_id <- candidate_pairs$Pred_ID[i]
+  species <- candidate_pairs$Species[i]
+  
+  if (i %% 10 == 0) {
+    message(sprintf("Progress: %d/%d (%.1f%%)", 
+                    i, nrow(candidate_pairs), 100*i/nrow(candidate_pairs)))
+  }
+  
+  # Get telemetry objects
+  if (species == "Roach") {
+    prey_tel_single <- roach_tel[[prey_id]]
+    prey_fit_single <- roach_fits[[prey_id]]
+  } else {
+    prey_tel_single <- perch_tel[[prey_id]]
+    prey_fit_single <- perch_fits[[prey_id]]
+  }
+  
+  pred_tel_single <- pike_tel[[pred_id]]
+  pred_fit_single <- pike_fits[[pred_id]]
+  
+  # Run proximity analysis
+  prox_result <- perform_proximity_analysis(
+    prey_tel_single, pred_tel_single,
+    prey_fit_single, pred_fit_single,
+    prey_id, pred_id
+  )
+  
+  all_proximity_results[[i]] <- prox_result
+}
+
+## 7.2 Compile Full Results ----
+full_proximity_df <- do.call(rbind, lapply(all_proximity_results, function(x) {
+  data.frame(
+    Prey_ID = x$prey_id,
+    Pred_ID = x$pred_id,
+    z_statistic = x$z_statistic,
+    z_lower = x$z_lower,
+    z_upper = x$z_upper,
+    p_value = x$p_value,
+    independent = x$independent,
+    stringsAsFactors = FALSE
+  )
+}))
+
+# Merge with encounter data
+proximity_with_encounters <- full_proximity_df %>%
+  left_join(candidate_pairs, by = c("Prey_ID", "Pred_ID"))
+
+# Save full results
+saveRDS(all_proximity_results, 
+        file.path(paths$proximity, "full_proximity_results_detailed.rds"))
+saveRDS(proximity_with_encounters,
+        file.path(paths$proximity, "full_proximity_results_with_encounters.rds"))
+write.csv(proximity_with_encounters,
+          file.path(paths$proximity, "full_proximity_results.csv"),
+          row.names = FALSE)
+
+message("\nFull proximity analysis complete!")
+
+
+# ===================================================================
+# 8. INTEGRATE PROXIMITY RESULTS WITH PREDATION CLASSIFICATION
+# ===================================================================
+
+message("\n=== INTEGRATING PROXIMITY WITH PREDATION EVENTS ===")
+
+## 8.1 Daily Encounter Summaries ----
 roach_daily <- summarize_daily_encounters(roach_pike_distances_df) %>%
   rename(Pike_ID = Pred_ID)
 
 perch_daily <- summarize_daily_encounters(perch_pike_distances_df) %>%
   rename(Pike_ID = Pred_ID)
 
-# Combine prey species
 prey_daily_encounters <- bind_rows(roach_daily, perch_daily)
 
-## 5.2 Identify Suspected Predation Events ----
+## 8.2 Identify Suspected Predation (Distance-Based) ----
 roach_predation <- identify_predation_events(
   roach_pike_distances_df,
   enc_threshold_low = params$encounter_threshold_low,
@@ -416,286 +657,183 @@ perch_predation <- identify_predation_events(
   consec_days_threshold = params$consecutive_days_threshold
 ) %>% rename(Pike_ID = Pred_ID) %>% mutate(Species = "Perch")
 
-# Combine suspected predation events
-suspected_predation <- bind_rows(roach_predation, perch_predation)
+suspected_predation_distance <- bind_rows(roach_predation, perch_predation)
 
-# Add biometric data
-post_biometric_cols <- post_biometrics %>%
-  filter(Lake == 'Muddyfoot', Species %in% c('Roach', 'Perch')) %>%
-  select(individual_ID, Found, Known_predated) %>%
-  rename(found_alive = Found, found_predated = Known_predated)
-
-suspected_predation <- suspected_predation %>%
+## 8.3 Merge with Proximity Results ----
+suspected_predation_enhanced <- suspected_predation_distance %>%
+  left_join(
+    proximity_with_encounters %>% 
+      select(Prey_ID, Pred_ID = Pike_ID, z_statistic, p_value, independent),
+    by = c("Prey_ID", "Pike_ID" = "Pred_ID")
+  ) %>%
   left_join(post_biometric_cols, by = c("Prey_ID" = "individual_ID")) %>%
-  filter(found_alive == 0)  # Focus on individuals not recovered alive
+  filter(found_alive == 0) %>%
+  mutate(
+    # Combined predation classification
+    proximity_suggests_predation = !independent & !is.na(independent),
+    combined_predation_score = case_when(
+      likely_predated == 1 & proximity_suggests_predation ~ 3,  # Strong evidence
+      likely_predated == 1 & is.na(proximity_suggests_predation) ~ 2,  # Distance only
+      proximity_suggests_predation ~ 2,  # Proximity only
+      TRUE ~ 1  # Weak evidence
+    ),
+    classification = case_when(
+      combined_predation_score == 3 ~ "High confidence predation",
+      combined_predation_score == 2 ~ "Moderate confidence predation",
+      TRUE ~ "Low confidence / uncertain"
+    )
+  )
 
-# Save results
-saveRDS(suspected_predation, 
-        file.path(paths$encounters, "muddyfoot_suspected_predation_events.rds"))
+# Save enhanced results
+saveRDS(suspected_predation_enhanced,
+        file.path(paths$encounters, "muddyfoot_suspected_predation_enhanced.rds"))
 
-message(sprintf("Identified %d suspected predation events", nrow(suspected_predation)))
+message(sprintf("Enhanced predation classification complete: %d events analyzed",
+                nrow(suspected_predation_enhanced)))
 
-
-## 5.3 Total Encounter Summary ----
-# Prepare metadata
-prey_metadata <- muddyfoot_filt_data %>%
-  filter(Species %in% c('Roach', 'Perch')) %>%
-  select(individual_ID, Treatment, n_missing_dates) %>%
-  distinct()
-
-# Create comprehensive summary
-prey_encounter_summary <- create_encounter_summary(prey_daily_encounters, prey_metadata)
-
-# Add survival data
-prey_encounter_summary <- prey_encounter_summary %>%
-  left_join(post_biometric_cols, by = c("Prey_ID" = "individual_ID"))
-
-# Save
-saveRDS(prey_encounter_summary,
-        file.path(paths$encounters, "muddyfoot_prey_total_encounter_summary.rds"))
-
-
-# ===================================================================
-# 6. FILTER POST-PREDATION DATA
-# ===================================================================
-
-message("Filtering post-predation encounters...")
-
-# Load mortality predictions
-mortality_preds <- readxl::read_excel("./data/encounters/suspected_mortality_updated.xlsx") %>%
-  filter(lake == 'muddyfoot', species %in% c('Roach', 'Perch'))
-
-# Filter encounters
-prey_encounters_filtered <- filter_post_predation(prey_daily_encounters, mortality_preds)
-
-# Recalculate summary with filtered data
-prey_summary_filtered <- create_encounter_summary(prey_encounters_filtered, prey_metadata) %>%
-  left_join(post_biometric_cols, by = c("Prey_ID" = "individual_ID"))
-
-# Save filtered results
-saveRDS(prey_encounters_filtered,
-        file.path(paths$encounters, "muddyfoot_prey_encounters_filtered.rds"))
-saveRDS(prey_summary_filtered,
-        file.path(paths$encounters, "muddyfoot_prey_encounter_summary_filtered.rds"))
-
-
-# ===================================================================
-# 7. STATISTICAL COMPARISON BY TREATMENT
-# ===================================================================
-
-message("Comparing encounter rates by treatment...")
-
-## 7.1 Treatment-Level Summary ----
-treatment_comparison <- prey_summary_filtered %>%
-  group_by(Treatment, Species) %>%
+# Summary by classification
+classification_summary <- suspected_predation_enhanced %>%
+  group_by(Species, classification) %>%
   summarise(
-    n_individuals = n(),
-    mean_encounter_rate = mean(avg_daily_encounter_rate, na.rm = TRUE),
-    sd_encounter_rate = sd(avg_daily_encounter_rate, na.rm = TRUE),
-    median_encounter_rate = median(avg_daily_encounter_rate, na.rm = TRUE),
-    min_encounter_rate = min(avg_daily_encounter_rate, na.rm = TRUE),
-    max_encounter_rate = max(avg_daily_encounter_rate, na.rm = TRUE),
+    n_events = n(),
+    mean_encounters_100 = mean(num_days_100_encounters, na.rm = TRUE),
+    mean_p_value = mean(p_value, na.rm = TRUE),
     .groups = "drop"
   )
 
-print(treatment_comparison)
-
-## 7.2 Statistical Tests ----
-# Example: Wilcoxon test for treatment differences
-if ("Treatment" %in% names(prey_summary_filtered)) {
-  treatments <- unique(prey_summary_filtered$Treatment)
-  
-  if (length(treatments) == 2) {
-    for (sp in c("Roach", "Perch")) {
-      species_data <- prey_summary_filtered %>% filter(Species == sp)
-      
-      if (nrow(species_data) > 0) {
-        test_result <- wilcox.test(
-          avg_daily_encounter_rate ~ Treatment,
-          data = species_data
-        )
-        
-        message(sprintf("\n%s - Wilcoxon test p-value: %.4f", sp, test_result$p.value))
-      }
-    }
-  }
-}
+print("Classification Summary:")
+print(classification_summary)
 
 
 # ===================================================================
-# 8. CREATE SUMMARY TABLES
+# 9. VISUALIZATION OF PROXIMITY RESULTS
 # ===================================================================
 
-message("Creating summary tables...")
+message("\n=== CREATING VISUALIZATIONS ===")
 
-## 8.1 Suspected Predation Table ----
-predation_table <- suspected_predation %>%
-  select(Prey_ID, Species, Pike_ID, num_days_100_encounters, 
-         consecutive_days_100, first_date_over_100, likely_predated) %>%
-  arrange(desc(consecutive_days_100)) %>%
-  flextable() %>%
-  set_header_labels(
-    Prey_ID = "Prey ID",
-    Species = "Species",
-    Pike_ID = "Pike ID",
-    num_days_100_encounters = "Days ≥100 Encounters",
-    consecutive_days_100 = "Consecutive Days",
-    first_date_over_100 = "First Date",
-    likely_predated = "Likely Predated"
-  ) %>%
-  theme_booktabs() %>%
-  autofit()
-
-# Save table
-save_as_docx(predation_table,
-             path = file.path(paths$tables, "suspected_predation_events.docx"))
-
-
-## 8.2 Treatment Comparison Table ----
-treatment_table <- treatment_comparison %>%
-  flextable() %>%
-  set_header_labels(
-    Treatment = "Treatment",
-    Species = "Species",
-    n_individuals = "N",
-    mean_encounter_rate = "Mean Daily Encounters",
-    sd_encounter_rate = "SD",
-    median_encounter_rate = "Median",
-    min_encounter_rate = "Min",
-    max_encounter_rate = "Max"
-  ) %>%
-  colformat_double(j = c("mean_encounter_rate", "sd_encounter_rate"), digits = 2) %>%
-  theme_booktabs() %>%
-  autofit()
-
-save_as_docx(treatment_table,
-             path = file.path(paths$tables, "treatment_encounter_comparison.docx"))
-
-
-# ===================================================================
-# 9. VISUALIZATION
-# ===================================================================
-
-message("Creating visualizations...")
-
-## 9.1 Encounter Rate Distribution ----
-library(ggplot2)
-
-encounter_dist_plot <- ggplot(prey_summary_filtered, 
-                              aes(x = Treatment, y = avg_daily_encounter_rate, 
-                                  fill = Species)) +
-  geom_boxplot(alpha = 0.7) +
-  geom_jitter(width = 0.2, alpha = 0.5) +
-  facet_wrap(~Species) +
+## 9.1 Proximity P-value Distribution ----
+p1 <- ggplot(proximity_with_encounters, aes(x = p_value)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  geom_vline(xintercept = 0.05, linetype = "dashed", color = "red", linewidth = 1) +
   labs(
-    title = "Daily Predator Encounter Rate by Treatment",
-    x = "Treatment",
-    y = "Average Daily Encounters",
-    fill = "Species"
+    title = "Distribution of Proximity P-values",
+    subtitle = "Red line = 0.05 significance threshold",
+    x = "P-value (independence test)",
+    y = "Count"
+  ) +
+  theme_classic()
+
+ggsave(file.path(paths$proximity, "proximity_pvalue_distribution.png"),
+       p1, width = 8, height = 6, dpi = 300)
+
+## 9.2 Z-statistic vs Total Encounters ----
+p2 <- ggplot(proximity_with_encounters, aes(x = total_encounters, y = z_statistic)) +
+  geom_point(aes(color = independent), size = 3, alpha = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_manual(
+    values = c("TRUE" = "darkgreen", "FALSE" = "darkred"),
+    labels = c("TRUE" = "Independent", "FALSE" = "Non-independent"),
+    name = "Movement Pattern"
+  ) +
+  labs(
+    title = "Proximity Analysis: Z-statistic vs Encounter Rate",
+    x = "Total Encounters (within strike distance)",
+    y = "Z-statistic"
   ) +
   theme_classic() +
-  theme(
-    plot.title = element_text(face = "bold", size = 14),
-    strip.background = element_rect(fill = "lightgray"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-  )
+  theme(legend.position = "bottom")
 
-ggsave(
-  filename = file.path(paths$encounters, "encounter_plots/treatment_comparison.png"),
-  plot = encounter_dist_plot,
-  width = 10, height = 6, dpi = 300
-)
+ggsave(file.path(paths$proximity, "proximity_z_vs_encounters.png"),
+       p2, width = 10, height = 7, dpi = 300)
 
+## 9.3 Classification Comparison ----
+p3 <- ggplot(suspected_predation_enhanced, 
+             aes(x = classification, fill = Species)) +
+  geom_bar(position = "dodge", alpha = 0.8) +
+  labs(
+    title = "Predation Events by Confidence Level",
+    x = "Classification",
+    y = "Number of Events",
+    fill = "Prey Species"
+  ) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-## 9.2 Time Series of High-Risk Individual ----
-# Example for one suspected predation event
-if (nrow(suspected_predation) > 0) {
-  # Select individual with highest consecutive encounters
-  top_prey <- suspected_predation %>%
-    arrange(desc(consecutive_days_100)) %>%
-    slice(1)
-  
-  # Extract their daily data
-  prey_id <- top_prey$Prey_ID
-  pike_id <- top_prey$Pike_ID
-  
-  time_series_data <- prey_daily_encounters %>%
-    filter(Prey_ID == prey_id, Pike_ID == pike_id)
-  
-  # Calculate scaling factor for dual y-axis
-  scale_factor <- max(time_series_data$daily_avg_dist, na.rm = TRUE) / 
-    max(time_series_data$encounter_count, na.rm = TRUE)
-  
-  ts_plot <- ggplot(time_series_data, aes(x = Date)) +
-    geom_bar(aes(y = encounter_count * scale_factor), 
-             stat = "identity", fill = "grey", alpha = 0.5) +
-    geom_line(aes(y = daily_avg_dist), color = "black", linewidth = 1) +
-    geom_point(aes(y = daily_avg_dist), color = "black", size = 2) +
-    geom_text(aes(y = encounter_count * scale_factor, label = encounter_count),
-              vjust = -0.5, size = 3) +
-    scale_y_continuous(
-      name = "Average Distance from Pike (m)",
-      limits = c(0, max(c(time_series_data$daily_avg_dist, 
-                          time_series_data$encounter_count * scale_factor), 
-                        na.rm = TRUE) * 1.1)
-    ) +
-    labs(
-      title = sprintf("Suspected Predation: %s by %s", prey_id, pike_id),
-      subtitle = sprintf("Species: %s | Consecutive days >100 encounters: %d",
-                         top_prey$Species, top_prey$consecutive_days_100),
-      x = "Date"
-    ) +
-    theme_classic() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      plot.title = element_text(face = "bold", size = 12),
-      panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-    )
-  
-  ggsave(
-    filename = file.path(paths$encounters, 
-                         sprintf("encounter_plots/%s_%s_timeline.png", prey_id, pike_id)),
-    plot = ts_plot,
-    width = 12, height = 8, units = "cm", dpi = 300
-  )
-}
+ggsave(file.path(paths$proximity, "predation_classification_summary.png"),
+       p3, width = 10, height = 6, dpi = 300)
 
 
 # ===================================================================
-# 10. EXPORT RESULTS
+# 10. EXPORT COMPREHENSIVE RESULTS
 # ===================================================================
 
-message("Exporting final results...")
+message("\n=== EXPORTING RESULTS ===")
 
-# Export key datasets to Excel for easy review
-library(openxlsx)
-
-# Create workbook
+## 10.1 Create Excel Workbook ----
 wb <- createWorkbook()
 
-# Add sheets
-addWorksheet(wb, "Encounter Summary")
-writeData(wb, "Encounter Summary", prey_summary_filtered)
+# Proximity test results
+addWorksheet(wb, "Test Proximity")
+writeData(wb, "Test Proximity", test_proximity_df)
 
-addWorksheet(wb, "Suspected Predation")
-writeData(wb, "Suspected Predation", suspected_predation)
+# Full proximity results
+addWorksheet(wb, "Full Proximity")
+writeData(wb, "Full Proximity", proximity_with_encounters)
 
-addWorksheet(wb, "Treatment Comparison")
-writeData(wb, "Treatment Comparison", treatment_comparison)
+# Enhanced predation classification
+addWorksheet(wb, "Enhanced Predation")
+writeData(wb, "Enhanced Predation", suspected_predation_enhanced)
+
+# Classification summary
+addWorksheet(wb, "Classification Summary")
+writeData(wb, "Classification Summary", classification_summary)
+
+# Candidate pairs
+addWorksheet(wb, "Candidate Pairs")
+writeData(wb, "Candidate Pairs", candidate_pairs)
 
 # Save workbook
 saveWorkbook(wb, 
-             file = file.path(paths$tables, "muddyfoot_predation_analysis_results.xlsx"),
+             file.path(paths$tables, "muddyfoot_proximity_analysis_complete.xlsx"),
              overwrite = TRUE)
 
-message("Analysis complete! Check output directories for results.")
+message("Excel workbook saved successfully!")
 
 
 # ===================================================================
-# 11. SESSION INFO
+# 11. SUMMARY REPORT
 # ===================================================================
 
-# Document R session for reproducibility
-sink(file.path(paths$tables, "session_info.txt"))
+message("\n" %+% paste(rep("=", 70), collapse = ""))
+message("ANALYSIS COMPLETE - SUMMARY")
+message(paste(rep("=", 70), collapse = ""))
+
+message(sprintf("\nTotal prey-predator pairs analyzed: %d", nrow(candidate_pairs)))
+message(sprintf("Pairs with non-independent movement (p < 0.05): %d", 
+                sum(!proximity_with_encounters$independent, na.rm = TRUE)))
+message(sprintf("Percentage showing non-independence: %.1f%%",
+                100 * mean(!proximity_with_encounters$independent, na.rm = TRUE)))
+
+message("\nPredation confidence classification:")
+print(table(suspected_predation_enhanced$classification))
+
+message("\nOutput locations:")
+message(sprintf("  Proximity results: %s", paths$proximity))
+message(sprintf("  Encounter data: %s", paths$encounters))
+message(sprintf("  Tables: %s", paths$tables))
+message(sprintf("  Figures: %s", paths$figures))
+
+message("\n" %+% paste(rep("=", 70), collapse = ""))
+
+
+# ===================================================================
+# 12. SESSION INFO
+# ===================================================================
+
+sink(file.path(paths$tables, "session_info_proximity.txt"))
+cat("Proximity Analysis Session Info\n")
+cat(paste(rep("=", 50), collapse = ""), "\n\n")
 print(sessionInfo())
 sink()
+
+message("\nAll analyses complete! Check output directories for results.")
