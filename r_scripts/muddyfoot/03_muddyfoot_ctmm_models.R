@@ -25,13 +25,13 @@ save_telem_path <- "./data/telem_obj/"
 #==============================================================================
 
 # Load filtered tracking data -----------------------------------------------
-lake_muddyfoot_sub <- readRDS(paste0(filtered_data_path, '03_muddyfoot_sub.rds'))
-message("Loaded ", nrow(lake_muddyfoot_sub), " detections for ", 
-        n_distinct(lake_muddyfoot_sub$individual_ID), " individuals")
+muddyfoot_sub <- readRDS(paste0(filtered_data_path, '03_muddyfoot_sub.rds'))
+message("Loaded ", nrow(muddyfoot_sub), " detections for ", 
+        n_distinct(muddyfoot_sub$individual_ID), " individuals")
 
 # Convert to Movebank format for ctmm package ------------------------------
-lake_muddyfoot_movebank <- with(
-  lake_muddyfoot_sub,
+muddyfoot_movebank <- with(
+  muddyfoot_sub,
   data.frame(
     "timestamp" = timestamp,
     "location.long" = Long,
@@ -52,13 +52,13 @@ lake_muddyfoot_movebank <- with(
 )
 
 # Free up memory ------------------------------------------------------------
-rm(lake_muddyfoot_sub)
+rm(muddyfoot_sub)
 gc()
 
 # Convert to telemetry object -----------------------------------------------
 message("\nConverting to ctmm telemetry object...")
-lake_muddyfoot_tels <- as.telemetry(
-  lake_muddyfoot_movebank,
+muddyfoot_tels <- as.telemetry(
+  muddyfoot_movebank,
   timezone = "Europe/Stockholm",
   timeformat = "%Y-%m-%d %H:%M:%S",
   projection = NULL,  # Will be set to geometric median automatically
@@ -67,16 +67,16 @@ lake_muddyfoot_tels <- as.telemetry(
            "Date", "Exp_Stage", "Time_Of_Day", "found_alive", "known_predated")
 )
 
-message("Telemetry object created with ", length(lake_muddyfoot_tels), " individuals")
-message("Projection: ", projection(lake_muddyfoot_tels[[1]]))
-message("Timezone: ", tz(lake_muddyfoot_tels[[1]]$timestamp))
+message("Telemetry object created with ", length(muddyfoot_tels), " individuals")
+message("Projection: ", projection(muddyfoot_tels[[1]]))
+message("Timezone: ", tz(muddyfoot_tels[[1]]$timestamp))
 
 #==============================================================================
 # 2. ORGANIZE INDIVIDUALS BY SPECIES
 #==============================================================================
 
 # Verify individual order ---------------------------------------------------
-species_order <- lake_muddyfoot_movebank %>%
+species_order <- muddyfoot_movebank %>%
   select(Species, individual.local.identifier) %>%
   distinct() %>%
   arrange(individual.local.identifier)
@@ -98,19 +98,19 @@ pike_ids <- species_order %>% filter(Species == "Northern Pike") %>% pull(indivi
 perch_ids <- species_order %>% filter(Species == "Perch") %>% pull(individual.local.identifier)
 roach_ids <- species_order %>% filter(Species == "Roach") %>% pull(individual.local.identifier)
 
-pike_lake_muddyfoot_tel <- lake_muddyfoot_tels[names(lake_muddyfoot_tels) %in% pike_ids]
-perch_lake_muddyfoot_tel <- lake_muddyfoot_tels[names(lake_muddyfoot_tels) %in% perch_ids]
-roach_lake_muddyfoot_tel <- lake_muddyfoot_tels[names(lake_muddyfoot_tels) %in% roach_ids]
+pike_muddyfoot_tel <- muddyfoot_tels[names(muddyfoot_tels) %in% pike_ids]
+perch_muddyfoot_tel <- muddyfoot_tels[names(muddyfoot_tels) %in% perch_ids]
+roach_muddyfoot_tel <- muddyfoot_tels[names(muddyfoot_tels) %in% roach_ids]
 
 message("\nSpecies groups created:")
-message("Pike: ", length(pike_lake_muddyfoot_tel), " individuals")
-message("Perch: ", length(perch_lake_muddyfoot_tel), " individuals")
-message("Roach: ", length(roach_lake_muddyfoot_tel), " individuals")
+message("Pike: ", length(pike_muddyfoot_tel), " individuals")
+message("Perch: ", length(perch_muddyfoot_tel), " individuals")
+message("Roach: ", length(roach_muddyfoot_tel), " individuals")
 
 # Save species-specific telemetry objects -----------------------------------
-saveRDS(pike_lake_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/pike_lake_muddyfoot_tel_thinned.rds"))
-saveRDS(perch_lake_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/perch_lake_muddyfoot_tel_thinned.rds"))
-saveRDS(roach_lake_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/roach_lake_muddyfoot_tel_thinned.rds"))
+saveRDS(pike_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/pike_muddyfoot_tel_thinned.rds"))
+saveRDS(perch_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/perch_muddyfoot_tel_thinned.rds"))
+saveRDS(roach_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/roach_muddyfoot_tel_thinned.rds"))
 
 #==============================================================================
 # 3. HELPER FUNCTIONS
@@ -372,7 +372,8 @@ fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "m
 }
 
 # Function to verify model fits ---------------------------------------------
-verify_fits <- function(telem_list, fit_list, species_name, n_check = 1) {
+# Function to verify model fits ---------------------------------------------
+verify_fits <- function(telem_list, fit_list, species_name, n_check = NULL) {
   
   message("\n=== Verifying ", species_name, " Model Fits ===")
   
@@ -381,69 +382,145 @@ verify_fits <- function(telem_list, fit_list, species_name, n_check = 1) {
     return(invisible())
   }
   
-  # Print summary of first model
-  message("\nSummary of first individual (", names(fit_list)[1], "):")
-  print(summary(fit_list[[1]]))
-  
-  # Optional: create diagnostic plot for first individual
-  if (n_check > 0) {
-    message("\nGenerating diagnostic plot for ", names(fit_list)[1])
-    plot(telem_list[[names(fit_list)[1]]], fit_list[[1]], error = FALSE)
+  # If n_check is NULL, check all individuals
+  if (is.null(n_check)) {
+    n_check <- length(fit_list)
   }
+  
+  # Ensure n_check doesn't exceed available fits
+  n_check <- min(n_check, length(fit_list))
+  
+  message(sprintf("\nChecking %d out of %d individuals", n_check, length(fit_list)))
+  
+  # Loop through individuals to check
+  for (i in 1:n_check) {
+    id_i <- names(fit_list)[i]
+    
+    message("\n", strrep("-", 80))
+    message(sprintf("Individual %d/%d: %s", i, n_check, id_i))
+    message(strrep("-", 80))
+    
+    # Print summary
+    print(summary(fit_list[[i]]))
+    
+    # Create diagnostic plot
+    message("\nGenerating diagnostic plot...")
+    plot(telem_list[[id_i]], fit_list[[i]], error = FALSE)
+    
+    # Pause for user to review (except for last one)
+    if (i < n_check) {
+      message("\nPress [Enter] to continue to next individual, or type 'q' to quit verification...")
+      user_input <- readline()
+      if (tolower(trimws(user_input)) == 'q') {
+        message("Verification stopped by user.")
+        break
+      }
+    }
+  }
+  
+  message("\n", strrep("=", 80))
+  message("Verification complete!")
+  message(strrep("=", 80))
 }
 
-#==============================================================================
-# 4. FIT CTMM MODELS - PIKE
-#==============================================================================
+# Quick verification function (summaries only, no plots) -------------------
+verify_fits_quick <- function(fit_list, species_name) {
+  
+  message("\n=== Quick Summary of ", species_name, " Model Fits ===")
+  
+  if (length(fit_list) == 0) {
+    message("No fits to verify!")
+    return(invisible())
+  }
+  
+  # Create a summary dataframe
+  summary_df <- data.frame(
+    ID = names(fit_list),
+    Model = character(length(fit_list)),
+    AIC = numeric(length(fit_list)),
+    DOF_area = numeric(length(fit_list)),
+    DOF_speed = numeric(length(fit_list)),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(fit_list)) {
+    model_sum <- summary(fit_list[[i]])
+    summary_df$Model[i] <- names(fit_list[[i]]$tau)[1]
+    summary_df$AIC[i] <- model_sum$AIC
+    
+    # Extract DOF information if available
+    if ("DOF" %in% names(model_sum)) {
+      summary_df$DOF_area[i] <- model_sum$DOF["area"]
+      summary_df$DOF_speed[i] <- ifelse("speed" %in% names(model_sum$DOF), 
+                                        model_sum$DOF["speed"], NA)
+    }
+  }
+  
+  print(summary_df)
+  
+  message("\nModel type distribution:")
+  print(table(summary_df$Model))
+  
+  return(invisible(summary_df))
+}
+
+#==============================================================================#
+#### 4. FIT CTMM MODELS - PIKE ####
+#==============================================================================#
 
 # Option to reload if needed ------------------------------------------------
-# pike_lake_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/pike_lake_muddyfoot_tel_thinned.rds"))
+# pike_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/pike_muddyfoot_tel_thinned.rds"))
 
-if (length(pike_lake_muddyfoot_tel) > 0) {
+if (length(pike_muddyfoot_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
   # Use max_cores=3 for small groups to avoid overloading PC
   pike_results <- fit_ctmm_species_parallel(
-    pike_lake_muddyfoot_tel, 
+    pike_muddyfoot_tel, 
     "pike",
     lake_name = "muddyfoot",
     max_cores = 3  # Conservative setting to reduce noise/heat
   )
   
-  lake_muddyfoot_pike_ctmm_fits <- pike_results$fits
+  muddyfoot_pike_ctmm_fits <- pike_results$fits
   
-  # Verify fits -----------------------------------------------------------
-  verify_fits(pike_lake_muddyfoot_tel, lake_muddyfoot_pike_ctmm_fits, "Pike")
+# Verify fits -----------------------------------------------------------
+  verify_fits(pike_muddyfoot_tel, muddyfoot_pike_ctmm_fits, "Pike")
 } else {
   message("\n*** No pike individuals found in Muddyfoot dataset ***")
-  lake_muddyfoot_pike_ctmm_fits <- list()
+  muddyfoot_pike_ctmm_fits <- list()
 }
 
 #==============================================================================
-# 5. FIT CTMM MODELS - PERCH
+# 5. FIT CTMM MODELS - PERCH ####
 #==============================================================================
 
 # Option to reload if needed ------------------------------------------------
-# perch_lake_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/perch_lake_muddyfoot_tel_thinned.rds"))
+perch_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/perch_muddyfoot_tel_thinned.rds"))
 
-if (length(perch_lake_muddyfoot_tel) > 0) {
+if (length(perch_muddyfoot_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
   # Adjust max_cores based on number of individuals
-  perch_cores <- ifelse(length(perch_lake_muddyfoot_tel) > 15, 6, 3)
+  perch_cores <- ifelse(length(perch_muddyfoot_tel) > 15, 6, 3)
   
   perch_results <- fit_ctmm_species_parallel(
-    perch_lake_muddyfoot_tel,
+    perch_muddyfoot_tel,
     "perch",
     lake_name = "muddyfoot",
     max_cores = perch_cores
   )
   
-  lake_muddyfoot_perch_ctmm_fits <- perch_results$fits
+  muddyfoot_perch_ctmm_fits <- perch_results$fits
+
   
-  # Verify fits -----------------------------------------------------------
-  verify_fits(perch_lake_muddyfoot_tel, lake_muddyfoot_perch_ctmm_fits, "Perch")
+  
+  
+# Verify fits ----------------------------------------------------------- #
+#if you need to reload
+muddyfoot_perch_ctmm_fits <-  readRDS(paste0(save_ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_ctmm_fits.rds"))
+verify_fits(perch_muddyfoot_tel, muddyfoot_perch_ctmm_fits, "Perch")
 } else {
   message("\n*** No perch individuals found in Muddyfoot dataset ***")
-  lake_muddyfoot_perch_ctmm_fits <- list()
+  muddyfoot_perch_ctmm_fits <- list()
 }
 
 #==============================================================================
@@ -451,27 +528,27 @@ if (length(perch_lake_muddyfoot_tel) > 0) {
 #==============================================================================
 
 # Option to reload if needed ------------------------------------------------
-roach_lake_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/roach_lake_muddyfoot_tel_thinned.rds"))
+roach_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/roach_muddyfoot_tel_thinned.rds"))
 
-if (length(roach_lake_muddyfoot_tel) > 0) {
+if (length(roach_muddyfoot_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
   # Adjust max_cores based on number of individuals
-  roach_cores <- ifelse(length(roach_lake_muddyfoot_tel) > 15, 6, 3)
+  roach_cores <- ifelse(length(roach_muddyfoot_tel) > 15, 6, 3)
   
   roach_results <- fit_ctmm_species_parallel(
-    roach_lake_muddyfoot_tel,
+    roach_muddyfoot_tel,
     "roach",
     lake_name = "muddyfoot",
     max_cores = roach_cores
   )
   
-  lake_muddyfoot_roach_ctmm_fits <- roach_results$fits
+  muddyfoot_roach_ctmm_fits <- roach_results$fits
   
   # Verify fits -----------------------------------------------------------
-  verify_fits(roach_lake_muddyfoot_tel, lake_muddyfoot_roach_ctmm_fits, "Roach")
+  verify_fits(roach_muddyfoot_tel, muddyfoot_roach_ctmm_fits, "Roach")
 } else {
   message("\n*** No roach individuals found in Muddyfoot dataset ***")
-  lake_muddyfoot_roach_ctmm_fits <- list()
+  muddyfoot_roach_ctmm_fits <- list()
 }
 
 #==============================================================================
@@ -483,12 +560,12 @@ message("=== ALL CTMM MODELS COMPLETED - LAKE MUDDYFOOT ===")
 message(strrep("=", 80))
 
 message("\nModels fitted:")
-message("  Pike: ", length(lake_muddyfoot_pike_ctmm_fits), " individuals")
-message("  Perch: ", length(lake_muddyfoot_perch_ctmm_fits), " individuals")
-message("  Roach: ", length(lake_muddyfoot_roach_ctmm_fits), " individuals")
-message("  Total: ", length(lake_muddyfoot_pike_ctmm_fits) + 
-          length(lake_muddyfoot_perch_ctmm_fits) + 
-          length(lake_muddyfoot_roach_ctmm_fits), " individuals")
+message("  Pike: ", length(muddyfoot_pike_ctmm_fits), " individuals")
+message("  Perch: ", length(muddyfoot_perch_ctmm_fits), " individuals")
+message("  Roach: ", length(muddyfoot_roach_ctmm_fits), " individuals")
+message("  Total: ", length(muddyfoot_pike_ctmm_fits) + 
+          length(muddyfoot_perch_ctmm_fits) + 
+          length(muddyfoot_roach_ctmm_fits), " individuals")
 
 if (exists("pike_results") && length(pike_results$fits) > 0) {
   message("\nTotal processing times:")
@@ -502,14 +579,14 @@ if (exists("roach_results") && length(roach_results$fits) > 0) {
 }
 
 message("\nOutput locations:")
-message("  Individual fits: ", save_ctmm_path, "lake_muddyfoot_[species]_fits/")
-message("  Combined lists: ", save_ctmm_path, "lake_muddyfoot_[species]_fits/lake_muddyfoot_[species]_ctmm_fits.rds")
+message("  Individual fits: ", save_ctmm_path, "muddyfoot_[species]_fits/")
+message("  Combined lists: ", save_ctmm_path, "muddyfoot_[species]_fits/muddyfoot_[species]_ctmm_fits.rds")
 message("  Telemetry objects: ", save_telem_path, "muddyfoot/")
 
 message("\nTo reload fitted models:")
-message("  pike_fits <- readRDS('", save_ctmm_path, "lake_muddyfoot_pike_fits/lake_muddyfoot_pike_ctmm_fits.rds')")
-message("  perch_fits <- readRDS('", save_ctmm_path, "lake_muddyfoot_perch_fits/lake_muddyfoot_perch_ctmm_fits.rds')")
-message("  roach_fits <- readRDS('", save_ctmm_path, "lake_muddyfoot_roach_fits/lake_muddyfoot_roach_ctmm_fits.rds')")
+message("  pike_fits <- readRDS('", save_ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_ctmm_fits.rds')")
+message("  perch_fits <- readRDS('", save_ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_ctmm_fits.rds')")
+message("  roach_fits <- readRDS('", save_ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_ctmm_fits.rds')")
 
 message("\n", strrep("=", 80))
 
@@ -520,7 +597,7 @@ message("\n", strrep("=", 80))
 # If your PC gets too loud or hot during processing:
 # 1. Reduce max_cores to 2-3 for all species
 # 2. Or use the sequential version:
-#    lake_muddyfoot_pike_ctmm_fits <- fit_ctmm_species_sequential(pike_lake_muddyfoot_tel, "pike", "muddyfoot")
+#    muddyfoot_pike_ctmm_fits <- fit_ctmm_species_sequential(pike_muddyfoot_tel, "pike", "muddyfoot")
 #
 # To adjust core usage dynamically:
 # - max_cores = NULL will use ~65% of available cores
