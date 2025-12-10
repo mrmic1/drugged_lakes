@@ -1,6 +1,5 @@
 #==============================================================================
 # Run CTMM models for each individual and species - Lake Muddyfoot
-# Optimized with parallel processing
 #==============================================================================
 
 ### LIBRARIES ###
@@ -372,7 +371,6 @@ fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "m
 }
 
 # Function to verify model fits ---------------------------------------------
-# Function to verify model fits ---------------------------------------------
 verify_fits <- function(telem_list, fit_list, species_name, n_check = NULL) {
   
   message("\n=== Verifying ", species_name, " Model Fits ===")
@@ -469,7 +467,7 @@ verify_fits_quick <- function(fit_list, species_name) {
 #==============================================================================#
 
 # Option to reload if needed ------------------------------------------------
-# pike_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/pike_muddyfoot_tel_thinned.rds"))
+pike_muddyfoot_tel <- readRDS(paste0(save_telem_path, "muddyfoot/pike_muddyfoot_tel_thinned.rds"))
 
 if (length(pike_muddyfoot_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
@@ -483,8 +481,11 @@ if (length(pike_muddyfoot_tel) > 0) {
   
   muddyfoot_pike_ctmm_fits <- pike_results$fits
   
-# Verify fits -----------------------------------------------------------
-  verify_fits(pike_muddyfoot_tel, muddyfoot_pike_ctmm_fits, "Pike")
+# Verify fits ----------------------------------------------------------- #
+  #if you need to reload
+  muddyfoot_pike_ctmm_fits <-  readRDS(paste0(save_ctmm_path, "muddyfoot_pike_fits/muddyfoot_pike_ctmm_fits.rds"))
+  
+verify_fits(pike_muddyfoot_tel, muddyfoot_pike_ctmm_fits, "Pike")
 } else {
   message("\n*** No pike individuals found in Muddyfoot dataset ***")
   muddyfoot_pike_ctmm_fits <- list()

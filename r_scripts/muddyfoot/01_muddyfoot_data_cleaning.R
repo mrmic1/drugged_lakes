@@ -126,7 +126,7 @@ muddyfoot_mv <- muddyfoot_mv %>%
   arrange(individual_ID, timestamp_cest)
 
 # Load lake boundary polygon ------------------------------------------------
-muddyfoot_lake_poly <- st_read("./data/lake_coords/lake_muddyfoot_polygon.gpkg")
+muddyfoot_polygon <- st_read("./data/lake_coords/polygons/muddyfoot_polygon.gpkg")
 
 # Optional: Visualize reference tag to verify spatial accuracy
 # ref_tag <- filter_track_data(muddyfoot_mv, .track_id = "FReference")
@@ -138,7 +138,7 @@ muddyfoot_lake_poly <- st_read("./data/lake_coords/lake_muddyfoot_polygon.gpkg")
 #          driver="GPKG", delete_layer = TRUE)
 
 # Filter detections within lake boundaries ---------------------------------
-muddyfoot_sub <- st_filter(muddyfoot_mv, muddyfoot_lake_poly)
+muddyfoot_sub <- st_filter(muddyfoot_mv, muddyfoot_polygon)
 message("After spatial filter: ", nrow(muddyfoot_sub), " detections") #11098640
 
 # Verify timezone preservation ----------------------------------------------
@@ -212,10 +212,11 @@ post_size_cols <- post_biometrics %>%
   filter(Lake == 'Muddyfoot') %>%
   mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number))) %>%
   dplyr::select(individual_ID, Found, Known_predated) %>%
-  rename(found_alive = Found)
+  rename(found_alive = Found,
+         known_predated = Known_predated)
 
 # Merge survival information ------------------------------------------------
-lake_muddyfoot_sub <- lake_muddyfoot_sub %>%
+muddyfoot_sub <- muddyfoot_sub %>%
   left_join(post_size_cols, by = "individual_ID")
 
 
