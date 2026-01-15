@@ -348,9 +348,9 @@ identify_predation_events <- function(distances_df,
 # ===================================================================
 
 ## 3.1 Load Telemetry Objects ----
-pike_tel <- readRDS(file.path(paths$telem, 'pike_muddyfoot_tel.rds'))
-perch_tel <- readRDS(file.path(paths$telem, 'perch_muddyfoot_tel.rds'))
-roach_tel <- readRDS(file.path(paths$telem, 'roach_muddyfoot_tel.rds'))
+pike_tel <- readRDS(file.path(paths$telem, 'pike_muddyfoot_tel_thinned.rds'))
+perch_tel <- readRDS(file.path(paths$telem, 'perch_muddyfoot_tel_thinned.rds'))
+roach_tel <- readRDS(file.path(paths$telem, 'roach_muddyfoot_tel_thinned.rds'))
 
 message(sprintf("Loaded telemetry: %d pike, %d perch, %d roach", 
                 length(pike_tel), length(perch_tel), length(roach_tel)))

@@ -10,14 +10,16 @@ library(sf)           # For handling spatial data
 library(parallel)     # For parallel processing
 library(foreach)      # For parallel for loops
 library(doParallel)   # For registering parallel backend
+library(gridExtra)
 
 # Set the time zone to ensure consistent time handling
 Sys.setenv(TZ = 'Europe/Stockholm')
 
 # Define file paths for reading and saving filtered telemetry and ctmm model results
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
-save_ctmm_path <- "./data/ctmm_fits/"
-save_telem_path <- "./data/telem_obj/"
+ctmm_path <- "./data/ctmm_fits/"
+telem_path <- "./data/telem_obj/muddyfoot/"
+figure_path <- "./figures"
 
 #==============================================================================
 # 1. LOAD AND PREPARE DATA
@@ -37,16 +39,16 @@ muddyfoot_movebank <- with(
     "location.lat" = Lat,
     "GPS.HDOP" = HDOP,
     "individual-local-identifier" = individual_ID,
-    "Species" = Species,
-    "Weight" = Weight,
-    "Total_length" = Total_length,
-    "Std_length" = Std_length,
-    "Treatment" = Treatment,
-    "Date" = Date,
-    "Exp_Stage" = Exp_Stage,
-    "Time_Of_Day" = Time_Of_Day,
+    "species" = species,
+    "weight" = weight,
+    "total_length" = total_length,
+    "std_length" = std_length,
+    "treatment" = treatment,
+    "date" = date,
+    "exp_stage" = exp_stage,
+    "time_of_day" = time_of_day,
     "found_alive" = found_alive,
-    "known_predated" = Known_predated
+    "known_predated" = known_predated
   )
 )
 
@@ -62,13 +64,20 @@ muddyfoot_tels <- as.telemetry(
   timeformat = "%Y-%m-%d %H:%M:%S",
   projection = NULL,  # Will be set to geometric median automatically
   datum = "WGS84",
-  keep = c("Species", "Weight", "Total_length", "Std_length", "Treatment",
-           "Date", "Exp_Stage", "Time_Of_Day", "found_alive", "known_predated")
+  keep = c("species", "weight", "total_length", "std_length", "treatment",
+           "date", "exp_stage", "time_of_day", "found_alive", "known_predated")
 )
 
 message("Telemetry object created with ", length(muddyfoot_tels), " individuals")
 message("Projection: ", projection(muddyfoot_tels[[1]]))
 message("Timezone: ", tz(muddyfoot_tels[[1]]$timestamp))
+
+
+# Incorporate UERE error into telemetry objects ------------------------------
+#load UERE
+muddyfoot_UERE <- readRDS(paste0(telem_path, "muddyfoot_UERE.rds"))
+print(summary(muddyfoot_UERE))
+uere(muddyfoot_tels) <- muddyfoot_UERE
 
 #==============================================================================
 # 2. ORGANIZE INDIVIDUALS BY SPECIES
@@ -76,26 +85,23 @@ message("Timezone: ", tz(muddyfoot_tels[[1]]$timestamp))
 
 # Verify individual order ---------------------------------------------------
 species_order <- muddyfoot_movebank %>%
-  select(Species, individual.local.identifier) %>%
+  select(species, individual.local.identifier) %>%
   distinct() %>%
   arrange(individual.local.identifier)
 
-message("\n=== Species Distribution ===")
-print(table(species_order$Species))
+print(table(species_order$species))
 
 # Display the ordering to help with indexing
-message("\n=== Individual ID Order ===")
 print(species_order)
 
 # Split telemetry objects by species ---------------------------------------
 # Note: You'll need to adjust these indices based on your actual data
 # Check the species_order output above to determine correct indices
 
-
 # For now, let's create a flexible approach:
-pike_ids <- species_order %>% filter(Species == "Northern Pike") %>% pull(individual.local.identifier)
-perch_ids <- species_order %>% filter(Species == "Perch") %>% pull(individual.local.identifier)
-roach_ids <- species_order %>% filter(Species == "Roach") %>% pull(individual.local.identifier)
+pike_ids <- species_order %>% filter(species == "Northern Pike") %>% pull(individual.local.identifier)
+perch_ids <- species_order %>% filter(species == "Perch") %>% pull(individual.local.identifier)
+roach_ids <- species_order %>% filter(species == "Roach") %>% pull(individual.local.identifier)
 
 pike_muddyfoot_tel <- muddyfoot_tels[names(muddyfoot_tels) %in% pike_ids]
 perch_muddyfoot_tel <- muddyfoot_tels[names(muddyfoot_tels) %in% perch_ids]
@@ -107,9 +113,340 @@ message("Perch: ", length(perch_muddyfoot_tel), " individuals")
 message("Roach: ", length(roach_muddyfoot_tel), " individuals")
 
 # Save species-specific telemetry objects -----------------------------------
-saveRDS(pike_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/pike_muddyfoot_tel_thinned.rds"))
-saveRDS(perch_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/perch_muddyfoot_tel_thinned.rds"))
-saveRDS(roach_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/roach_muddyfoot_tel_thinned.rds"))
+saveRDS(pike_muddyfoot_tel, paste0(telem_path, "pike_muddyfoot_tel_thinned.rds"))
+saveRDS(perch_muddyfoot_tel, paste0(telem_path, "perch_muddyfoot_tel_thinned.rds"))
+saveRDS(roach_muddyfoot_tel, paste0(telem_path, "roach_muddyfoot_tel_thinned.rds"))
+
+plot_variograms <- function(tel_list, species_name, output_dir) {
+  
+  n_individuals <- length(tel_list)
+  message(paste0("\nProcessing ", species_name, ": ", n_individuals, " individuals"))
+  
+  # Calculate grid dimensions for plotting
+  n_cols <- ceiling(sqrt(n_individuals))
+  n_rows <- ceiling(n_individuals / n_cols)
+  
+  # Create output filename
+  pdf_filename <- paste0(output_dir, species_name, "_variograms_all_individuals.pdf")
+  
+  # Open PDF device
+  pdf(pdf_filename, width = 4 * n_cols, height = 4 * n_rows)
+  
+  # Set up multi-panel plot
+  par(mfrow = c(n_rows, n_cols))
+  
+  # Loop through each individual
+  for (i in 1:n_individuals) {
+    ind_name <- names(tel_list)[i]
+    tel_data <- tel_list[[i]]
+    
+    message(paste0("  Processing individual ", i, "/", n_individuals, ": ", ind_name))
+    
+    # Calculate and plot variogram
+    tryCatch({
+      vario <- variogram(tel_data)
+      
+      # Plot directly (ctmm's plot function handles the plotting)
+      plot(vario, main = ind_name, cex.main = 1.2)
+      
+      # Check for range residency indicators
+      # Asymptote suggests range residency
+      # No asymptote suggests migration/nomadism
+      
+    }, error = function(e) {
+      message(paste0("    ERROR for ", ind_name, ": ", e$message))
+      # Create empty plot with error message
+      plot.new()
+      text(0.5, 0.5, paste0("Error:\n", ind_name), cex = 1.2)
+    })
+  }
+  
+  dev.off()
+  
+  message(paste0("  Saved: ", pdf_filename))
+  
+  return(invisible(NULL))
+}
+
+# Function to create detailed variogram analysis ---------------------------
+analyze_variograms <- function(tel_list, species_name, output_dir) {
+  
+  n_individuals <- length(tel_list)
+  
+  # Create data frame to store variogram characteristics
+  vario_summary <- data.frame(
+    species = character(),
+    individual = character(),
+    n_points = integer(),
+    timespan_days = numeric(),
+    has_asymptote = logical(),
+    range_estimate_m = numeric(),
+    tau_position = numeric(),
+    tau_velocity = numeric(),
+    irregularities_detected = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  message(paste0("\nAnalyzing variograms for ", species_name, "..."))
+  
+  for (i in 1:n_individuals) {
+    ind_name <- names(tel_list)[i]
+    tel_data <- tel_list[[i]]
+    
+    tryCatch({
+      # Calculate variogram
+      vario <- variogram(tel_data)
+      
+      # Extract basic info
+      n_points <- nrow(tel_data)
+      timespan_days <- as.numeric(diff(range(tel_data$timestamp)), units = "days")
+      
+      # Check for asymptote (range residency indicator)
+      # If SVF plateaus, animal is range resident
+      has_asymptote <- !is.null(vario$SVF) && 
+        length(vario$SVF) > 10 && 
+        sd(tail(vario$SVF, 5)) < mean(tail(vario$SVF, 5)) * 0.1
+      
+      # Try to estimate range size (if asymptote exists)
+      range_estimate <- if(has_asymptote && !is.null(vario$SVF)) {
+        max(vario$SVF, na.rm = TRUE)  # Maximum semi-variance as range proxy
+      } else {
+        NA_real_
+      }
+      
+      # Extract timescales if available
+      tau_pos <- if(!is.null(vario$tau) && "position" %in% names(vario$tau)) {
+        vario$tau["position"]
+      } else {
+        NA_real_
+      }
+      
+      tau_vel <- if(!is.null(vario$tau) && "velocity" %in% names(vario$tau)) {
+        vario$tau["velocity"]
+      } else {
+        NA_real_
+      }
+      
+      # Detect irregularities
+      irregularities <- c()
+      
+      # Check for gaps in data
+      time_diffs <- diff(as.numeric(tel_data$timestamp))
+      median_interval <- median(time_diffs)
+      large_gaps <- sum(time_diffs > 5 * median_interval)
+      if (large_gaps > 0) {
+        irregularities <- c(irregularities, paste0("Large gaps: ", large_gaps))
+      }
+      
+      # Check for very short tracking duration
+      if (timespan_days < 7) {
+        irregularities <- c(irregularities, "Short duration (<7 days)")
+      }
+      
+      # Check for insufficient data
+      if (n_points < 50) {
+        irregularities <- c(irregularities, "Few relocations (<50)")
+      }
+      
+      irregularities_text <- if(length(irregularities) > 0) {
+        paste(irregularities, collapse = "; ")
+      } else {
+        "None detected"
+      }
+      
+      # Add to summary
+      vario_summary <- rbind(vario_summary, data.frame(
+        species = species_name,
+        individual = ind_name,
+        n_points = n_points,
+        timespan_days = round(timespan_days, 1),
+        has_asymptote = has_asymptote,
+        range_estimate_m = round(range_estimate, 0),
+        tau_position = round(tau_pos, 2),
+        tau_velocity = round(tau_vel, 2),
+        irregularities_detected = irregularities_text,
+        stringsAsFactors = FALSE
+      ))
+      
+    }, error = function(e) {
+      message(paste0("  ERROR for ", ind_name, ": ", e$message))
+    })
+  }
+  
+  # Save summary
+  csv_filename <- paste0(output_dir, species_name, "_variogram_summary.csv")
+  write.csv(vario_summary, csv_filename, row.names = FALSE)
+  message(paste0("  Saved summary: ", csv_filename))
+  
+  return(vario_summary)
+}
+
+# Function to create interactive HTML report -------------------------------
+create_html_report <- function(all_summaries, output_dir) {
+  
+  # Combine all summaries
+  combined <- do.call(rbind, all_summaries)
+  
+  # Create HTML content
+  html_content <- paste0(
+    "<!DOCTYPE html>
+<html>
+<head>
+  <title>Variogram Analysis Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { color: #2c3e50; }
+    h2 { color: #34495e; margin-top: 30px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #3498db; color: white; }
+    tr:nth-child(even) { background-color: #f2f2f2; }
+    .warning { background-color: #fff3cd; }
+    .good { background-color: #d4edda; }
+    .summary-box { 
+      background-color: #ecf0f1; 
+      padding: 15px; 
+      border-radius: 5px; 
+      margin: 20px 0; 
+    }
+  </style>
+</head>
+<body>
+  <h1>Movement Data Variogram Analysis</h1>
+  <p>Generated: ", Sys.time(), "</p>
+  
+  <div class='summary-box'>
+    <h2>Summary Statistics</h2>
+    <p><strong>Total Individuals:</strong> ", nrow(combined), "</p>
+    <p><strong>Species:</strong> ", paste(unique(combined$species), collapse = ", "), "</p>
+    <p><strong>Range Resident Individuals:</strong> ", 
+    sum(combined$has_asymptote, na.rm = TRUE), " (", 
+    round(100 * sum(combined$has_asymptote, na.rm = TRUE) / nrow(combined), 1), "%)</p>
+    <p><strong>Individuals with Irregularities:</strong> ", 
+    sum(combined$irregularities_detected != "None detected"), "</p>
+  </div>
+  
+  <h2>Interpretation Guide</h2>
+  <ul>
+    <li><strong>Has Asymptote:</strong> TRUE indicates range residency (animal has a defined home range)</li>
+    <li><strong>Range Estimate:</strong> Approximate size of home range in meters (when asymptote present)</li>
+    <li><strong>Tau Position:</strong> Timescale of position autocorrelation</li>
+    <li><strong>Tau Velocity:</strong> Timescale of velocity autocorrelation</li>
+    <li><strong>Irregularities:</strong> Data quality issues that may affect analysis</li>
+  </ul>
+  
+  <h2>Detailed Results by Species</h2>
+  "
+  )
+  
+  # Add tables for each species
+  for (sp in unique(combined$species)) {
+    sp_data <- combined[combined$species == sp, ]
+    
+    html_content <- paste0(html_content, "
+    <h3>", sp, "</h3>
+    <table>
+      <tr>
+        <th>Individual</th>
+        <th>N Points</th>
+        <th>Duration (days)</th>
+        <th>Range Resident</th>
+        <th>Range Est. (m)</th>
+        <th>Irregularities</th>
+      </tr>
+    ")
+    
+    for (i in 1:nrow(sp_data)) {
+      row_class <- if(sp_data$irregularities_detected[i] != "None detected") {
+        "warning"
+      } else if(sp_data$has_asymptote[i]) {
+        "good"
+      } else {
+        ""
+      }
+      
+      html_content <- paste0(html_content, "
+      <tr class='", row_class, "'>
+        <td>", sp_data$individual[i], "</td>
+        <td>", sp_data$n_points[i], "</td>
+        <td>", sp_data$timespan_days[i], "</td>
+        <td>", ifelse(sp_data$has_asymptote[i], "YES", "NO"), "</td>
+        <td>", ifelse(is.na(sp_data$range_estimate_m[i]), "-", 
+                      format(sp_data$range_estimate_m[i], big.mark = ",")), "</td>
+        <td>", sp_data$irregularities_detected[i], "</td>
+      </tr>
+      ")
+    }
+    
+    html_content <- paste0(html_content, "
+    </table>
+    ")
+  }
+  
+  html_content <- paste0(html_content, "
+</body>
+</html>
+  ")
+  
+  # Save HTML report
+  html_filename <- paste0(output_dir, "variogram_analysis_report.html")
+  writeLines(html_content, html_filename)
+  message(paste0("\nHTML report saved: ", html_filename))
+}
+
+# Run analysis for all species ---------------------------------------------
+message(paste(rep("=", 70), collapse = ""))
+message("VARIOGRAM ANALYSIS")
+message(paste(rep("=", 70), collapse = ""))
+
+# Plot variograms
+plot_variograms(pike_muddyfoot_tel, "Northern_Pike", figure_path)
+plot_variograms(perch_muddyfoot_tel, "Perch", output_path)
+plot_variograms(roach_muddyfoot_tel, "Roach", output_path)
+
+# Analyze variograms
+pike_summary <- analyze_variograms(pike_muddyfoot_tel, "Northern_Pike", output_path)
+perch_summary <- analyze_variograms(perch_muddyfoot_tel, "Perch", output_path)
+roach_summary <- analyze_variograms(roach_muddyfoot_tel, "Roach", output_path)
+
+# Create HTML report
+create_html_report(
+  list(pike_summary, perch_summary, roach_summary), 
+  output_path
+)
+
+message("\n", paste(rep("=", 70), collapse = ""))
+message("ANALYSIS COMPLETE")
+message(paste(rep("=", 70), collapse = ""))
+message("\nOutputs saved to: ", output_path)
+message("\nFiles created:")
+message("  1. PDF plots: [Species]_variograms_all_individuals.pdf")
+message("  2. CSV summaries: [Species]_variogram_summary.csv")
+message("  3. HTML report: variogram_analysis_report.html")
+message("\nInterpretation:")
+message("  - Variograms with asymptotes indicate range residency")
+message("  - Variograms that continue rising suggest migration/nomadism")
+message("  - Irregular patterns may indicate data quality issues")
+message("  - Check the HTML report for a comprehensive overview")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #==============================================================================
 # 3. HELPER FUNCTIONS
