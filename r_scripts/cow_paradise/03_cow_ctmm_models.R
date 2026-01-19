@@ -1,6 +1,5 @@
 #==============================================================================
 # Run CTMM models for each individual and species - Lake Cow Paradise
-# Optimized with parallel processing
 #==============================================================================
 
 ### LIBRARIES ###
@@ -11,106 +10,112 @@ library(sf)           # For handling spatial data
 library(parallel)     # For parallel processing
 library(foreach)      # For parallel for loops
 library(doParallel)   # For registering parallel backend
+library(gridExtra)
 
 # Set the time zone to ensure consistent time handling
 Sys.setenv(TZ = 'Europe/Stockholm')
 
 # Define file paths for reading and saving filtered telemetry and ctmm model results
-filtered_data_path <- "./data/tracks_filtered/lake_cow_paradise/"
+filtered_data_path <- "./data/tracks_filtered/cow_paradise/"
 save_ctmm_path <- "./data/ctmm_fits/"
 save_telem_path <- "./data/telem_obj/"
+figure_path <- "./figures/"
+output_path <- "./output/"
 
 #==============================================================================
 # 1. LOAD AND PREPARE DATA
 #==============================================================================
 
 # Load filtered tracking data -----------------------------------------------
-lake_cow_paradise_sub <- readRDS(paste0(filtered_data_path, '03_lake_cow_sub.rds'))
-message("Loaded ", nrow(lake_cow_paradise_sub), " detections for ", 
-        n_distinct(lake_cow_paradise_sub$individual_ID), " individuals")
+cow_paradise_sub <- readRDS(paste0(filtered_data_path, '03_cow_paradise_sub.rds'))
+message("Loaded ", nrow(cow_paradise_sub), " detections for ", 
+        n_distinct(cow_paradise_sub$individual_ID), " individuals")
 
 # Convert to Movebank format for ctmm package ------------------------------
-lake_cow_paradise_movebank <- with(
-  lake_cow_paradise_sub,
+cow_paradise_movebank <- with(
+  cow_paradise_sub,
   data.frame(
     "timestamp" = timestamp,
     "location.long" = Long,
     "location.lat" = Lat,
     "GPS.HDOP" = HDOP,
     "individual-local-identifier" = individual_ID,
-    "Species" = Species,
-    "Weight" = Weight,
-    "Total_length" = Total_length,
-    "Std_length" = Std_length,
-    "Treatment" = Treatment,
-    "Date" = Date,
-    "Exp_Stage" = Exp_Stage,
-    "Time_Of_Day" = Time_Of_Day,
+    "species" = species,
+    "weight" = weight,
+    "total_length" = total_length,
+    "std_length" = std_length,
+    "treatment" = treatment,
+    "date" = date,
+    "exp_stage" = exp_stage,
+    "time_of_day" = time_of_day,
     "found_alive" = found_alive,
     "known_predated" = known_predated
   )
 )
 
 # Free up memory ------------------------------------------------------------
-rm(lake_cow_paradise_sub)
+rm(cow_paradise_sub)
 gc()
 
 # Convert to telemetry object -----------------------------------------------
 message("\nConverting to ctmm telemetry object...")
-lake_cow_tels <- as.telemetry(
-  lake_cow_paradise_movebank,
+cow_paradise_tels <- as.telemetry(
+  cow_paradise_movebank,
   timezone = "Europe/Stockholm",
   timeformat = "%Y-%m-%d %H:%M:%S",
   projection = NULL,  # Will be set to geometric median automatically
   datum = "WGS84",
-  keep = c("Species", "Weight", "Total_length", "Std_length", "Treatment",
-           "Date", "Exp_Stage", "Time_Of_Day", "found_alive", "known_predated")
+  keep = c("species", "weight", "total_length", "std_length", "treatment",
+           "date", "exp_stage", "time_of_day", "found_alive", "known_predated")
 )
 
-message("Telemetry object created with ", length(lake_cow_tels), " individuals")
-message("Projection: ", projection(lake_cow_tels[[1]]))
-message("Timezone: ", tz(lake_cow_tels[[1]]$timestamp))
+message("Telemetry object created with ", length(cow_paradise_tels), " individuals")
+message("Projection: ", projection(cow_paradise_tels[[1]]))
+message("Timezone: ", tz(cow_paradise_tels[[1]]$timestamp))
+
+
+# Incorporate UERE error into telemetry objects ------------------------------
+#load UERE
+cow_paradise_UERE <- readRDS(paste0(save_telem_path, "cow_paradise/cow_paradise_UERE.rds"))
+print(summary(cow_paradise_UERE))
+uere(cow_paradise_tels) <- cow_paradise_UERE
 
 #==============================================================================
 # 2. ORGANIZE INDIVIDUALS BY SPECIES
 #==============================================================================
 
 # Verify individual order ---------------------------------------------------
-species_order <- lake_cow_paradise_movebank %>%
-  select(Species, individual.local.identifier) %>%
+species_order <- cow_paradise_movebank %>%
+  select(species, individual.local.identifier) %>%
   distinct() %>%
   arrange(individual.local.identifier)
 
-message("\n=== Species Distribution ===")
-print(table(species_order$Species))
+print(table(species_order$species))
 
 # Display the ordering to help with indexing
-message("\n=== Individual ID Order ===")
 print(species_order)
 
 # Split telemetry objects by species ---------------------------------------
-# Note: You'll need to adjust these indices based on your actual data
-# Check the species_order output above to determine correct indices
+pike_ids <- species_order %>% filter(species == "Northern Pike") %>% pull(individual.local.identifier)
+perch_ids <- species_order %>% filter(species == "Perch") %>% pull(individual.local.identifier)
+roach_ids <- species_order %>% filter(species == "Roach") %>% pull(individual.local.identifier)
 
-
-# For now, let's create a flexible approach:
-pike_ids <- species_order %>% filter(Species == "Northern Pike") %>% pull(individual.local.identifier)
-perch_ids <- species_order %>% filter(Species == "Perch") %>% pull(individual.local.identifier)
-roach_ids <- species_order %>% filter(Species == "Roach") %>% pull(individual.local.identifier)
-
-pike_lake_cow_tel <- lake_cow_tels[names(lake_cow_tels) %in% pike_ids]
-perch_lake_cow_tel <- lake_cow_tels[names(lake_cow_tels) %in% perch_ids]
-roach_lake_cow_tel <- lake_cow_tels[names(lake_cow_tels) %in% roach_ids]
+pike_cow_paradise_tel <- cow_paradise_tels[names(cow_paradise_tels) %in% pike_ids]
+perch_cow_paradise_tel <- cow_paradise_tels[names(cow_paradise_tels) %in% perch_ids]
+roach_cow_paradise_tel <- cow_paradise_tels[names(cow_paradise_tels) %in% roach_ids]
 
 message("\nSpecies groups created:")
-message("Pike: ", length(pike_lake_cow_tel), " individuals")
-message("Perch: ", length(perch_lake_cow_tel), " individuals")
-message("Roach: ", length(roach_lake_cow_tel), " individuals")
+message("Pike: ", length(pike_cow_paradise_tel), " individuals")
+message("Perch: ", length(perch_cow_paradise_tel), " individuals")
+message("Roach: ", length(roach_cow_paradise_tel), " individuals")
 
 # Save species-specific telemetry objects -----------------------------------
-saveRDS(pike_lake_cow_tel, paste0(save_telem_path, "cow_paradise/pike_lake_cow_paradise_tel_thinned.rds"))
-saveRDS(perch_lake_cow_tel, paste0(save_telem_path, "cow_paradise/perch_lake_cow_paradise_tel_thinned.rds"))
-saveRDS(roach_lake_cow_tel, paste0(save_telem_path, "cow_paradise/roach_lake_cow_paradise_tel_thinned.rds"))
+saveRDS(pike_cow_paradise_tel, paste0(save_telem_path, "cow_paradise/pike_cow_paradise_tel_thinned.rds"))
+saveRDS(perch_cow_paradise_tel, paste0(save_telem_path, "cow_paradise/perch_cow_paradise_tel_thinned.rds"))
+saveRDS(roach_cow_paradise_tel, paste0(save_telem_path, "cow_paradise/roach_cow_paradise_tel_thinned.rds"))
+
+# [Variogram plotting and analysis functions remain the same]
+# ... [keeping all the variogram functions as they are]
 
 #==============================================================================
 # 3. HELPER FUNCTIONS
@@ -165,13 +170,14 @@ assess_ctmm_guess <- function(telem_list) {
   }
 }
 
-# Parallel fitting function -------------------------------------------------
+# Parallel model selection function (UPDATED) ------------------------------
 fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow_paradise",
                                       max_cores = NULL, 
-                                      save_individual_fits = TRUE) {
+                                      save_individual_fits = TRUE,
+                                      ic = "AICc") {
   
   message("\n", strrep("=", 80))
-  message("=== FITTING CTMM MODELS FOR ", toupper(species_name), " ===")
+  message("=== SELECTING BEST CTMM MODELS FOR ", toupper(species_name), " ===")
   message(strrep("=", 80))
   
   # Assess expected models
@@ -192,18 +198,19 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
   
   # Export necessary objects to cluster
   clusterExport(cl, c("telem_list", "species_name", "lake_name", "output_dir", 
-                      "save_individual_fits", "save_ctmm_path"),
+                      "save_individual_fits", "save_ctmm_path", "ic"),
                 envir = environment())
   
-  message("\n=== Starting Parallel Model Fitting ===")
+  message("\n=== Starting Parallel Model Selection ===")
   message("Processing ", length(telem_list), " individuals using ", n_cores, " cores")
+  message("Information criterion: ", ic)
   start_time <- Sys.time()
   
   # Parallel fitting with error handling
   results <- foreach(
     i = 1:length(telem_list),
     .packages = c('ctmm'),
-    .errorhandling = 'pass',  # Continue even if one fails
+    .errorhandling = 'pass',
     .verbose = FALSE
   ) %dopar% {
     
@@ -220,19 +227,28 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
         interactive = FALSE
       )
       
-      # Fit the model
-      model_fit <- ctmm.fit(
+      # Use ctmm.select to find best model
+      model_selection <- ctmm.select(
         data = tel_i,
         CTMM = guess_model,
-        method = "ML"
+        method = "ML",
+        IC = ic,
+        verbose = TRUE
       )
+      
+      # Extract the best model (first in the list)
+      best_model <- model_selection[[1]]
       
       ind_elapsed <- as.numeric(difftime(Sys.time(), ind_start, units = "secs"))
       
       # Save individual fit if requested
       if (save_individual_fits) {
-        output_file <- file.path(output_dir, paste0(id_i, "_ctmm_fit.rds"))
-        saveRDS(model_fit, file = output_file)
+        # Save both the selection results and best model
+        output_file_selection <- file.path(output_dir, paste0(id_i, "_ctmm_selection.rds"))
+        output_file_best <- file.path(output_dir, paste0(id_i, "_ctmm_best_fit.rds"))
+        
+        saveRDS(model_selection, file = output_file_selection)
+        saveRDS(best_model, file = output_file_best)
       }
       
       # Clean up memory
@@ -240,7 +256,8 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
       
       list(
         id = id_i,
-        fit = model_fit,
+        selection = model_selection,  # Full selection results
+        best_fit = best_model,        # Best model only
         time = ind_elapsed,
         success = TRUE,
         error = NULL
@@ -249,7 +266,8 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
     }, error = function(e) {
       list(
         id = names(telem_list)[i],
-        fit = NULL,
+        selection = NULL,
+        best_fit = NULL,
         time = NA,
         success = FALSE,
         error = as.character(e)
@@ -267,12 +285,12 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
   n_success <- sum(successful_fits)
   n_failed <- sum(!successful_fits)
   
-  message("\n=== Fitting Complete ===")
+  message("\n=== Model Selection Complete ===")
   message(sprintf("Total time: %.1f minutes", total_elapsed))
-  message(sprintf("Successful fits: %d/%d", n_success, length(telem_list)))
+  message(sprintf("Successful selections: %d/%d", n_success, length(telem_list)))
   
   if (n_failed > 0) {
-    message(sprintf("\nFailed fits: %d", n_failed))
+    message(sprintf("\nFailed selections: %d", n_failed))
     failed_ids <- sapply(results[!successful_fits], function(x) x$id)
     message("Failed IDs: ", paste(failed_ids, collapse = ", "))
     
@@ -282,9 +300,13 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
     }
   }
   
-  # Extract successful fits
-  ctmm_fits <- lapply(results[successful_fits], function(x) x$fit)
-  names(ctmm_fits) <- sapply(results[successful_fits], function(x) x$id)
+  # Extract best models list
+  best_models_list <- lapply(results[successful_fits], function(x) x$best_fit)
+  names(best_models_list) <- sapply(results[successful_fits], function(x) x$id)
+  
+  # Extract full selection results list
+  selection_list <- lapply(results[successful_fits], function(x) x$selection)
+  names(selection_list) <- sapply(results[successful_fits], function(x) x$id)
   
   # Calculate timing statistics
   fit_times <- sapply(results[successful_fits], function(x) x$time)
@@ -292,44 +314,65 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "cow
   message(sprintf("  Mean: %.1f  |  Median: %.1f  |  Max: %.1f", 
                   mean(fit_times), median(fit_times), max(fit_times)))
   
-  # Save combined fit list
-  if (length(ctmm_fits) > 0) {
-    output_list_file <- file.path(output_dir, paste0("lake_", lake_name, "_", species_name, "_ctmm_fits.rds"))
-    saveRDS(ctmm_fits, output_list_file)
-    message("\nCombined fit list saved to: ", output_list_file)
+  # Print model summary
+  message("\n=== Model Selection Summary ===")
+  selected_models <- sapply(best_models_list, function(x) summary(x)$name)
+  model_table <- table(selected_models)
+  message("Selected models across individuals:")
+  print(model_table)
+  
+  # Save combined lists
+  if (length(best_models_list) > 0) {
+    output_best_file <- file.path(output_dir, paste0(lake_name, "_", species_name, "_best_models.rds"))
+    output_selection_file <- file.path(output_dir, paste0(lake_name, "_", species_name, "_all_selections.rds"))
+    
+    saveRDS(best_models_list, output_best_file)
+    saveRDS(selection_list, output_selection_file)
+    
+    message("\nBest models list saved to: ", output_best_file)
+    message("Full selection results saved to: ", output_selection_file)
   }
   
-  # Return both fits and diagnostic info
+  message("\n", strrep("=", 80))
+  
+  # Return comprehensive results
   return(list(
-    fits = ctmm_fits,
+    best_models = best_models_list,      # List of best ctmm objects
+    selection_results = selection_list,  # Full selection results for each individual
+    all_results = results,
     diagnostics = list(
       total_time = total_elapsed,
       n_success = n_success,
       n_failed = n_failed,
       failed_ids = if(n_failed > 0) sapply(results[!successful_fits], function(x) x$id) else NULL,
-      fit_times = fit_times
+      fit_times = fit_times,
+      model_counts = as.list(model_table)
     )
   ))
 }
 
-# Sequential fitting function (backup if parallel causes issues) -----------
-fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "cow_paradise") {
+# Sequential model selection function (backup) -----------------------------
+fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "cow_paradise",
+                                        ic = "AICc") {
   
   message("\n", strrep("=", 80))
-  message("=== FITTING CTMM MODELS FOR ", toupper(species_name), " (SEQUENTIAL) ===")
+  message("=== SELECTING BEST CTMM MODELS FOR ", toupper(species_name), " (SEQUENTIAL) ===")
   message(strrep("=", 80))
   
   assess_ctmm_guess(telem_list)
   
-  ctmm_fits <- vector("list", length(telem_list))
-  names(ctmm_fits) <- names(telem_list)
+  best_models_list <- vector("list", length(telem_list))
+  selection_list <- vector("list", length(telem_list))
+  names(best_models_list) <- names(telem_list)
+  names(selection_list) <- names(telem_list)
   
   output_dir <- file.path(save_ctmm_path, paste0(lake_name, "_", species_name, "_fits"))
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
   }
   
-  message("\n=== Starting Sequential Model Fitting ===")
+  message("\n=== Starting Sequential Model Selection ===")
+  message("Information criterion: ", ic)
   start_time <- Sys.time()
   fit_times <- numeric(length(telem_list))
   
@@ -350,25 +393,55 @@ fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "c
     ind_start <- Sys.time()
     
     guess_model <- ctmm.guess(tel_i, CTMM = ctmm(error = TRUE), interactive = FALSE)
-    model_fit <- ctmm.fit(data = tel_i, CTMM = guess_model, method = "ML")
+    
+    # Use ctmm.select
+    model_selection <- ctmm.select(
+      data = tel_i,
+      CTMM = guess_model,
+      method = "ML",
+      IC = ic,
+      verbose = TRUE
+    )
+    
+    best_model <- model_selection[[1]]
     
     fit_times[i] <- as.numeric(difftime(Sys.time(), ind_start, units = "secs"))
-    message(sprintf("  Fitted in %.1f seconds", fit_times[i]))
+    message(sprintf("  Selected best model in %.1f seconds: %s", 
+                    fit_times[i], summary(best_model)$name))
     
-    output_file <- file.path(output_dir, paste0(id_i, "_ctmm_fit.rds"))
-    saveRDS(model_fit, file = output_file)
+    # Save files
+    output_file_selection <- file.path(output_dir, paste0(id_i, "_ctmm_selection.rds"))
+    output_file_best <- file.path(output_dir, paste0(id_i, "_ctmm_best_fit.rds"))
     
-    ctmm_fits[[i]] <- model_fit
+    saveRDS(model_selection, file = output_file_selection)
+    saveRDS(best_model, file = output_file_best)
+    
+    best_models_list[[i]] <- best_model
+    selection_list[[i]] <- model_selection
     gc()
   }
   
   total_elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
   message(sprintf("\n=== Completed in %.1f minutes ===", total_elapsed))
   
-  output_list_file <- file.path(output_dir, paste0("lake_", lake_name, "_", species_name, "_ctmm_fits.rds"))
-  saveRDS(ctmm_fits, output_list_file)
+  # Print model summary
+  message("\n=== Model Selection Summary ===")
+  selected_models <- sapply(best_models_list, function(x) summary(x)$name)
+  model_table <- table(selected_models)
+  message("Selected models across individuals:")
+  print(model_table)
   
-  return(ctmm_fits)
+  # Save combined lists
+  output_best_file <- file.path(output_dir, paste0(lake_name, "_", species_name, "_best_models.rds"))
+  output_selection_file <- file.path(output_dir, paste0(lake_name, "_", species_name, "_all_selections.rds"))
+  
+  saveRDS(best_models_list, output_best_file)
+  saveRDS(selection_list, output_selection_file)
+  
+  return(list(
+    best_models = best_models_list,
+    selection_results = selection_list
+  ))
 }
 
 # Function to verify model fits ---------------------------------------------
@@ -444,8 +517,8 @@ verify_fits_quick <- function(fit_list, species_name) {
   
   for (i in seq_along(fit_list)) {
     model_sum <- summary(fit_list[[i]])
-    summary_df$Model[i] <- names(fit_list[[i]]$tau)[1]
-    summary_df$AIC[i] <- model_sum$AIC
+    summary_df$Model[i] <- model_sum$name
+    summary_df$AIC[i] <- model_sum$IC
     
     # Extract DOF information if available
     if ("DOF" %in% names(model_sum)) {
@@ -463,61 +536,66 @@ verify_fits_quick <- function(fit_list, species_name) {
   return(invisible(summary_df))
 }
 
-#==============================================================================
-# 4. FIT CTMM MODELS - PIKE
-#==============================================================================
+#==============================================================================#
+#### 4. FIT CTMM MODELS - PIKE ####
+#==============================================================================#
 
 # Option to reload if needed ------------------------------------------------
-# pike_lake_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/pike_lake_cow_paradise_tel_thinned.rds"))
+pike_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/pike_cow_paradise_tel_thinned.rds"))
 
-if (length(pike_lake_cow_tel) > 0) {
+if (length(pike_cow_paradise_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
-  # Use max_cores=3 for small groups to avoid overloading PC
   pike_results <- fit_ctmm_species_parallel(
-    pike_lake_cow_tel, 
+    pike_cow_paradise_tel, 
     "pike",
     lake_name = "cow_paradise",
-    max_cores = 3  # Conservative setting to reduce noise/heat
+    max_cores = 3,
+    ic = "AICc"
   )
   
-  lake_cow_paradise_pike_ctmm_fits <- pike_results$fits
+  cow_paradise_pike_best_models <- pike_results$best_models
+  cow_paradise_pike_selections <- pike_results$selection_results
   
+  # Verify fits -----------------------------------------------------------
+  # To reload if needed:
+  # cow_paradise_pike_best_models <- readRDS(paste0(save_ctmm_path, "cow_paradise_pike_fits/cow_paradise_pike_best_models.rds"))
+  
+  verify_fits(pike_cow_paradise_tel, cow_paradise_pike_best_models, "Pike")
 } else {
   message("\n*** No pike individuals found in cow_paradise dataset ***")
-  lake_cow_paradise_pike_ctmm_fits <- list()
-}
-  
-# Verify fits -----------------------------------------------------------
-verify_fits(pike_lake_cow_paradise_tel, lake_cow_paradise_pike_ctmm_fits, "Pike")
-} else {
-  message("\n*** No pike individuals found in cow_paradise dataset ***")
-  lake_cow_paradise_pike_ctmm_fits <- list()
+  cow_paradise_pike_best_models <- list()
 }
 
 #==============================================================================
-# 5. FIT CTMM MODELS - PERCH
+# 5. FIT CTMM MODELS - PERCH ####
 #==============================================================================
 
 # Option to reload if needed ------------------------------------------------
-# perch_lake_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/perch_lake_cow_paradise_tel_thinned.rds"))
+perch_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/perch_cow_paradise_tel_thinned.rds"))
 
-if (length(perch_lake_cow_tel) > 0) {
+if (length(perch_cow_paradise_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
-  # Adjust max_cores based on number of individuals
-  perch_cores <- ifelse(length(perch_lake_cow_tel) > 15, 3, 3)
+  perch_cores <- ifelse(length(perch_cow_paradise_tel) > 15, 6, 3)
   
   perch_results <- fit_ctmm_species_parallel(
-    perch_lake_cow_tel,
+    perch_cow_paradise_tel,
     "perch",
     lake_name = "cow_paradise",
-    max_cores = perch_cores
+    max_cores = perch_cores,
+    ic = "AICc"
   )
   
-  lake_cow_paradise_perch_ctmm_fits <- perch_results$fits
+  cow_paradise_perch_best_models <- perch_results$best_models
+  cow_paradise_perch_selections <- perch_results$selection_results
   
+  # Verify fits -----------------------------------------------------------
+  # To reload if needed:
+  # cow_paradise_perch_best_models <- readRDS(paste0(save_ctmm_path, "cow_paradise_perch_fits/cow_paradise_perch_best_models.rds"))
+  
+  verify_fits(perch_cow_paradise_tel, cow_paradise_perch_best_models, "Perch")
 } else {
   message("\n*** No perch individuals found in cow_paradise dataset ***")
-  lake_cow_paradise_perch_ctmm_fits <- list()
+  cow_paradise_perch_best_models <- list()
 }
 
 #==============================================================================
@@ -525,25 +603,28 @@ if (length(perch_lake_cow_tel) > 0) {
 #==============================================================================
 
 # Option to reload if needed ------------------------------------------------
-roach_lake_cow_tel <- readRDS(paste0(save_telem_path, "cow_paradise/roach_lake_cow_paradise_tel_thinned.rds"))
+roach_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/roach_cow_paradise_tel_thinned.rds"))
 
-if (length(roach_lake_cow_tel) > 0) {
+if (length(roach_cow_paradise_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
-  # Adjust max_cores based on number of individuals
-  roach_cores <- ifelse(length(roach_lake_cow_tel) > 15, 6, 3)
+  roach_cores <- ifelse(length(roach_cow_paradise_tel) > 15, 6, 3)
   
   roach_results <- fit_ctmm_species_parallel(
-    roach_lake_cow_tel,
+    roach_cow_paradise_tel,
     "roach",
     lake_name = "cow_paradise",
-    max_cores = roach_cores
+    max_cores = roach_cores,
+    ic = "AICc"
   )
   
-  lake_cow_paradise_roach_ctmm_fits <- roach_results$fits
+  cow_paradise_roach_best_models <- roach_results$best_models
+  cow_paradise_roach_selections <- roach_results$selection_results
   
+  # Verify fits -----------------------------------------------------------
+  verify_fits(roach_cow_paradise_tel, cow_paradise_roach_best_models, "Roach")
 } else {
   message("\n*** No roach individuals found in cow_paradise dataset ***")
-  lake_cow_paradise_roach_ctmm_fits <- list()
+  cow_paradise_roach_best_models <- list()
 }
 
 #==============================================================================
@@ -551,37 +632,44 @@ if (length(roach_lake_cow_tel) > 0) {
 #==============================================================================
 
 message("\n", strrep("=", 80))
-message("=== ALL CTMM MODELS COMPLETED - LAKE cow_paradise ===")
+message("=== ALL CTMM MODEL SELECTIONS COMPLETED - LAKE cow_paradise ===")
 message(strrep("=", 80))
 
-message("\nModels fitted:")
-message("  Pike: ", length(lake_cow_paradise_pike_ctmm_fits), " individuals")
-message("  Perch: ", length(lake_cow_paradise_perch_ctmm_fits), " individuals")
-message("  Roach: ", length(lake_cow_paradise_roach_ctmm_fits), " individuals")
-message("  Total: ", length(lake_cow_paradise_pike_ctmm_fits) + 
-          length(lake_cow_paradise_perch_ctmm_fits) + 
-          length(lake_cow_paradise_roach_ctmm_fits), " individuals")
+message("\nBest models selected:")
+message("  Pike: ", length(cow_paradise_pike_best_models), " individuals")
+message("  Perch: ", length(cow_paradise_perch_best_models), " individuals")
+message("  Roach: ", length(cow_paradise_roach_best_models), " individuals")
+message("  Total: ", length(cow_paradise_pike_best_models) + 
+          length(cow_paradise_perch_best_models) + 
+          length(cow_paradise_roach_best_models), " individuals")
 
-if (exists("pike_results") && length(pike_results$fits) > 0) {
+if (exists("pike_results") && length(pike_results$best_models) > 0) {
   message("\nTotal processing times:")
   message("  Pike: ", sprintf("%.1f", pike_results$diagnostics$total_time), " minutes")
+  message("  Pike model distribution:")
+  print(pike_results$diagnostics$model_counts)
 }
-if (exists("perch_results") && length(perch_results$fits) > 0) {
+if (exists("perch_results") && length(perch_results$best_models) > 0) {
   message("  Perch: ", sprintf("%.1f", perch_results$diagnostics$total_time), " minutes")
+  message("  Perch model distribution:")
+  print(perch_results$diagnostics$model_counts)
 }
-if (exists("roach_results") && length(roach_results$fits) > 0) {
+if (exists("roach_results") && length(roach_results$best_models) > 0) {
   message("  Roach: ", sprintf("%.1f", roach_results$diagnostics$total_time), " minutes")
+  message("  Roach model distribution:")
+  print(roach_results$diagnostics$model_counts)
 }
 
 message("\nOutput locations:")
-message("  Individual fits: ", save_ctmm_path, "lake_cow_paradise_[species]_fits/")
-message("  Combined lists: ", save_ctmm_path, "lake_cow_paradise_[species]_fits/lake_cow_paradise_[species]_ctmm_fits.rds")
-message("  Telemetry objects: ", save_telem_path, "cow_paradise/")
+message("  Individual selections: ", save_ctmm_path, "cow_paradise_[species]_fits/[ID]_ctmm_selection.rds")
+message("  Individual best models: ", save_ctmm_path, "cow_paradise_[species]_fits/[ID]_ctmm_best_fit.rds")
+message("  Combined best models: ", save_ctmm_path, "cow_paradise_[species]_fits/cow_paradise_[species]_best_models.rds")
+message("  All selections: ", save_ctmm_path, "cow_paradise_[species]_fits/cow_paradise_[species]_all_selections.rds")
 
-message("\nTo reload fitted models:")
-message("  pike_fits <- readRDS('", save_ctmm_path, "lake_cow_paradise_pike_fits/lake_cow_paradise_pike_ctmm_fits.rds')")
-message("  perch_fits <- readRDS('", save_ctmm_path, "lake_cow_paradise_perch_fits/lake_cow_paradise_perch_ctmm_fits.rds')")
-message("  roach_fits <- readRDS('", save_ctmm_path, "lake_cow_paradise_roach_fits/lake_cow_paradise_roach_ctmm_fits.rds')")
+message("\nTo reload best models:")
+message("  pike_models <- readRDS('", save_ctmm_path, "cow_paradise_pike_fits/cow_paradise_pike_best_models.rds')")
+message("  perch_models <- readRDS('", save_ctmm_path, "cow_paradise_perch_fits/cow_paradise_perch_best_models.rds')")
+message("  roach_models <- readRDS('", save_ctmm_path, "cow_paradise_roach_fits/cow_paradise_roach_best_models.rds')")
 
 message("\n", strrep("=", 80))
 
@@ -589,14 +677,18 @@ message("\n", strrep("=", 80))
 # NOTES ON USAGE
 #==============================================================================
 
+# The updated workflow now:
+# 1. Uses ctmm.select to compare multiple candidate models per individual
+# 2. Saves both the full selection results and the best model for each individual
+# 3. Returns a list of best ctmm objects that can be used directly for downstream analyses
+# 4. Provides model selection summaries showing which models were most commonly selected
+#
+# Access the results:
+# - pike_results$best_models: List of best ctmm objects for each pike
+# - pike_results$selection_results: Full ctmm.select output for each pike (all candidate models)
+# - pike_results$diagnostics$model_counts: Summary of selected model types
+#
 # If your PC gets too loud or hot during processing:
 # 1. Reduce max_cores to 2-3 for all species
 # 2. Or use the sequential version:
-#    lake_cow_paradise_pike_ctmm_fits <- fit_ctmm_species_sequential(pike_lake_cow_paradise_tel, "pike", "cow_paradise")
-#
-# To adjust core usage dynamically:
-# - max_cores = NULL will use ~65% of available cores
-# - max_cores = 3 is conservative and quiet
-# - max_cores = 6 is good for larger groups on modern PCs
-#
-# The parallel version will save significant time on larger groups!
+#    pike_results <- fit_ctmm_species_sequential(pike_cow_paradise_tel, "pike", "cow_paradise", ic = "AICc")

@@ -35,15 +35,15 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 
 # Define file paths ---------------------------------------------------------
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
-save_ctmm_path <- "./data/ctmm_fits/"
-save_telem_path <- "./data/telem_obj/"
-lake_polygon_path <- "./data/lake_coords/"
+ctmm_path <- "./data/ctmm_fits/"
+telem_path <- "./data/telem_obj/muddyfoot/"
+polygon_path <- "./data/lake_coords/polygons/"
 plot_output_path <- "./daily_trajectory_plots/muddyfoot/"
 
 # Import data ---------------------------------------------------------------
 muddyfoot_sub <- readRDS(paste0(filtered_data_path, '01_muddyfoot_sub.rds'))
 muddyfoot_sub_dt <- as.data.table(muddyfoot_sub)
-muddyfoot_polygon <- st_read(paste0(lake_polygon_path, "lake_muddyfoot_polygon.gpkg"))
+muddyfoot_polygon <- st_read(paste0(polygon_path, "muddyfoot_polygon.gpkg"))
 
 message("Imported ", nrow(muddyfoot_sub_dt), " detections for ", 
         n_distinct(muddyfoot_sub_dt$individual_ID), " individuals")
@@ -51,8 +51,6 @@ message("Imported ", nrow(muddyfoot_sub_dt), " detections for ",
 #==============================================================================
 # EXTRACT TRUE LAKE BOUNDARY COORDINATES
 #==============================================================================
-
-message("\n=== Extracting Lake Boundary Coordinates ===")
 
 # Get coordinates from the polygon
 coords <- st_coordinates(muddyfoot_polygon)
@@ -85,7 +83,7 @@ message("Centroid: Lon ", round(centroid_coords[1], 6),
 
 # Save boundary coordinates as CSV
 write.csv(lake_boundary_coords, 
-          paste0(lake_polygon_path, "muddyfoot_boundary_coordinates.csv"), 
+          paste0(polygon_path, "muddyfoot_boundary_coordinates.csv"), 
           row.names = FALSE)
 
 # Create summary object for use in other scripts
@@ -100,9 +98,8 @@ muddyfoot_lake_data <- list(
 
 # Save as RDS for easy loading in other scripts
 saveRDS(muddyfoot_lake_data, 
-        paste0(lake_polygon_path, "muddyfoot_lake_data.rds"))
+        paste0(polygon_path, "muddyfoot_coord_data.rds"))
 
-message("Lake boundary data saved")
 
 #==============================================================================
 # 1. ESTIMATE LOCATION ERROR FROM REFERENCE TAG
@@ -111,7 +108,7 @@ message("Lake boundary data saved")
 # Extract reference tag detections ------------------------------------------
 ref <- muddyfoot_sub_dt[individual_ID == "FReference"]
 message("\n=== Reference Tag Analysis ===")
-message("Reference tag detections: ", nrow(ref))
+message("Reference tag detections: ", nrow(ref)) #22467
 
 # Known fixed coordinates of reference tag ---------------------------------
 # Reference tag location: 63°46'16.25730"N, 20°02'54.19700"E
@@ -142,6 +139,7 @@ print(summary(ref$error_dist_m))
 sigma_error_med <- median(ref$error_dist_m, na.rm = TRUE)
 message("Median error: ", round(sigma_error_med, 4), " m")
 #Median error: 0.5109 m
+#Note that is very close to the UERE estimate
 
 #==============================================================================
 # 2. ANALYZE MOVEMENT SCALE VS TIME LAG
@@ -220,19 +218,18 @@ muddyfoot_movebank <- with(
     "location.lat" = Lat,
     "GPS.HDOP" = HPE,
     "individual-local-identifier" = individual_ID,
-    "Species" = Species,
-    "Weight" = Weight,
-    "Total_length" = Total_length,
-    "Std_length" = Std_length,
-    "Treatment" = Treatment,
-    "Date" = date_cest,
-    "Exp_Stage" = Stage,
-    "Time_Of_Day" = time_of_day,
+    "species" = Species,
+    "weight" = Weight,
+    "total_length" = Total_length,
+    "std_length" = Std_length,
+    "treatment" = Treatment,
+    "date" = date_cest,
+    "exp_stage" = Stage,
+    "time_of_day" = time_of_day,
     "found_alive" = found_alive,
-    "known_predated" = Known_predated
+    "known_predated" = known_predated
   )
 )
-
 
 # Convert to telemetry object -----------------------------------------------
 muddyfoot_tels <- as.telemetry(
@@ -241,8 +238,8 @@ muddyfoot_tels <- as.telemetry(
   timeformat = "%Y-%m-%d %H:%M:%S",
   projection = NULL,
   datum = "WGS84",
-  keep = c("Species", "Weight", "Total_length", "Std_length", "Treatment",
-           "Date", "Exp_Stage", "Time_Of_Day")
+  keep = c("species", "weight", "total_length", "std_length", "treatment",
+           "date", "exp_stage", "time_of_day", "found_alive", "known_predated")
 )
 
 # Center projection on geometric median -------------------------------------
@@ -254,7 +251,6 @@ projection(muddyfoot_tels) <- ctmm::median(muddyfoot_tels)
 
 # Fit error parameters using reference tag ----------------------------------
 muddyfoot_UERE <- uere.fit(muddyfoot_tels$FReference)
-message("\n=== UERE Model Summary ===")
 print(summary(muddyfoot_UERE))
 # low       est      high
 # all 0.5133307 0.5167092 0.5200873
@@ -269,7 +265,7 @@ muddyfoot_tels <- muddyfoot_tels[1:n_individuals]
 message("Removed reference tag. Remaining individuals: ", length(muddyfoot_tels))
 
 # Save UERE model -----------------------------------------------------------
-saveRDS(muddyfoot_UERE, paste0(save_telem_path, "muddyfoot/muddyfoot_UERE.rds"))
+saveRDS(muddyfoot_UERE, paste0(telem_path, "muddyfoot_UERE.rds"))
 
 #==============================================================================
 # 5. REMOVE SPEED-BASED OUTLIERS BY SPECIES
@@ -287,19 +283,19 @@ speed_thresholds <- list(
 # Organize telemetry objects by species ------------------------------------
 # First, verify species distribution and sort by individual ID
 species_order <- muddyfoot_movebank %>%
-  select(Species, individual.local.identifier) %>%
+  select(species, individual.local.identifier) %>%
   distinct() %>%
   arrange(individual.local.identifier)
 
 message("\n=== Species Distribution (Before Filtering) ===")
-print(table(species_order$Species, useNA = "ifany"))
+print(table(species_order$species, useNA = "ifany"))
 
 # Filter out reference tag and any individuals with NA species
 species_order_filtered <- species_order %>%
-  filter(!is.na(Species))
+  filter(!is.na(species))
 
 message("\n=== Species Distribution (After Filtering) ===")
-print(table(species_order_filtered$Species))
+print(table(species_order_filtered$species))
 
 # Add index column to match telemetry list order
 species_order_filtered$telem_index <- 1:nrow(species_order_filtered)
@@ -309,9 +305,9 @@ message("\n=== Individual ID to Species Mapping (Filtered) ===")
 print(species_order_filtered)
 
 # Automatically extract indices for each species
-pike_indices <- species_order_filtered$telem_index[species_order_filtered$Species == "Northern Pike"]
-perch_indices <- species_order_filtered$telem_index[species_order_filtered$Species == "Perch"]
-roach_indices <- species_order_filtered$telem_index[species_order_filtered$Species == "Roach"]
+pike_indices <- species_order_filtered$telem_index[species_order_filtered$species == "Northern Pike"]
+perch_indices <- species_order_filtered$telem_index[species_order_filtered$species == "Perch"]
+roach_indices <- species_order_filtered$telem_index[species_order_filtered$species == "Roach"]
 
 # Extract telemetry objects by species
 pike_muddyfoot_tel <- muddyfoot_tels[pike_indices]
@@ -360,17 +356,17 @@ remove_speed_outliers <- function(telem_list, species_name, max_speed) {
 pike_muddyfoot_tel <- remove_speed_outliers(
   pike_muddyfoot_tel, "Pike", speed_thresholds$Pike
 ) #outliers detected: 122566
-saveRDS(pike_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/pike_muddyfoot_tel_unthinned.rds"))
+saveRDS(pike_muddyfoot_tel, paste0(telem_path, "pike_muddyfoot_tel_unthinned.rds"))
 
 perch_muddyfoot_tel <- remove_speed_outliers(
   perch_muddyfoot_tel, "Perch", speed_thresholds$Perch
 ) #outliers detected: 154699
-saveRDS(perch_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/perch_muddyfoot_tel_unthinned.rds"))
+saveRDS(perch_muddyfoot_tel, paste0(telem_path, "perch_muddyfoot_tel_unthinned.rds"))
 
 roach_muddyfoot_tel <- remove_speed_outliers(
   roach_muddyfoot_tel, "Roach", speed_thresholds$Roach
 ) #outliers detected: 339565
-saveRDS(roach_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/roach_muddyfoot_tel_unthinned.rds"))
+saveRDS(roach_muddyfoot_tel, paste0(telem_path, "roach_muddyfoot_tel_unthinned.rds"))
 
 #==============================================================================
 # 6. COMBINE FILTERED DATA FROM ALL SPECIES
@@ -479,7 +475,7 @@ muddyfoot_thin_data[, dt_mins := as.numeric(
 # Store previous timestamp and date (start of gap)
 muddyfoot_thin_data[, `:=`(
   prev_time = shift(timestamp),
-  prev_date = shift(Date)
+  prev_date = shift(date)
 ), by = individual_ID]
 
 # Find maximum gap for each individual --------------------------------------
@@ -598,6 +594,10 @@ coords_data <- st_coordinates(muddyfoot_thin_data$geometry)
 muddyfoot_thin_data$Long <- coords_data[, 1]
 muddyfoot_thin_data$Lat <- coords_data[, 2]
 
+#Remove unneeded columns
+muddyfoot_thin_data <- muddyfoot_thin_data %>% 
+  dplyr::select(-Species, -dt_mins, -prev_time, -prev_date)
+
 #==============================================================================
 # 9. VISUALIZE DAILY MOVEMENT TRAJECTORIES
 #==============================================================================
@@ -611,7 +611,7 @@ plot_daily_traj_individual <- function(dat, lake_poly) {
     geom_sf(data = lake_poly, fill = "lightblue", color = "black", alpha = 0.3) +
     geom_path(
       data = dat,
-      aes(x = Long, y = Lat, group = Date),
+      aes(x = Long, y = Lat, group = date),
       linewidth = 0.3
     ) +
     geom_point(
@@ -619,7 +619,7 @@ plot_daily_traj_individual <- function(dat, lake_poly) {
       aes(x = Long, y = Lat),
       size = 0.4
     ) +
-    facet_wrap(~ Date) +
+    facet_wrap(~ date) +
     coord_sf() +
     theme_minimal() +
     labs(
@@ -653,14 +653,6 @@ walk(names(traj_plots), function(id) {
   message("Saved: ", filename)
 })
 
-#==============================================================================
-# 10. FILTER MORTALITY EVENTS
-#==============================================================================
-
-# Note: Update individual ID if there are known early mortalities in Muddyfoot
-# Remove individual that died on first day  -----------------
-muddyfoot_thin_data <- muddyfoot_thin_data %>%
-   filter(individual_ID != "F59707")  #4950489
 
 # Save final filtered dataset -----------------------------------------------
 saveRDS(muddyfoot_thin_data, paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
