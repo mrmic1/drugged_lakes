@@ -6,7 +6,7 @@
 #
 # Input files:
 #   - ./data/raw_tracking_data/muddyfoot_A/results/animal/all.csv
-#   - ./data/fish_size/biometric_data.csv
+#   - ./data/fish_biometrics/biometric_data.csv
 #   - ./data/raw_tracking_data/sunset_sunrise_data.csv
 #   - ./data/lake_coords/lake_muddyfoot_polygon.gpkg
 #
@@ -29,7 +29,7 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 # Define file paths ---------------------------------------------------------
 raw_tracking_data_path <- "./data/raw_tracking_data/"
 save_filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
-size_data_path <- "./data/fish_size/"
+biometrics_data_path <- "./data/fish_biometrics/"
 
 cat("\014")  # Clear console
 
@@ -65,7 +65,7 @@ message("Non-aligned dates (UTC vs CEST): ",
 #==============================================================================
 
 # Import fish biometric data ------------------------------------------------
-biometrics <- fread(paste0(size_data_path, "biometric_data.csv"))
+biometrics <- fread(paste0(biometrics_data_path, "biometric_data.csv"))
 
 # Extract individual ID from tag number and prepare for merging
 biometrics <- biometrics %>%
@@ -206,7 +206,7 @@ print(table(muddyfoot_sub$time_of_day))
 #==============================================================================
 
 # Import post-experiment biometric data -------------------------------------
-post_biometrics <- fread(paste0(size_data_path, "biometric_post_exp_data.csv"))
+post_biometrics <- fread(paste0(biometrics_data_path, "biometric_post_exp_data.csv"))
 
 post_size_cols <- post_biometrics %>%
   filter(Lake == 'Muddyfoot') %>%
@@ -243,3 +243,54 @@ message("Number of individuals: ", n_distinct(muddyfoot_sub$individual_ID)) #66 
 message("Date range: ", min(muddyfoot_sub$date_cest), " to ",
         max(muddyfoot_sub$date_cest)) #Date range: 2022-09-25 to 2022-10-30 
 message("Saved to: ", output_file)
+
+
+#==============================================================================
+#9. EXTRACT TRUE LAKE BOUNDARY COORDINATES
+#==============================================================================
+
+# Get coordinates from the polygon
+coords <- st_coordinates(muddyfoot_polygon)
+
+# Create a clean data frame with just longitude and latitude
+lake_boundary_coords <- data.frame(
+  longitude = coords[, "X"],
+  latitude = coords[, "Y"]
+)
+
+# Remove duplicate closing point if it exists
+if(nrow(lake_boundary_coords) > 1) {
+  if(all(lake_boundary_coords[1, ] == lake_boundary_coords[nrow(lake_boundary_coords), ])) {
+    lake_boundary_coords <- lake_boundary_coords[-nrow(lake_boundary_coords), ]
+  }
+}
+
+message("Number of boundary points: ", nrow(lake_boundary_coords))
+
+# Calculate lake properties
+area_m2 <- st_area(muddyfoot_polygon)
+area_hectares <- as.numeric(area_m2) / 10000
+centroid <- st_centroid(muddyfoot_polygon)
+centroid_coords <- st_coordinates(centroid)
+bbox <- st_bbox(muddyfoot_polygon)
+
+message("Lake area: ", round(area_hectares, 4), " hectares")
+message("Centroid: Lon ", round(centroid_coords[1], 6), 
+        ", Lat ", round(centroid_coords[2], 6))
+
+# Save boundary coordinates as CSV
+write.csv(lake_boundary_coords, "./data/lake_params/muddyfoot_boundary_coordinates.csv", 
+          row.names = FALSE)
+
+# Create summary object for use in other scripts
+muddyfoot_lake_data <- list(
+  boundary_coords = lake_boundary_coords,
+  centroid = c(longitude = centroid_coords[1], latitude = centroid_coords[2]),
+  area_hectares = as.numeric(area_hectares),
+  area_m2 = as.numeric(area_m2),
+  bbox = as.list(bbox),
+  num_points = nrow(lake_boundary_coords)
+)
+
+# Save as RDS for easy loading in other scripts
+saveRDS(muddyfoot_lake_data, "./data/lake_params/muddyfoot_coord_data.rds")
