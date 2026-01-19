@@ -1,0 +1,7 @@
+"species","individual","n_points","timespan_days","has_asymptote","range_estimate_m","tau_position","tau_velocity","irregularities_detected"
+"Northern_Pike","F59880",73586,35.7,TRUE,99,NA,NA,"Large gaps: 5153"
+"Northern_Pike","F59881",78705,35.7,TRUE,75,NA,NA,"Large gaps: 5588"
+"Northern_Pike","F59882",63611,35.7,FALSE,NA,NA,NA,"Large gaps: 5133"
+"Northern_Pike","F59883",79283,35.7,TRUE,99,NA,NA,"Large gaps: 5412"
+"Northern_Pike","F59884",68560,35.7,TRUE,99,NA,NA,"Large gaps: 5906"
+"Northern_Pike","F59885",95461,35.7,TRUE,151,NA,NA,"Large gaps: 7550"

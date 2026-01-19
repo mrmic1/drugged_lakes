@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<kml xmlns="http://earth.google.com/kml/2.2">
+<Document>
+<name>Lake cow paradise</name>
+<Style id="controlPoint">
+<IconStyle>
+<scale>0.5</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/pal4/icon49.png</href>
+</Icon>
+</IconStyle>
+<LabelStyle><color>ff0000ff</color>
+<colorMode>normal</colorMode>
+<scale>0.6</scale>
+</LabelStyle>
+<BalloonStyle>
+<text><![CDATA[
+Point: <b><font color="#ff0000">$[name]</font></b>
+<br/>
+Code: $[description]
+]]></text>
+</BalloonStyle>
+</Style>
+<Style id="standardPoint">
+<IconStyle>
+<scale>0.5</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/pal4/icon57.png</href>
+</Icon>
+</IconStyle>
+<LabelStyle><color>ff0000ff</color>
+<colorMode>normal</colorMode>
+<scale>0.6</scale>
+</LabelStyle>
+<BalloonStyle>
+<text><![CDATA[
+Point: <b><font color="#ff0000">$[name]</font></b>
+<br/>
+Code: $[description]
+]]></text>
+</BalloonStyle>
+</Style>
+<Placemark>
+<name>461366</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063253564469,63.771992226476,63.308780263031</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat1</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063278405996,63.771974758398,64.282101752089</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat2</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063390696134,63.772066028757,63.994384728225</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461364</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.06336530679,63.772145589024,62.978999963814</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat3</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063626597219,63.772154411489,63.688162913398</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461368</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063768011313,63.772242633228,63.136710083896</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Habitat4</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063869432674,63.772190161268,63.527922288367</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461858</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.064138791545,63.772198205315,63.250965682642</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461860</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.063622080165,63.772051252726,63.221185941102</coordinates>
+</Point>
+</Placemark>
+</Document>
+</kml>
+

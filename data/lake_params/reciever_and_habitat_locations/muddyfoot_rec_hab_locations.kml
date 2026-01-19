@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<kml xmlns="http://earth.google.com/kml/2.2">
+<Document>
+<name>lake muddyfoot</name>
+<Style id="controlPoint">
+<IconStyle>
+<scale>0.5</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/pal4/icon49.png</href>
+</Icon>
+</IconStyle>
+<LabelStyle><color>ff0000ff</color>
+<colorMode>normal</colorMode>
+<scale>0.6</scale>
+</LabelStyle>
+<BalloonStyle>
+<text><![CDATA[
+Point: <b><font color="#ff0000">$[name]</font></b>
+<br/>
+Code: $[description]
+]]></text>
+</BalloonStyle>
+</Style>
+<Style id="standardPoint">
+<IconStyle>
+<scale>0.5</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/pal4/icon57.png</href>
+</Icon>
+</IconStyle>
+<LabelStyle><color>ff0000ff</color>
+<colorMode>normal</colorMode>
+<scale>0.6</scale>
+</LabelStyle>
+<BalloonStyle>
+<text><![CDATA[
+Point: <b><font color="#ff0000">$[name]</font></b>
+<br/>
+Code: $[description]
+]]></text>
+</BalloonStyle>
+</Style>
+<Placemark>
+<name>461578</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.048076423428,63.771025424765,86.077436989026</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461575</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.048155404758,63.771121651349,85.899963016474</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461573</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.048327083222,63.771069393877,85.885259231405</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461369</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.04863188567,63.771149185374,85.582957319768</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>461862</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.048445402846,63.771179929896,85.649704910667</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>habitat1</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.048380542233,63.771119644264,86.36139203407</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>habitat2</name>
+<description><font color="#0000ff"></font><font color="#000000"><dl><dt>Grid:</dt><dd>mN</dd><dd>mE</dd><dd>mEl</dd></dl></font></description>
+<styleUrl>#standardPoint</styleUrl>
+<Point>
+<coordinates>20.048189067785,63.771092266043,86.486798352414</coordinates>
+</Point>
+</Placemark>
+</Document>
+</kml>
+
