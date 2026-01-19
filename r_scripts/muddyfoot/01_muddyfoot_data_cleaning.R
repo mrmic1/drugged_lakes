@@ -221,11 +221,21 @@ muddyfoot_sub <- muddyfoot_sub %>%
 
 
 #==============================================================================
-# 7. SAVE CLEANED DATASET
+# 7. FILTER MORTALITY EVENTS
+#==============================================================================
+
+# Note: Update individual ID if there are known early mortalities in Muddyfoot
+# Remove individual that died on first day  -----------------
+muddyfoot_sub <- muddyfoot_sub %>%
+  filter(individual_ID != "F59707")
+)
+
+#==============================================================================
+# 8. SAVE CLEANED DATASET
 #==============================================================================
 
 # Save as RDS file ----------------------------------------------------------
-output_file <- paste0(save_filtered_data_path, "01_muddyfoot_sub.rds")
+output_file <- paste0(filtered_data_path, "01_muddyfoot_sub.rds")
 saveRDS(muddyfoot_sub, file = output_file)
 
 message("Final dataset: ", nrow(muddyfoot_sub), " detections") #11098640 detections
