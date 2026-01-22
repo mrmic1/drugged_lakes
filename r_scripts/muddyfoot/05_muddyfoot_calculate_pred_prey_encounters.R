@@ -45,12 +45,12 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 ## 1.2 Define Directory Paths ----
 paths <- list(
   filtered_data = "./data/tracks_filtered/muddyfoot/",
-  lake_polygon  = "./data/lake_coords/",
+  lake_polygon  = "./data/lake_params/polygons/",
   ctmm          = "./data/ctmm_fits/",
   telem         = "./data/telem_obj/muddyfoot/",
   encounters    = "./data/encounters/muddyfoot/",
   proximity     = "./data/proximity/muddyfoot/",
-  size          = "./data/fish_size/",
+  size          = "./data/fish_biometrics/",
   tables        = "./tables/muddyfoot/",
   figures       = "./figures/muddyfoot/" 
 )
@@ -65,16 +65,16 @@ if (!dir.exists(paths$proximity)) {
 params <- list(
   # >>> CHANGE: Tiered distance thresholds
   strike_distance = 0.45,              # Pike max strike distance (m)
-  high_confidence_threshold = 1.5,     # ≤1.5m: High confidence (within GPS error ~1.4m)
-  probable_threshold = 3.0,            # ≤3m: Probable encounter (with confirmation)
-  possible_threshold = 5.0,            # ≤5m: Possible encounter (shared space)
+  high_confidence_threshold = 1.45,     # ≤1.5m: High confidence (within GPS error ~1.4m)
+  probable_threshold = 2.9,            # ≤2.9m: Probable encounter (with confirmation)
+  possible_threshold = 4.8,            # ≤4.8m: Possible encounter (shared space)
   
   # Encounter count thresholds (kept for backward compatibility)
   encounter_threshold_low = 20,        # Minimum encounters for suspected predation
-  encounter_threshold_high = 100,      # High encounter count threshold
+  encounter_threshold_high = 50,      # High encounter count threshold
   
   # >>> CHANGE: Updated to use high-confidence threshold
-  min_distance_threshold = 1.5,        # Minimum distance for high-confidence encounter
+  min_distance_threshold = 1.45,        # Minimum distance for high-confidence encounter
   consecutive_days_threshold = 2,      # Consecutive days for likely predation
   proximity_encounter_threshold = 100  # Total encounters threshold for proximity analysis
 )
@@ -115,9 +115,9 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
                                          prey_fits, pred_fits,
                                          prey_species = "Prey",
                                          strike_dist = 0.45,  # Kept for compatibility
-                                         high_conf_threshold = 1.5,
-                                         probable_threshold = 3.0,
-                                         possible_threshold = 5.0,
+                                         high_conf_threshold = 1.45,
+                                         probable_threshold = 2.9,
+                                         possible_threshold = 4.8,
                                          parallel = TRUE,
                                          n_cores = NULL) {
   
@@ -237,9 +237,9 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
 #' @return Daily encounter summary with tiered counts
 summarize_daily_encounters <- function(distances_df) {
   daily_summary <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, Date) %>%
+    group_by(Prey_ID, Pred_ID, date) %>%
     summarise(
-      Species = first(Species),
+      species = first(species),
       
       # >>> CHANGE: Tiered encounter counts
       encounter_count_high_conf = sum(encounter_high_conf, na.rm = TRUE),
@@ -269,7 +269,7 @@ summarize_daily_encounters <- function(distances_df) {
 #' @return Summary with tiered total encounters
 calculate_total_encounters <- function(distances_df) {
   total_encounters <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, Species) %>%
+    group_by(Prey_ID, Pred_ID, species) %>%
     summarise(
       # >>> CHANGE: Tiered total encounters
       total_encounters_high_conf = sum(encounter_high_conf, na.rm = TRUE),
@@ -279,12 +279,12 @@ calculate_total_encounters <- function(distances_df) {
       
       min_distance = min(est, na.rm = TRUE),
       mean_distance = mean(est, na.rm = TRUE),
-      n_days = n_distinct(Date),
+      n_days = n_distinct(date),
       
       # >>> CHANGE: Count days with different encounter types
-      n_days_high_conf = n_distinct(Date[encounter_high_conf == 1]),
-      n_days_probable = n_distinct(Date[encounter_probable == 1]),
-      n_days_possible = n_distinct(Date[encounter_possible == 1]),
+      n_days_high_conf = n_distinct(date[encounter_high_conf == 1]),
+      n_days_probable = n_distinct(date[encounter_probable == 1]),
+      n_days_possible = n_distinct(date[encounter_possible == 1]),
       
       .groups = "drop"
     ) %>%
@@ -376,14 +376,14 @@ calc_max_consecutive <- function(dates) {
 #' 
 #' @return Data frame with suspected predation events using tiered classification
 identify_predation_events <- function(distances_df,
-                                      enc_threshold_low = 10,  # >>> CHANGE: Lower threshold for high-confidence
+                                      enc_threshold_low = 20,  # >>> CHANGE: Lower threshold for high-confidence
                                       enc_threshold_high = 50,  # >>> CHANGE: Adjusted for high-confidence
-                                      min_dist_threshold = 1.5,  # >>> CHANGE: High-confidence threshold
+                                      min_dist_threshold = 1.45,  # >>> CHANGE: High-confidence threshold
                                       consec_days_threshold = 2) {
   
   # >>> CHANGE: Daily summary with tiered encounters
   daily_encounters <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, Date) %>%
+    group_by(Prey_ID, Pred_ID, date) %>%
     summarise(
       # Tiered encounter counts
       encounter_count_high_conf = sum(encounter_high_conf, na.rm = TRUE),
@@ -420,25 +420,25 @@ identify_predation_events <- function(distances_df,
       
       # First occurrence dates
       first_date_high_conf = if(any(encounter_count_high_conf >= enc_threshold_low)) 
-        min(Date[encounter_count_high_conf >= enc_threshold_low]) else as.Date(NA),
+        min(date[encounter_count_high_conf >= enc_threshold_low]) else as.Date(NA),
       first_date_probable = if(any(encounter_count_probable_confirmed >= enc_threshold_low)) 
-        min(Date[encounter_count_probable_confirmed >= enc_threshold_low]) else as.Date(NA),
+        min(date[encounter_count_probable_confirmed >= enc_threshold_low]) else as.Date(NA),
       
       # Consecutive days patterns
       consecutive_days_high_conf = calc_max_consecutive(
-        Date[encounter_count_high_conf >= enc_threshold_low]
+        date[encounter_count_high_conf >= enc_threshold_low]
       ),
       consecutive_days_probable = calc_max_consecutive(
-        Date[encounter_count_probable_confirmed >= enc_threshold_low]
+        date[encounter_count_probable_confirmed >= enc_threshold_low]
       ),
       
       # >>> CHANGE: Store encounter dates by type
       encounter_dates_high_conf = paste(
-        format(Date[encounter_count_high_conf >= 10], "%d/%m/%Y"), 
+        format(date[encounter_count_high_conf >= 10], "%d/%m/%Y"), 
         collapse = ", "
       ),
       encounter_dates_probable = paste(
-        format(Date[encounter_count_probable_confirmed >= 10], "%d/%m/%Y"), 
+        format(date[encounter_count_probable_confirmed >= 10], "%d/%m/%Y"), 
         collapse = ", "
       ),
       
@@ -471,12 +471,12 @@ message(sprintf("Loaded telemetry: %d pike, %d perch, %d roach",
                 length(pike_tel), length(perch_tel), length(roach_tel)))
 
 ## 3.2 Load CTMM Fits ----
-pike_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_pike_fits/muddyfoot_pike_ctmm_fits.rds"))
-perch_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_perch_fits/muddyfoot_perch_ctmm_fits.rds"))
-roach_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_roach_fits/muddyfoot_roach_ctmm_fits.rds"))
+pike_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_pike_fits/muddyfoot_pike_best_models.rds"))
+perch_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_perch_fits/muddyfoot_perch_best_models.rds"))
+roach_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_roach_fits/muddyfoot_roach_best_models.rds"))
 
 ## 3.3 Load Metadata ----
-muddyfoot_filt_data <- readRDS(file.path(paths$filtered_data, "03_muddyfoot_sub.rds"))
+muddyfoot_filt_data <- readRDS(file.path(paths$filtered_data, "04_muddyfoot_sub.rds"))
 post_biometrics <- fread(file.path(paths$size, "biometric_post_exp_data.csv")) %>%
   mutate(individual_ID = paste0("F", sub(".*-", "", Tag_Number)))
 
