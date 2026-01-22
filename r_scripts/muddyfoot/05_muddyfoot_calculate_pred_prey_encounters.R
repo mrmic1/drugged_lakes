@@ -1,6 +1,6 @@
-# ===================================================================
-# Predator-Prey Interaction Analysis - Muddyfoot
-# ===================================================================
+# ==================================================================-
+# Predator-Prey Interaction Analysis - Muddyfoot ####
+# ==================================================================-
 # 
 # ANALYSIS OVERVIEW:
 # This script identifies potential predation events by analyzing movement 
@@ -18,11 +18,11 @@
 #   4. Non-independent movement detected by ctmm::proximity()
 #
 # Author: Marcus Michelangeli
-# ===================================================================
+# ==================================================================-
 
-# ===================================================================
-# 1. SETUP & CONFIGURATION
-# ===================================================================
+# ==================================================================-
+# 1. SETUP & CONFIGURATION ####
+# ==================================================================-
 
 ## 1.1 Load Required Libraries ----
 suppressPackageStartupMessages({
@@ -90,9 +90,9 @@ message(sprintf("  Possible: %.1f-%.1fm (shared space use)",
                 params$probable_threshold, params$possible_threshold))
 message("=====================================\n")
 
-# ===================================================================
-# 2. CUSTOM FUNCTIONS
-# ===================================================================
+# ==================================================================-
+# 2. CUSTOM FUNCTIONS ####
+# ==================================================================-
 
 #' Calculate Pairwise Distances Between Prey and Predator
 #' 
@@ -269,7 +269,7 @@ summarize_daily_encounters <- function(distances_df) {
 #' @return Summary with tiered total encounters
 calculate_total_encounters <- function(distances_df) {
   total_encounters <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, species) %>%
+    group_by(Prey_ID, Pred_ID, Species) %>%
     summarise(
       # >>> CHANGE: Tiered total encounters
       total_encounters_high_conf = sum(encounter_high_conf, na.rm = TRUE),
@@ -279,12 +279,12 @@ calculate_total_encounters <- function(distances_df) {
       
       min_distance = min(est, na.rm = TRUE),
       mean_distance = mean(est, na.rm = TRUE),
-      n_days = n_distinct(date),
+      n_days = n_distinct(Date),
       
       # >>> CHANGE: Count days with different encounter types
-      n_days_high_conf = n_distinct(date[encounter_high_conf == 1]),
-      n_days_probable = n_distinct(date[encounter_probable == 1]),
-      n_days_possible = n_distinct(date[encounter_possible == 1]),
+      n_days_high_conf = n_distinct(Date[encounter_high_conf == 1]),
+      n_days_probable = n_distinct(Date[encounter_probable == 1]),
+      n_days_possible = n_distinct(Date[encounter_possible == 1]),
       
       .groups = "drop"
     ) %>%
@@ -310,26 +310,39 @@ perform_proximity_analysis <- function(prey_tel, pred_tel,
   
   tryCatch({
     # Ensure matching projections
-    projection(prey_tel) <- projection(pred_tel)
-    projection(prey_fit) <- projection(pred_fit)
+    target_proj <- projection(pred_tel)
+    projection(prey_tel) <- target_proj
+    projection(pred_tel) <- target_proj
+    projection(prey_fit) <- target_proj
+    projection(pred_fit) <- target_proj
     
-    # Combine telemetry and fits
-    combined_tel <- c(prey_tel, pred_tel)
-    combined_fits <- c(prey_fit, pred_fit)
+    # >>> FIX: Create named lists exactly as shown in vignette
+    # Use the format: list(name1 = object1, name2 = object2)
+    combined_tel <- list(prey_tel, pred_tel)
+    names(combined_tel) <- c(prey_id, pred_id)
+    
+    combined_fits <- list(prey_fit, pred_fit)
+    names(combined_fits) <- c(prey_id, pred_id)
+    
+    # Verify the structure matches what proximity() expects
+    stopifnot(length(combined_tel) == 2)
+    stopifnot(length(combined_fits) == 2)
+    stopifnot(all(names(combined_tel) == names(combined_fits)))
     
     # Run proximity analysis
     message(sprintf("  Running proximity for %s - %s", prey_id, pred_id))
     proximity_result <- ctmm::proximity(combined_tel, combined_fits)
     
-    # Extract key statistics
+    # Extract statistics from the proximity result
+    # The vignette shows it returns a vector with 'low', 'est', 'high'
     proximity_stats <- list(
       prey_id = prey_id,
       pred_id = pred_id,
-      z_statistic = proximity_result$CI[1, "est"],  # Z-statistic
-      z_lower = proximity_result$CI[1, "low"],
-      z_upper = proximity_result$CI[1, "high"],
-      p_value = proximity_result$P,  # P-value for independence test
-      independent = proximity_result$P > 0.05,  # Movement is independent if p > 0.05
+      proximity_ratio_est = proximity_result["est"],
+      proximity_ratio_low = proximity_result["low"],
+      proximity_ratio_high = proximity_result["high"],
+      # Test for independence: if CI contains 1, movements are independent
+      independent = proximity_result["low"] < 1 & proximity_result["high"] > 1,
       proximity_object = proximity_result
     )
     
@@ -341,28 +354,14 @@ perform_proximity_analysis <- function(prey_tel, pred_tel,
     return(list(
       prey_id = prey_id,
       pred_id = pred_id,
-      z_statistic = NA,
-      z_lower = NA,
-      z_upper = NA,
-      p_value = NA,
+      proximity_ratio_est = NA,
+      proximity_ratio_low = NA,
+      proximity_ratio_high = NA,
       independent = NA,
       error = e$message
     ))
   })
 }
-
-
-#' Calculate Maximum Consecutive Days
-#' 
-#' @param dates Vector of dates
-#' @return Maximum number of consecutive days
-calc_max_consecutive <- function(dates) {
-  if (length(dates) == 0) return(0)
-  sorted_dates <- sort(dates)
-  consecutive <- rle(c(1, diff(sorted_dates) == 1))$lengths
-  return(max(consecutive, na.rm = TRUE))
-}
-
 
 #' Identify Suspected Predation Events with Tiered Approach
 #' 
@@ -458,9 +457,9 @@ identify_predation_events <- function(distances_df,
 }
 
 
-# ===================================================================
-# 3. DATA LOADING
-# ===================================================================
+# ==================================================================-
+# 3. DATA LOADING ####
+# ==================================================================-
 
 ## 3.1 Load Telemetry Objects ----
 pike_tel <- readRDS(file.path(paths$telem, 'pike_muddyfoot_tel_thinned.rds'))
@@ -475,6 +474,9 @@ pike_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_pike_fits/muddyfoot_pike_b
 perch_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_perch_fits/muddyfoot_perch_best_models.rds"))
 roach_fits <- readRDS(file.path(paths$ctmm, "muddyfoot_roach_fits/muddyfoot_roach_best_models.rds"))
 
+message(sprintf("Loaded ctmms: %d pike, %d perch, %d roach", 
+                length(pike_fits), length(perch_fits), length(roach_fits)))
+
 ## 3.3 Load Metadata ----
 muddyfoot_filt_data <- readRDS(file.path(paths$filtered_data, "04_muddyfoot_sub.rds"))
 post_biometrics <- fread(file.path(paths$size, "biometric_post_exp_data.csv")) %>%
@@ -487,9 +489,9 @@ post_biometric_cols <- post_biometrics %>%
   rename(found_alive = Found, found_predated = Known_predated)
 
 
-# ===================================================================
-# 4. DISTANCE CALCULATIONS
-# ===================================================================
+# ==================================================================-
+# 4. DISTANCE CALCULATIONS ####
+# ==================================================================-
 
 message("\n=== DISTANCE CALCULATIONS WITH TIERED THRESHOLDS ===")
 
@@ -558,9 +560,9 @@ encounter_summary <- combined_distances %>%
 print(encounter_summary)
 
 
-# ===================================================================
-# 5. IDENTIFY CANDIDATE PAIRS FOR PROXIMITY ANALYSIS
-# ===================================================================
+# ==================================================================-
+# 5. IDENTIFY CANDIDATE PAIRS FOR PROXIMITY ANALYSIS ####
+# ==================================================================-
 
 message("\n=== IDENTIFYING CANDIDATES FOR PROXIMITY ANALYSIS ===")
 
@@ -569,6 +571,9 @@ roach_total <- calculate_total_encounters(roach_pike_distances_df)
 perch_total <- calculate_total_encounters(perch_pike_distances_df)
 
 all_encounters <- bind_rows(roach_total, perch_total)
+#note that encounters legacy s the count of encounters 
+#using the old/original distance threshold of 0.45 meters (45 cm), 
+#which represents the pike's maximum strike distance.
 
 ## 5.2 Filter for High-Risk Pairs ----
 # >>> CHANGE: Use high-confidence encounters for proximity analysis selection
@@ -597,15 +602,15 @@ saveRDS(candidate_pairs,
         file.path(paths$proximity, "muddyfoot_proximity_candidate_pairs_tiered.rds"))
 
 
-# ===================================================================
-# 6. PROXIMITY ANALYSIS - TEST EXAMPLE
-# ===================================================================
+# ==================================================================-
+# 6. PROXIMITY ANALYSIS - TEST EXAMPLE ####
+# ==================================================================-
 
-message("\n=== TESTING PROXIMITY ANALYSIS (TOP 3 PAIRS) ===")
+message("\n=== TESTING PROXIMITY ANALYSIS (TOP PAIR) ===")
 
 ## 6.1 Select Test Cases ----
 test_pairs <- candidate_pairs %>%
-  slice_head(n = 3)
+  slice_head(n = 1)
 
 message("Test pairs:")
 print(test_pairs %>% select(Prey_ID, Pred_ID, Species, 
