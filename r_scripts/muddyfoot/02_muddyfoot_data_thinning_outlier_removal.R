@@ -37,7 +37,8 @@ Sys.setenv(TZ = 'Europe/Stockholm')
 filtered_data_path <- "./data/tracks_filtered/muddyfoot/"
 ctmm_path <- "./data/ctmm_fits/"
 telem_path <- "./data/telem_obj/muddyfoot/"
-polygon_path <- "./data/lake_coords/polygons/"
+polygon_path <- "./data/lake_params/polygons/"
+rec_loc_path <- "./data/lake_params/reciever_and_habitat_locations/"
 plot_output_path <- "./daily_trajectory_plots/muddyfoot/"
 
 # Import data ---------------------------------------------------------------
@@ -49,59 +50,6 @@ message("Imported ", nrow(muddyfoot_sub_dt), " detections for ",
         n_distinct(muddyfoot_sub_dt$individual_ID), " individuals")
 
 #==============================================================================
-# EXTRACT TRUE LAKE BOUNDARY COORDINATES
-#==============================================================================
-
-# Get coordinates from the polygon
-coords <- st_coordinates(muddyfoot_polygon)
-
-# Create a clean data frame with just longitude and latitude
-lake_boundary_coords <- data.frame(
-  longitude = coords[, "X"],
-  latitude = coords[, "Y"]
-)
-
-# Remove duplicate closing point if it exists
-if(nrow(lake_boundary_coords) > 1) {
-  if(all(lake_boundary_coords[1, ] == lake_boundary_coords[nrow(lake_boundary_coords), ])) {
-    lake_boundary_coords <- lake_boundary_coords[-nrow(lake_boundary_coords), ]
-  }
-}
-
-message("Number of boundary points: ", nrow(lake_boundary_coords))
-
-# Calculate lake properties
-area_m2 <- st_area(muddyfoot_polygon)
-area_hectares <- as.numeric(area_m2) / 10000
-centroid <- st_centroid(muddyfoot_polygon)
-centroid_coords <- st_coordinates(centroid)
-bbox <- st_bbox(muddyfoot_polygon)
-
-message("Lake area: ", round(area_hectares, 4), " hectares")
-message("Centroid: Lon ", round(centroid_coords[1], 6), 
-        ", Lat ", round(centroid_coords[2], 6))
-
-# Save boundary coordinates as CSV
-write.csv(lake_boundary_coords, 
-          paste0(polygon_path, "muddyfoot_boundary_coordinates.csv"), 
-          row.names = FALSE)
-
-# Create summary object for use in other scripts
-muddyfoot_lake_data <- list(
-  boundary_coords = lake_boundary_coords,
-  centroid = c(longitude = centroid_coords[1], latitude = centroid_coords[2]),
-  area_hectares = as.numeric(area_hectares),
-  area_m2 = as.numeric(area_m2),
-  bbox = as.list(bbox),
-  num_points = nrow(lake_boundary_coords)
-)
-
-# Save as RDS for easy loading in other scripts
-saveRDS(muddyfoot_lake_data, 
-        paste0(polygon_path, "muddyfoot_coord_data.rds"))
-
-
-#==============================================================================
 # 1. ESTIMATE LOCATION ERROR FROM REFERENCE TAG
 #==============================================================================
 
@@ -111,18 +59,49 @@ message("\n=== Reference Tag Analysis ===")
 message("Reference tag detections: ", nrow(ref)) #22467
 
 # Known fixed coordinates of reference tag ---------------------------------
-# Reference tag location: 63°46'16.25730"N, 20°02'54.19700"E
-# Convert DMS (Degrees Minutes Seconds) to decimal degrees
-convert_dms_to_decimal <- function(degrees, minutes, seconds) {
-  return(degrees + minutes/60 + seconds/3600)
+# Reference receiver number
+unique(ref$FullId)
+#"H170-1802-65066"
+
+# Get the coordinates for the location of the reference receiver
+rec_locs <- fread(paste0(rec_loc_path, "muddyfoot_rec_hab_locations.csv"))
+ref_coords <- rec_locs %>% filter(ID == 'ref')
+
+# Function to parse DMS string and convert to decimal degrees
+parse_dms_to_decimal <- function(dms_string) {
+  # Remove direction letters (N, S, E, W) and clean the string
+  dms_clean <- gsub("[NSEW]", "", dms_string)
+  
+  # Extract degrees, minutes, and seconds using regex
+  # Pattern matches: number followed by degree symbol (or �), then minutes with ', then seconds with "
+  pattern <- "([0-9]+)[°�]([0-9]+)'([0-9.]+)\""
+  matches <- regmatches(dms_clean, regexec(pattern, dms_clean))[[1]]
+  
+  if(length(matches) == 4) {
+    degrees <- as.numeric(matches[2])
+    minutes <- as.numeric(matches[3])
+    seconds <- as.numeric(matches[4])
+    
+    decimal <- degrees + minutes/60 + seconds/3600
+    
+    # Apply negative sign if South or West
+    if(grepl("[SW]", dms_string)) {
+      decimal <- -decimal
+    }
+    
+    return(decimal)
+  } else {
+    stop("Could not parse DMS string: ", dms_string)
+  }
 }
 
-true_lat <- convert_dms_to_decimal(63, 46, 16.25730)   # Latitude (N)
-true_long <- convert_dms_to_decimal(20, 2, 54.19700)   # Longitude (E)
+# Extract coordinates from ref_coords dataframe
+true_lat <- parse_dms_to_decimal(ref_coords$Latitude)
+true_long <- parse_dms_to_decimal(ref_coords$Longitude)
 
 message("Reference tag coordinates:")
-message("  Latitude: ", round(true_lat, 7), "°N (63°46'16.25730\"N)")
-message("  Longitude: ", round(true_long, 7), "°E (20°02'54.19700\"E)")
+message("  Latitude: ", round(true_lat, 7), "°N (", ref_coords$Latitude, ")")
+message("  Longitude: ", round(true_long, 7), "°E (", ref_coords$Longitude, ")")
 
 # Calculate distance between each detection and true position (m) -----------
 ref[, error_dist_m := distHaversine(
@@ -133,13 +112,10 @@ ref[, error_dist_m := distHaversine(
 # Summarize positional error ------------------------------------------------
 message("\n=== Reference Tag Location Error (meters) ===")
 print(summary(ref$error_dist_m))
-# #    Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
-# 0.001573 0.342687 0.510927 0.510023 0.652348 1.507545 
 
 sigma_error_med <- median(ref$error_dist_m, na.rm = TRUE)
 message("Median error: ", round(sigma_error_med, 4), " m")
-#Median error: 0.5109 m
-#Note that is very close to the UERE estimate
+
 
 #==============================================================================
 # 2. ANALYZE MOVEMENT SCALE VS TIME LAG
@@ -161,12 +137,12 @@ setorder(subset_ids, individual_ID, timestamp_cest)
 # Calculate step metrics ----------------------------------------------------
 # Time difference between successive fixes (seconds)
 subset_ids[, dt_sec := as.numeric(
-  difftime(timestamp_cest, shift(timestamp_cest), units = "secs")
+  difftime(timestamp_cest, data.table::shift(timestamp_cest), units = "secs")
 ), by = individual_ID]
 
 # Step length between successive fixes (m) using Haversine distance
 subset_ids[, step_dist_m := distHaversine(
-  cbind(shift(Long), shift(Lat)),
+  cbind(data.table::shift(Long), data.table::shift(Lat)),
   cbind(Long, Lat)
 ), by = individual_ID]
 
@@ -201,9 +177,7 @@ step_summary[, movement_to_error := median_step / sigma_error_med]
 message("\n=== Movement vs Time Lag Analysis ===")
 print(step_summary)
 
-message("\nConclusion: Movement becomes reliably distinguishable from error at 10s+")
-message("Reliability stabilizes at 15-20s. No meaningful improvement beyond 20-30s")
-message("Selected thinning interval: 10 seconds")
+message("\nConclusion: Movement becomes most distinguishable from error at 30s+")
 
 #==============================================================================
 # 3. PREPARE DATA FOR OUTLIER DETECTION
@@ -412,6 +386,8 @@ gc()
 # 7. TEMPORAL THINNING
 #==============================================================================
 
+muddyfoot_telem_data <- readRDS(paste0(filtered_data_path, "02_muddyfoot_sub.rds"))
+
 # Convert to move2 object ---------------------------------------------------
 muddyfoot_mv <- mt_as_move2(
   muddyfoot_telem_data,
@@ -426,7 +402,21 @@ muddyfoot_mv <- muddyfoot_mv %>%
   arrange(individual_ID, timestamp)
 
 # Apply temporal thinning ---------------------------------------------------
-thinning_interval <- "10 seconds"
+
+#15 seconds
+# thinning_interval <- "15 seconds"
+# message("\n=== Temporal Thinning ===")
+# message("Applying interval: ", thinning_interval)
+# 
+# muddyfoot_thin_15_data <- muddyfoot_mv %>%
+#   mt_filter_per_interval(unit = thinning_interval, criterion = "first")
+# 
+# message("Before thinning: ", nrow(muddyfoot_mv), " detections") #10459343 detections
+# message("After thinning: ", nrow(muddyfoot_thin_data), " detections") #4952567 detections
+# message("Reduction: ", round(100 * (1 - nrow(muddyfoot_thin_data) / nrow(muddyfoot_mv)), 1), "%") #Reduction: 52.6%
+
+#30 seconds
+thinning_interval <- "30 seconds"
 message("\n=== Temporal Thinning ===")
 message("Applying interval: ", thinning_interval)
 
@@ -434,8 +424,8 @@ muddyfoot_thin_data <- muddyfoot_mv %>%
   mt_filter_per_interval(unit = thinning_interval, criterion = "first")
 
 message("Before thinning: ", nrow(muddyfoot_mv), " detections") #10459343 detections
-message("After thinning: ", nrow(muddyfoot_thin_data), " detections") #4952567 detections
-message("Reduction: ", round(100 * (1 - nrow(muddyfoot_thin_data) / nrow(muddyfoot_mv)), 1), "%") #Reduction: 52.6%
+message("After thinning: ", nrow(muddyfoot_thin_data), " detections") #2500625 detections
+message("Reduction: ", round(100 * (1 - nrow(muddyfoot_thin_data) / nrow(muddyfoot_mv)), 1), "%") #Reduction: 76.1%
 
 # Verify thinning intervals -------------------------------------------------
 muddyfoot_thin_track_sum <- muddyfoot_thin_data %>%
@@ -451,13 +441,12 @@ muddyfoot_thin_track_sum <- muddyfoot_thin_data %>%
 message("\n=== Temporal Resolution Summary ===")
 print(summary(muddyfoot_thin_track_sum[, c("min_dt", "median_dt", "max_dt")]))
 # min_dt         median_dt         max_dt                geometry 
-# Min.   :0.7994   Min.   :10.28   Min.   :  3700   MULTIPOINT   :65  
-# 1st Qu.:1.7979   1st Qu.:11.59   1st Qu.: 32056   epsg:4326    : 0  
-# Median :1.7997   Median :11.98   Median : 50392   +proj=long...: 0  
-# Mean   :1.7069   Mean   :12.12   Mean   :100900                     
-# 3rd Qu.:1.8002   3rd Qu.:12.37   3rd Qu.:120338                     
-# Max.   :1.8007   Max.   :16.22   Max.   :698744 
-
+# Min.   :0.7998   Min.   :30.29   Min.   :  3700   MULTIPOINT   :65  
+# 1st Qu.:1.8003   1st Qu.:31.16   1st Qu.: 32061   epsg:4326    : 0  
+# Median :1.8007   Median :31.58   Median : 50413   +proj=long...: 0  
+# Mean   :1.7086   Mean   :32.03   Mean   :100902                     
+# 3rd Qu.:1.8009   3rd Qu.:32.51   3rd Qu.:120338                     
+# Max.   :1.8254   Max.   :37.55   Max.   :698753   
 
 #==============================================================================
 # 8. IDENTIFY TEMPORAL GAPS IN TRACKING
@@ -469,13 +458,13 @@ setorder(muddyfoot_thin_data, individual_ID, timestamp)
 
 # Calculate time gaps between successive fixes (minutes)
 muddyfoot_thin_data[, dt_mins := as.numeric(
-  difftime(timestamp, shift(timestamp), units = "mins")
+  difftime(timestamp, data.table::shift(timestamp), units = "mins")
 ), by = individual_ID]
 
 # Store previous timestamp and date (start of gap)
 muddyfoot_thin_data[, `:=`(
-  prev_time = shift(timestamp),
-  prev_date = shift(date)
+  prev_time = data.table::shift(timestamp),
+  prev_date = data.table::shift(date)
 ), by = individual_ID]
 
 # Find maximum gap for each individual --------------------------------------
