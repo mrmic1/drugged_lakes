@@ -647,8 +647,8 @@ walk(names(traj_plots), function(id) {
 saveRDS(muddyfoot_thin_data, paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
 
 message("\n=== Data Processing Complete ===")
-message("Final dataset: ", nrow(muddyfoot_thin_data), " detections") #4950489 detections
-message("Number of individuals: ", n_distinct(muddyfoot_thin_data$individual_ID)) #Number of individuals: 64
+message("Final dataset: ", nrow(muddyfoot_thin_data), " detections") 
+message("Number of individuals: ", n_distinct(muddyfoot_thin_data$individual_ID)) 
 message("Date range: ", min(muddyfoot_thin_data$Date), " to ", 
         max(muddyfoot_thin_data$Date)) #Date range: 2022-09-25 to 2022-10-30
 message("Saved to: ", paste0(filtered_data_path, "03_muddyfoot_sub.rds"))
