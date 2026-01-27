@@ -114,9 +114,6 @@ saveRDS(pike_BT_tel, paste0(save_telem_path, "BT/pike_BT_tel_thinned.rds"))
 saveRDS(perch_BT_tel, paste0(save_telem_path, "BT/perch_BT_tel_thinned.rds"))
 saveRDS(roach_BT_tel, paste0(save_telem_path, "BT/roach_BT_tel_thinned.rds"))
 
-# [Variogram plotting and analysis functions remain the same]
-# ... [keeping all the variogram functions as they are]
-
 #==============================================================================
 # 3. HELPER FUNCTIONS
 #==============================================================================
@@ -692,3 +689,4 @@ message("\n", strrep("=", 80))
 # 1. Reduce max_cores to 2-3 for all species
 # 2. Or use the sequential version:
 #    pike_results <- fit_ctmm_species_sequential(pike_BT_tel, "pike", "BT", ic = "AICc")
+
