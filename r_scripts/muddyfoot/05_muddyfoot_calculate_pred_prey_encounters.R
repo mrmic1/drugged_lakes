@@ -1729,6 +1729,11 @@ message("========================================\n")
 # - CI contains 1: Cannot reject independence
 # =================================================================-
 
+#If I want to conduct proximity analysis, I need to identify the stretch of time that 
+#I believe a individual was predated, because the whole track could be non-independent (due to the size of the lakes)
+#Focus only on individuals that were identified as being likely predated.
+#This needs to be thought through as how to deal with the tracking data.
+
 if (params$run_proximity_analysis) {
   message("\n=== PROXIMITY ANALYSIS (OPTIONAL COMPONENT) ===")
   
