@@ -300,31 +300,35 @@ refit_ctmm_models_parallel <- function(telem_list, species_name,
 # 3. PREPARE DATA FOR REFITTING
 #==============================================================================
 
+
 # Load filtered data
 muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "05_muddyfoot_sub.rds"))
 muddyfoot_UERE <- readRDS(paste0(save_telem_path, "muddyfoot/muddyfoot_UERE.rds"))
 
+# Prepare mortality data for identifying affected individuals
 muddyfoot_pred_prey_cols <- mortality_preds %>%
   filter(lake == 'muddyfoot') %>% 
   filter(species == 'Roach' | species == 'Perch') %>%
   dplyr::select(individual_ID, species, revised_suspected_mortality, revised_likely_death_date) %>% 
   rename(death_date = revised_likely_death_date)
 
+muddyfoot_pred_prey_cols$death_date <- as.Date(muddyfoot_pred_prey_cols$death_date, origin = "1970-01-01")
+
 # Identify affected individuals by species
 perch_pred_ids <- muddyfoot_pred_prey_cols %>%
   filter(species == 'Perch') %>% 
-  filter(revised_suspected_mortality == 'confirmed_mortality' | 
-           revised_suspected_mortality == 'confirmed_predated'|
-           revised_suspected_mortality == 'likely_predated' |
-           revised_suspected_mortality == 'known_predated') %>% 
+  filter(revised_suspected_mortality %in% c('confirmed_mortality', 
+                                            'confirmed_predated',
+                                            'likely_predated', 
+                                            'known_predated')) %>% 
   pull(individual_ID)
 
 roach_pred_ids <- muddyfoot_pred_prey_cols %>%
   filter(species == 'Roach') %>% 
-  filter(revised_suspected_mortality == 'confirmed_mortality' | 
-  revised_suspected_mortality == 'confirmed_predated'|
-  revised_suspected_mortality == 'likely_predated' |
-  revised_suspected_mortality == 'known_predated')  %>% 
+  filter(revised_suspected_mortality %in% c('confirmed_mortality', 
+                                            'confirmed_predated',
+                                            'likely_predated', 
+                                            'known_predated')) %>% 
   filter(individual_ID != 'F59707') %>%  # Exclude this individual
   pull(individual_ID)
 
@@ -334,25 +338,43 @@ if (length(perch_pred_ids) > 0) message("    IDs: ", paste(perch_pred_ids, colla
 message("  Roach: ", length(roach_pred_ids), " individuals")
 if (length(roach_pred_ids) > 0) message("    IDs: ", paste(roach_pred_ids, collapse = ", "))
 
-# Verify data differences
+# Verify data differences and identify individuals with no data remaining
 message("\n=== Verifying Data Changes ===")
+
+# Load the BEFORE filtering data for comparison
+muddyfoot_telem_data_before <- readRDS(paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
+
+# Initialize vectors to track individuals with no data
+perch_no_data <- character(0)
+roach_no_data <- character(0)
 
 if (length(perch_pred_ids) > 0) {
   message("\nPerch - Row counts before/after filtering:")
-  muddyfoot_telem_data <- readRDS(paste0(filtered_data_path, "04_muddyfoot_sub.rds"))
   
   filt_counts <- muddyfoot_filt_data %>%
     filter(individual_ID %in% perch_pred_ids) %>%
     count(individual_ID, name = "after_filtering")
   
-  telem_counts <- muddyfoot_telem_data %>%
+  telem_counts <- muddyfoot_telem_data_before %>%
     filter(individual_ID %in% perch_pred_ids) %>%
     count(individual_ID, name = "before_filtering")
   
   row_comparison <- full_join(telem_counts, filt_counts, by = "individual_ID") %>%
-    mutate(rows_removed = before_filtering - after_filtering)
+    mutate(after_filtering = ifelse(is.na(after_filtering), 0, after_filtering),
+           rows_removed = before_filtering - after_filtering)
   
   print(row_comparison)
+  
+  # Identify individuals with no data remaining
+  perch_no_data <- row_comparison %>%
+    filter(after_filtering == 0) %>%
+    pull(individual_ID)
+  
+  if (length(perch_no_data) > 0) {
+    message("\n*** WARNING: Perch individuals with NO data remaining after filtering:")
+    message("    ", paste(perch_no_data, collapse = ", "))
+    message("    These will be excluded from model refitting.")
+  }
 }
 
 if (length(roach_pred_ids) > 0) {
@@ -362,17 +384,44 @@ if (length(roach_pred_ids) > 0) {
     filter(individual_ID %in% roach_pred_ids) %>%
     count(individual_ID, name = "after_filtering")
   
-  telem_counts <- muddyfoot_telem_data %>%
+  telem_counts <- muddyfoot_telem_data_before %>%
     filter(individual_ID %in% roach_pred_ids) %>%
     count(individual_ID, name = "before_filtering")
   
   row_comparison <- full_join(telem_counts, filt_counts, by = "individual_ID") %>%
-    mutate(rows_removed = before_filtering - after_filtering)
+    mutate(after_filtering = ifelse(is.na(after_filtering), 0, after_filtering),
+           rows_removed = before_filtering - after_filtering)
   
   print(row_comparison)
+  
+  # Identify individuals with no data remaining
+  roach_no_data <- row_comparison %>%
+    filter(after_filtering == 0) %>%
+    pull(individual_ID)
+  
+  if (length(roach_no_data) > 0) {
+    message("\n*** WARNING: Roach individuals with NO data remaining after filtering:")
+    message("    ", paste(roach_no_data, collapse = ", "))
+    message("    These will be excluded from model refitting.")
+  }
 }
 
-#removed all data for IDs F59731 and F59687. 
+# Remove individuals with no data from the ID lists
+if (length(perch_no_data) > 0) {
+  perch_pred_ids <- setdiff(perch_pred_ids, perch_no_data)
+  message("\nPerch individuals to refit after exclusions: ", length(perch_pred_ids))
+  if (length(perch_pred_ids) > 0) {
+    message("  IDs: ", paste(perch_pred_ids, collapse = ", "))
+  }
+}
+
+if (length(roach_no_data) > 0) {
+  roach_pred_ids <- setdiff(roach_pred_ids, roach_no_data)
+  message("\nRoach individuals to refit after exclusions: ", length(roach_pred_ids))
+  if (length(roach_pred_ids) > 0) {
+    message("  IDs: ", paste(roach_pred_ids, collapse = ", "))
+  }
+}
 
 #==============================================================================
 # 5. REFIT PERCH MODELS
@@ -384,49 +433,56 @@ if (length(perch_pred_ids) > 0) {
   message("=== REFITTING PERCH MODELS ===")
   message(strrep("=", 80))
   
-  # Prepare perch data
+  # Prepare perch data (only for individuals with data remaining)
   pred_perch_data <- muddyfoot_filt_data %>% 
     filter(individual_ID %in% perch_pred_ids)
   
-  pred_perch_data <- with(pred_perch_data, 
-                          data.frame(
-                            "timestamp" = timestamp,                        
-                            "location.long" = Long,                         
-                            "location.lat" = Lat, 
-                            "GPS.HDOP" = HDOP,                               
-                            "individual-local-identifier" = individual_ID))
-  
-  # Create telemetry object
-  pred_perch_tel <- as.telemetry(pred_perch_data, 
-                                 timezone = "Europe/Stockholm",   
-                                 timeformat = "%Y-%m-%d %H:%M:%S",
-                                 projection = NULL,               
-                                 datum = "WGS84")
-  
-  ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
-  uere(pred_perch_tel) <- muddyfoot_UERE
-  
-  # Refit models
-  perch_refit_results <- refit_ctmm_models_parallel(
-    telem_list = pred_perch_tel,
-    species_name = "perch",
-    affected_ids = perch_pred_ids,
-    lake_name = "muddyfoot",
-    max_cores = 3,
-    ic = "AICc"
-  )
-  
-  muddyfoot_perch_refitted <- perch_refit_results$best_models
-  
-  message("\n=== Perch Refitting Summary ===")
-  message("Successfully refitted: ", perch_refit_results$diagnostics$n_success, " individuals")
-  if (perch_refit_results$diagnostics$n_success > 0) {
-    message("Model distribution:")
-    print(perch_refit_results$diagnostics$model_counts)
+  # Verify we have data
+  if (nrow(pred_perch_data) == 0) {
+    message("\n*** No perch data available for refitting after filtering ***")
+    muddyfoot_perch_refitted <- list()
+  } else {
+    
+    pred_perch_data <- with(pred_perch_data, 
+                            data.frame(
+                              "timestamp" = timestamp,                        
+                              "location.long" = Long,                         
+                              "location.lat" = Lat, 
+                              "GPS.HDOP" = HDOP,                               
+                              "individual-local-identifier" = individual_ID))
+    
+    # Create telemetry object
+    pred_perch_tel <- as.telemetry(pred_perch_data, 
+                                   timezone = "Europe/Stockholm",   
+                                   timeformat = "%Y-%m-%d %H:%M:%S",
+                                   projection = NULL,               
+                                   datum = "WGS84")
+    
+    ctmm::projection(pred_perch_tel) <- ctmm::median(pred_perch_tel)
+    uere(pred_perch_tel) <- muddyfoot_UERE
+    
+    # Refit models
+    perch_refit_results <- refit_ctmm_models_parallel(
+      telem_list = pred_perch_tel,
+      species_name = "perch",
+      affected_ids = perch_pred_ids,
+      lake_name = "muddyfoot",
+      max_cores = 4,
+      ic = "AICc"
+    )
+    
+    muddyfoot_perch_refitted <- perch_refit_results$best_models
+    
+    message("\n=== Perch Refitting Summary ===")
+    message("Successfully refitted: ", perch_refit_results$diagnostics$n_success, " individuals")
+    if (perch_refit_results$diagnostics$n_success > 0) {
+      message("Model distribution:")
+      print(perch_refit_results$diagnostics$model_counts)
+    }
   }
   
 } else {
-  message("\n*** No perch individuals require refitting ***")
+  message("\n*** No perch individuals require refitting (all filtered out or no data) ***")
   muddyfoot_perch_refitted <- list()
 }
 
@@ -440,67 +496,69 @@ if (length(roach_pred_ids) > 0) {
   message("=== REFITTING ROACH MODELS ===")
   message(strrep("=", 80))
   
-  # Prepare roach data
+  # Prepare roach data (only for individuals with data remaining)
   pred_roach_data <- muddyfoot_filt_data %>% 
     filter(individual_ID %in% roach_pred_ids)
   
-  pred_roach_data <- with(pred_roach_data, 
-                          data.frame(
-                            "timestamp" = timestamp,                        
-                            "location.long" = Long,                         
-                            "location.lat" = Lat, 
-                            "GPS.HDOP" = HDOP,                               
-                            "individual-local-identifier" = individual_ID))
-  
-  # Create telemetry object
-  pred_roach_tel <- as.telemetry(pred_roach_data, 
-                                 timezone = "Europe/Stockholm",   
-                                 timeformat = "%Y-%m-%d %H:%M:%S",
-                                 projection = NULL,               
-                                 datum = "WGS84")
-  
-  ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
-  uere(pred_roach_tel) <- muddyfoot_UERE
-  
-  # Refit models
-  roach_refit_results <- refit_ctmm_models_parallel(
-    telem_list = pred_roach_tel,
-    species_name = "roach",
-    affected_ids = roach_pred_ids,
-    lake_name = "muddyfoot",
-    max_cores = 3,
-    ic = "AICc"
-  )
-  
-  muddyfoot_roach_refitted <- roach_refit_results$best_models
-  
-  message("\n=== Roach Refitting Summary ===")
-  message("Successfully refitted: ", roach_refit_results$diagnostics$n_success, " individuals")
-  if (roach_refit_results$diagnostics$n_success > 0) {
-    message("Model distribution:")
-    print(roach_refit_results$diagnostics$model_counts)
+  # Verify we have data
+  if (nrow(pred_roach_data) == 0) {
+    message("\n*** No roach data available for refitting after filtering ***")
+    muddyfoot_roach_refitted <- list()
+  } else {
+    
+    pred_roach_data <- with(pred_roach_data, 
+                            data.frame(
+                              "timestamp" = timestamp,                        
+                              "location.long" = Long,                         
+                              "location.lat" = Lat, 
+                              "GPS.HDOP" = HDOP,                               
+                              "individual-local-identifier" = individual_ID))
+    
+    # Create telemetry object
+    pred_roach_tel <- as.telemetry(pred_roach_data, 
+                                   timezone = "Europe/Stockholm",   
+                                   timeformat = "%Y-%m-%d %H:%M:%S",
+                                   projection = NULL,               
+                                   datum = "WGS84")
+    
+    ctmm::projection(pred_roach_tel) <- ctmm::median(pred_roach_tel)
+    uere(pred_roach_tel) <- muddyfoot_UERE
+    
+    # Refit models
+    roach_refit_results <- refit_ctmm_models_parallel(
+      telem_list = pred_roach_tel,
+      species_name = "roach",
+      affected_ids = roach_pred_ids,
+      lake_name = "muddyfoot",
+      max_cores = 6,
+      ic = "AICc"
+    )
+    
+    muddyfoot_roach_refitted <- roach_refit_results$best_models
+    
+    message("\n=== Roach Refitting Summary ===")
+    message("Successfully refitted: ", roach_refit_results$diagnostics$n_success, " individuals")
+    if (roach_refit_results$diagnostics$n_success > 0) {
+      message("Model distribution:")
+      print(roach_refit_results$diagnostics$model_counts)
+    }
   }
   
 } else {
-  message("\n*** No roach individuals require refitting ***")
+  message("\n*** No roach individuals require refitting (all filtered out or no data) ***")
   muddyfoot_roach_refitted <- list()
 }
 
 #==============================================================================
-# 7. UPDATE MASTER MODEL LISTS
+# 7. UPDATE MASTER MODEL LISTS AND TELEMETRY OBJECTS
 #==============================================================================
 
 message("\n", strrep("=", 80))
-message("=== UPDATING MASTER MODEL LISTS ===")
+message("=== UPDATING MASTER MODEL LISTS AND TELEMETRY OBJECTS ===")
 message(strrep("=", 80))
 
-# Function to update model lists
-update_model_list <- function(species_name, refitted_models) {
-  
-  if (length(refitted_models) == 0) {
-    message("\nNo updates needed for ", species_name)
-    return(invisible())
-  }
+# Function to update model lists and remove individuals with no data
+update_model_list <- function(species_name, refitted_models, no_data_ids) {
   
   # Load existing models
   existing_best_file <- file.path(save_ctmm_path, 
@@ -510,16 +568,26 @@ update_model_list <- function(species_name, refitted_models) {
   if (file.exists(existing_best_file)) {
     existing_models <- readRDS(existing_best_file)
     
+    # Remove individuals with no data remaining
+    if (length(no_data_ids) > 0) {
+      message("\nRemoving ", species_name, " individuals with no data after filtering:")
+      message("  IDs: ", paste(no_data_ids, collapse = ", "))
+      existing_models <- existing_models[!names(existing_models) %in% no_data_ids]
+    }
+    
     # Update with refitted models
-    for (id in names(refitted_models)) {
-      existing_models[[id]] <- refitted_models[[id]]
+    if (length(refitted_models) > 0) {
+      for (id in names(refitted_models)) {
+        existing_models[[id]] <- refitted_models[[id]]
+      }
+      message("\nUpdated ", species_name, " master model list with ", 
+              length(refitted_models), " refitted models")
     }
     
     # Save updated list
     saveRDS(existing_models, existing_best_file)
-    message("\nUpdated ", species_name, " master model list with ", 
-            length(refitted_models), " refitted models")
     message("Saved to: ", existing_best_file)
+    message("Final ", species_name, " model count: ", length(existing_models))
     
   } else {
     warning("\nCould not find existing model file: ", existing_best_file)
@@ -527,13 +595,134 @@ update_model_list <- function(species_name, refitted_models) {
   }
 }
 
-# Update master lists
+# Function to update telemetry object lists
+update_telemetry_list <- function(species_name, refitted_tel, no_data_ids) {
+  
+  # Load existing telemetry objects
+  existing_tel_file <- file.path(save_telem_path, "muddyfoot",
+                                 paste0(species_name, "_muddyfoot_tel_thinned.rds"))
+  
+  if (file.exists(existing_tel_file)) {
+    existing_tel <- readRDS(existing_tel_file)
+    
+    message("\n--- Updating ", species_name, " telemetry objects ---")
+    message("Original telemetry list: ", length(existing_tel), " individuals")
+    
+    # Remove individuals with no data remaining
+    if (length(no_data_ids) > 0) {
+      message("Removing individuals with no data: ", paste(no_data_ids, collapse = ", "))
+      existing_tel <- existing_tel[!names(existing_tel) %in% no_data_ids]
+    }
+    
+    # Update with refitted telemetry objects
+    if (length(refitted_tel) > 0) {
+      message("Updating with refitted telemetry: ", length(refitted_tel), " individuals")
+      for (id in names(refitted_tel)) {
+        existing_tel[[id]] <- refitted_tel[[id]]
+      }
+    }
+    
+    message("Final telemetry list: ", length(existing_tel), " individuals")
+    
+    # Save updated telemetry list
+    output_tel_file <- file.path(save_telem_path, "muddyfoot",
+                                 paste0(species_name, "_muddyfoot_tel_thinned_and_filtered.rds"))
+    saveRDS(existing_tel, output_tel_file)
+    message("Saved to: ", output_tel_file)
+    
+    return(existing_tel)
+    
+  } else {
+    warning("\nCould not find existing telemetry file: ", existing_tel_file)
+    message("Refitted telemetry saved separately but not merged into master list")
+    return(NULL)
+  }
+}
+
+# Update master model lists
 if (exists("muddyfoot_perch_refitted")) {
-  update_model_list("perch", muddyfoot_perch_refitted)
+  update_model_list("perch", muddyfoot_perch_refitted, perch_no_data)
 }
 
 if (exists("muddyfoot_roach_refitted")) {
-  update_model_list("roach", muddyfoot_roach_refitted)
+  update_model_list("roach", muddyfoot_roach_refitted, roach_no_data)
+}
+
+# Update and save telemetry object lists
+message("\n", strrep("-", 80))
+message("--- UPDATING TELEMETRY OBJECT LISTS ---")
+message(strrep("-", 80))
+
+# Update perch telemetry
+if (exists("pred_perch_tel") && length(perch_pred_ids) > 0) {
+  perch_tel_updated <- update_telemetry_list("perch", pred_perch_tel, perch_no_data)
+} else {
+  # Still create filtered version even if no refitting occurred
+  if (length(perch_no_data) > 0) {
+    existing_tel_file <- file.path(save_telem_path, "muddyfoot", "perch_muddyfoot_tel_thinned.rds")
+    if (file.exists(existing_tel_file)) {
+      existing_tel <- readRDS(existing_tel_file)
+      message("\n--- Updating perch telemetry objects ---")
+      message("Original telemetry list: ", length(existing_tel), " individuals")
+      message("Removing individuals with no data: ", paste(perch_no_data, collapse = ", "))
+      existing_tel <- existing_tel[!names(existing_tel) %in% perch_no_data]
+      message("Final telemetry list: ", length(existing_tel), " individuals")
+      
+      output_tel_file <- file.path(save_telem_path, "muddyfoot", 
+                                   "perch_muddyfoot_tel_thinned_and_filtered.rds")
+      saveRDS(existing_tel, output_tel_file)
+      message("Saved to: ", output_tel_file)
+      perch_tel_updated <- existing_tel
+    }
+  } else {
+    # No changes needed, just copy the original
+    existing_tel_file <- file.path(save_telem_path, "muddyfoot", "perch_muddyfoot_tel_thinned.rds")
+    if (file.exists(existing_tel_file)) {
+      existing_tel <- readRDS(existing_tel_file)
+      output_tel_file <- file.path(save_telem_path, "muddyfoot", 
+                                   "perch_muddyfoot_tel_thinned_and_filtered.rds")
+      saveRDS(existing_tel, output_tel_file)
+      message("\nNo perch individuals affected - copied original telemetry to filtered version")
+      message("Saved to: ", output_tel_file)
+      perch_tel_updated <- existing_tel
+    }
+  }
+}
+
+# Update roach telemetry
+if (exists("pred_roach_tel") && length(roach_pred_ids) > 0) {
+  roach_tel_updated <- update_telemetry_list("roach", pred_roach_tel, roach_no_data)
+} else {
+  # Still create filtered version even if no refitting occurred
+  if (length(roach_no_data) > 0) {
+    existing_tel_file <- file.path(save_telem_path, "muddyfoot", "roach_muddyfoot_tel_thinned.rds")
+    if (file.exists(existing_tel_file)) {
+      existing_tel <- readRDS(existing_tel_file)
+      message("\n--- Updating roach telemetry objects ---")
+      message("Original telemetry list: ", length(existing_tel), " individuals")
+      message("Removing individuals with no data: ", paste(roach_no_data, collapse = ", "))
+      existing_tel <- existing_tel[!names(existing_tel) %in% roach_no_data]
+      message("Final telemetry list: ", length(existing_tel), " individuals")
+      
+      output_tel_file <- file.path(save_telem_path, "muddyfoot", 
+                                   "roach_muddyfoot_tel_thinned_and_filtered.rds")
+      saveRDS(existing_tel, output_tel_file)
+      message("Saved to: ", output_tel_file)
+      roach_tel_updated <- existing_tel
+    }
+  } else {
+    # No changes needed, just copy the original
+    existing_tel_file <- file.path(save_telem_path, "muddyfoot", "roach_muddyfoot_tel_thinned.rds")
+    if (file.exists(existing_tel_file)) {
+      existing_tel <- readRDS(existing_tel_file)
+      output_tel_file <- file.path(save_telem_path, "muddyfoot", 
+                                   "roach_muddyfoot_tel_thinned_and_filtered.rds")
+      saveRDS(existing_tel, output_tel_file)
+      message("\nNo roach individuals affected - copied original telemetry to filtered version")
+      message("Saved to: ", output_tel_file)
+      roach_tel_updated <- existing_tel
+    }
+  }
 }
 
 #==============================================================================
@@ -547,6 +736,18 @@ message(strrep("=", 80))
 message("\nData Filtering Summary:")
 message("  Total rows removed: ", format(rows_removed, big.mark = ","))
 message("  Filtered data saved to: ", paste0(filtered_data_path, "05_muddyfoot_sub.rds"))
+
+# Summary of individuals with no data
+if (length(perch_no_data) > 0 || length(roach_no_data) > 0) {
+  message("\nIndividuals with NO data remaining after filtering:")
+  if (length(perch_no_data) > 0) {
+    message("  Perch (", length(perch_no_data), "): ", paste(perch_no_data, collapse = ", "))
+  }
+  if (length(roach_no_data) > 0) {
+    message("  Roach (", length(roach_no_data), "): ", paste(roach_no_data, collapse = ", "))
+  }
+  message("  These individuals have been REMOVED from model and telemetry lists")
+}
 
 message("\nModel Refitting Summary:")
 
@@ -574,32 +775,28 @@ if (exists("roach_refit_results")) {
   }
 }
 
-message("\nOutput Files:")
-message("  Refitted models saved with '_refitted' suffix in species-specific directories")
-message("  Original model files have been overwritten with refitted versions")
-message("  Master model lists have been updated")
+message("\nTelemetry Object Summary:")
+if (exists("perch_tel_updated")) {
+  message("  Perch telemetry: ", length(perch_tel_updated), " individuals")
+}
+if (exists("roach_tel_updated")) {
+  message("  Roach telemetry: ", length(roach_tel_updated), " individuals")
+}
 
-message("\nTo reload updated models:")
+message("\nOutput Files:")
+message("  Updated models:")
+message("    ", save_ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_best_models.rds")
+message("    ", save_ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_best_models.rds")
+message("  Updated telemetry objects:")
+message("    ", save_telem_path, "muddyfoot/perch_muddyfoot_tel_thinned_and_filtered.rds")
+message("    ", save_telem_path, "muddyfoot/roach_muddyfoot_tel_thinned_and_filtered.rds")
+
+message("\nTo reload updated data:")
+message("  # Models")
 message("  perch_models <- readRDS('", save_ctmm_path, "muddyfoot_perch_fits/muddyfoot_perch_best_models.rds')")
 message("  roach_models <- readRDS('", save_ctmm_path, "muddyfoot_roach_fits/muddyfoot_roach_best_models.rds')")
+message("\n  # Telemetry objects")
+message("  perch_tel <- readRDS('", save_telem_path, "muddyfoot/perch_muddyfoot_tel_thinned_and_filtered.rds')")
+message("  roach_tel <- readRDS('", save_telem_path, "muddyfoot/roach_muddyfoot_tel_thinned_and_filtered.rds')")
 
 message("\n", strrep("=", 80))
-
-#==============================================================================
-# NOTES
-#==============================================================================
-
-# This script:
-# 1. Filters out post-mortality tracking data for affected individuals
-# 2. Uses ctmm.select to find the best movement model for each individual
-# 3. Saves both full selection results and best models
-# 4. Overwrites original model files with refitted versions
-# 5. Updates master model lists to include refitted models
-#
-# Key improvements over original:
-# - Uses ctmm.select instead of ctmm.fit for model selection
-# - Parallel processing with better error handling
-# - Comprehensive logging and progress reporting
-# - Automatic verification of data changes
-# - Updates master model lists automatically
-# - Model selection summaries showing which models were chosen
