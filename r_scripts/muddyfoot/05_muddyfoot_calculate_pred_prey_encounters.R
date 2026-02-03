@@ -1248,6 +1248,13 @@ if (file.exists(perch_pike_file)) {
 message(sprintf("Loaded distances: %d roach-pike, %d perch-pike observations",
                 nrow(roach_pike_distances_df), nrow(perch_pike_distances_df)))
 
+
+
+#load in pike-prey distances if required
+roach_pike_distances_df <- readRDS(paste0(paths$encounters, "muddyfoot_pike_roach_distances_tiered_df.rds"))
+perch_pike_distances_df <- readRDS(paste0(paths$encounters, "muddyfoot_pike_perch_distances_tiered_df.rds"))
+
+
 ## 4.3 Print Encounter Summary ----
 message("\n=== ENCOUNTER TYPE DISTRIBUTION ===")
 combined_distances <- bind_rows(roach_pike_distances_df, perch_pike_distances_df)
@@ -1288,6 +1295,29 @@ perch_total <- calculate_total_encounters(perch_pike_distances_df)
 all_encounters <- bind_rows(roach_total, perch_total)
 
 message(sprintf("Total encounter pairs: %d", nrow(all_encounters)))
+
+total_encounters_ID <- all_encounters %>% 
+  group_by(Prey_ID, Species) %>%
+  summarise(
+    total_encounters_high_conf = sum(total_encounters_high_conf),
+    total_encounters_probable = sum(total_encounters_probable),
+    total_encounters_possible = sum(total_encounters_possible),
+    n_predators = n_distinct(Pred_ID),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(total_encounters_high_conf))
+
+# Add treatment information
+total_encounters_ID <- total_encounters_ID %>%
+  left_join(
+    muddyfoot_filt_data %>% 
+      select(individual_ID, treatment) %>% 
+      distinct(),
+    by = c("Prey_ID" = "individual_ID")
+  )
+
+  
+saveRDS(total_encounters_ID, paste0(paths$encounters, "muddyfoot_total_encounters_ID.rds"))
 
 
 # =================================================================-

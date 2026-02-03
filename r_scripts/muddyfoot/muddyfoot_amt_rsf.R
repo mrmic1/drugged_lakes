@@ -25,30 +25,30 @@ rsf_output_path <- "./output/muddyfoot/rsf/"
 #==============================================================================
 
 # Load and prepare tracking data ----------------------------------------------
-muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "02_muddyfoot_sub.rds"))
+muddyfoot_filt_data <- readRDS(paste0(filtered_data_path, "06_muddyfoot_sub.rds"))
 
 cat("\n=== DATA SUMMARY ===\n")
 cat("Timestamp range:", format(range(muddyfoot_filt_data$timestamp)), "\n")
 cat("Number of individuals:", n_distinct(muddyfoot_filt_data$individual_ID), "\n")
-cat("Species:", paste(unique(muddyfoot_filt_data$Species), collapse = ", "), "\n")
+cat("Species:", paste(unique(muddyfoot_filt_data$species), collapse = ", "), "\n")
 cat("Total observations:", nrow(muddyfoot_filt_data), "\n")
 
 # Convert to track format and project to UTM 33N -------------------------------
 muddyfoot_trk <- muddyfoot_filt_data |>
   transmute(
-    x_ = longitude,
-    y_ = latitude,
+    x_ = Long,
+    y_ = Lat,
     t_ = timestamp,
     id = individual_ID,
-    species = Species,
+    species = species,
     treatment = treatment
   ) |>
   # Convert to spatial points and transform to UTM
   st_as_sf(coords = c("x_", "y_"), crs = 4326) |>
   st_transform(32633) |>
   mutate(
-    x_ = st_coordinates(geometry)[, 1],
-    y_ = st_coordinates(geometry)[, 2]
+   x_ = st_coordinates(geometry)[, 1],
+   y_ = st_coordinates(geometry)[, 2]
   ) |>
   st_drop_geometry()
 
@@ -71,8 +71,8 @@ muddyfoot_trk_resampled <- muddyfoot_trk |>
     # Resample to 30-second intervals
     data_resampled = map(data, ~ track_resample(
       .x, 
-      rate = seconds(5),
-      tolerance = seconds(5)
+      rate = seconds(30),
+      tolerance = seconds(30)
     )),
     
     # Filter out short bursts
