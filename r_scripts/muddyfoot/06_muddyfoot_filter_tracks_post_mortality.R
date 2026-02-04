@@ -490,7 +490,9 @@ if (length(perch_pred_ids) > 0) {
 # 6. REFIT ROACH MODELS
 #==============================================================================
 
-if (length(roach_pred_ids) > 0) {
+roach_ids <- c("F59710", "F59719")
+
+if (length(roach_ids) > 0) {
   
   message("\n", strrep("=", 80))
   message("=== REFITTING ROACH MODELS ===")
@@ -498,7 +500,7 @@ if (length(roach_pred_ids) > 0) {
   
   # Prepare roach data (only for individuals with data remaining)
   pred_roach_data <- muddyfoot_filt_data %>% 
-    filter(individual_ID %in% roach_pred_ids)
+    filter(individual_ID %in% roach_ids)
   
   # Verify we have data
   if (nrow(pred_roach_data) == 0) {
@@ -528,9 +530,9 @@ if (length(roach_pred_ids) > 0) {
     roach_refit_results <- refit_ctmm_models_parallel(
       telem_list = pred_roach_tel,
       species_name = "roach",
-      affected_ids = roach_pred_ids,
+      affected_ids = roach_ids,
       lake_name = "muddyfoot",
-      max_cores = 6,
+      max_cores = 2,
       ic = "AICc"
     )
     
