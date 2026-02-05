@@ -129,13 +129,63 @@ cow_paradise_mv <- cow_paradise_mv %>%
 cow_paradise_polygon <- st_read("./data/lake_params/polygons/cow_polygon.gpkg")
 
 # Optional: Visualize reference tag to verify spatial accuracy
-# ref_tag <- filter_track_data(cow_paradise_mv, .track_id = "FReference")
-# cow_paradise_map <- mapview::mapView(mt_track_lines(ref_tag)$geometry)
+ref_tag <- filter_track_data(cow_paradise_mv, .track_id = "FReference")
+# Convert DMS (Degrees, Minutes, Seconds) coordinates to decimal degrees
+# Latitude: 63°46'19.17169"N
+ref_lat <- 63 + 46/60 + 19.17169/3600
+
+# Longitude: 20°03'48.52317"E
+ref_lon <- 20 + 3/60 + 48.52317/3600
+
+# Create a point for the reference tag location
+ref_point <- st_sfc(st_point(c(ref_lon, ref_lat)), crs = 4326)
+
+# If your polygon has a different CRS, transform the point to match
+ref_point <- st_transform(ref_point, st_crs(cow_paradise_polygon))
+
+# Get the first location from the reference tag track
+ref_tag_df <- as.data.frame(ref_tag)
+first_location <- ref_tag_df %>%
+  arrange(timestamp_cest) %>%  # Use the correct timestamp column name
+  slice(1) %>%
+  st_as_sf()  # It already has geometry column, so just convert to sf
+# Alternative if ref_tag is already an sf object:
+# first_location <- ref_tag[1, ]
+
+# Create the map with all layers
+cow_paradise_map <- mapview::mapview(
+  cow_paradise_polygon, 
+  col.regions = "lightblue",
+  alpha.regions = 0.3,
+  layer.name = "Cow Paradise Polygon"
+) + 
+  mapview::mapview(
+    mt_track_lines(ref_tag)$geometry,
+    color = "yellow",
+    lwd = 2,
+    layer.name = "Reference Tag Track"
+  ) +
+  mapview::mapview(
+    ref_point,
+    col.regions = "blue",
+    cex = 3,
+    layer.name = "Reference Tag Location (Expected)"
+  ) +
+  mapview::mapview(
+    first_location,
+    col.regions = "red",
+    cex = 3,
+    layer.name = "First Stored Location"
+  )
+
+# Display the map
+cow_paradise_map
 
 # Note: To create or update the lake polygon, uncomment and run:
 # cow_paradise_map <- mapedit::drawFeatures(map = cow_paradise_map)
 # st_write(cow_paradise_map, dsn="data/lake_coords/lake_cow_paradise_polygon.gpkg",
 #          driver="GPKG", delete_layer = TRUE)
+
 
 # Filter detections within lake boundaries ---------------------------------
 cow_paradise_sub <- st_filter(cow_paradise_mv, cow_paradise_polygon)
