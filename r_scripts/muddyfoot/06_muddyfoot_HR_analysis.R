@@ -762,7 +762,7 @@ message(sprintf("Grid spacing (dr): %.3f m\n", roach_dr))
 message("Calculating individual AKDEs with boundary correction...")
 message("Using parallel processing with ", detectCores() - 3, " cores\n")
 
-cl <- makeCluster(detectCores() - 3)
+cl <- makeCluster(detectCores() - 10)
 registerDoParallel(cl)
 # Export all necessary objects to parallel workers
 clusterExport(cl, varlist = c("roach_muddyfoot_tel", 
@@ -800,21 +800,18 @@ saveRDS(roach_akdes, paste0(akde_path, "roach_muddyfoot_akdes.rds"))
 message("Individual AKDEs saved\n")
 
 # Separate by treatment group (update if failures occurred)
-roach_control_akdes <- roach_akdes[1:14]
-roach_mix_akdes <- roach_akdes[15:28]
-
-roach_control_tel_final <- roach_muddyfoot_tel[1:14]
-roach_mix_tel_final <- roach_muddyfoot_tel[15:28]
+roach_control_akdes <- roach_akdes[1:13]
+roach_mix_akdes <- roach_akdes[14:26]
 
 # Population-level estimates ------------------------------------------------
 message("Calculating population-level home ranges (PKDE)...\n")
 
-roach_control_PKDE <- pkde(roach_control_tel_final,
+roach_control_PKDE <- pkde(roach_control_tel,
                            roach_control_akdes,
                            SP = muddyfoot_sp_data,
                            SP.in = TRUE)
 
-roach_mix_PKDE <- pkde(roach_mix_tel_final,
+roach_mix_PKDE <- pkde(roach_mix_tel,
                        roach_mix_akdes,
                        SP = muddyfoot_sp_data,
                        SP.in = TRUE)
@@ -841,6 +838,10 @@ message("Total population PKDE: ",
                 summary(roach_total_PKDE)$CI[2],
                 summary(roach_total_PKDE)$CI[1],
                 summary(roach_total_PKDE)$CI[3]))
+
+saveRDS(roach_control_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/roach_control_PKDE.rds"))
+saveRDS(roach_mix_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/roach_mix_PKDE.rds"))
+saveRDS(roach_total_PKDE, paste0(akde_path, "muddyfoot_roach_akdes/roach_total_PKDE.rds"))
 
 # Meta-analysis
 message("Performing meta-analysis for treatment comparison...\n")
@@ -901,13 +902,7 @@ summary_data <- data.frame(
     summary(roach_control_PKDE)$CI[3],
     summary(roach_mix_PKDE)$CI[3],
     summary(roach_total_PKDE)$CI[3]
-  ),
-  Spillover_pct = c(
-    pike_spillover_pct, NA, NA,
-    perch_spillover_pct, NA, NA,
-    roach_spillover_pct, NA, NA
-  )
-)
+))
 
 print(summary_data)
 

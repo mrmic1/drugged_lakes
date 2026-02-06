@@ -604,7 +604,7 @@ roach_cow_paradise_tel <- readRDS(paste0(save_telem_path, "cow_paradise/roach_co
 
 if (length(roach_cow_paradise_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
-  roach_cores <- ifelse(length(roach_cow_paradise_tel) > 15, 6, 3)
+  roach_cores <- ifelse(length(roach_cow_paradise_tel) > 15, 10, 3)
   
   roach_results <- fit_ctmm_species_parallel(
     roach_cow_paradise_tel,
