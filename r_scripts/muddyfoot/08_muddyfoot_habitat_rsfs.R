@@ -276,7 +276,7 @@ ggsave(file = paste0(figure_path, "UD_plots/pike_total_UD_habitats_muddyfoot.png
 polyProj <- st_transform(muddyfoot_polygon, crs = "EPSG:32633")
 
 # Resolution in meters
-resolution <- 0.5  # meters
+resolution <- 0.25  # meters
 lake_raster <- rast(ext(polyProj), 
                     res = resolution, 
                     crs = "EPSG:32633")
@@ -330,6 +330,58 @@ cat("Habitat raster created with 2m × 2m square structures.\n")
 habitat_raster_final <- raster::raster(habitat_raster)
 
 plot(habitat_raster_final)
+
+
+#IF we need transform the raster to WGS84
+# Convert raster package object to terra
+habitat_raster_terra <- rast(habitat_raster_final)
+
+# Check current CRS
+cat("Current CRS:\n")
+print(crs(habitat_raster_terra))
+
+# Transform to WGS84
+habitat_raster_wgs84_terra <- project(habitat_raster_terra, 
+                                      "EPSG:4326",  # WGS84
+                                      method = "near")  # nearest neighbor
+
+# Force binary values
+habitat_raster_wgs84_terra[habitat_raster_wgs84_terra > 0.5] <- 1
+habitat_raster_wgs84_terra[habitat_raster_wgs84_terra <= 0.5 & !is.na(habitat_raster_wgs84_terra)] <- 0
+
+# Convert back to raster package format for ctmm
+habitat_raster_wgs84 <- raster::raster(habitat_raster_wgs84_terra)
+
+# Verify the transformation
+cat("\nOriginal raster (UTM) extent:\n")
+print(raster::extent(habitat_raster_final))
+
+cat("\nTransformed raster (WGS84) extent:\n")
+print(raster::extent(habitat_raster_wgs84))
+
+cat("\nTelemetry extent:\n")
+cat("  lon:", range(perch_control_tel[[1]]$longitude), "\n")
+cat("  lat:", range(perch_control_tel[[1]]$latitude), "\n")
+
+# Test extraction with WGS84 raster
+coords_test <- data.frame(x = perch_control_tel[[1]]$longitude[1:100],
+                          y = perch_control_tel[[1]]$latitude[1:100])
+hab_values_test <- raster::extract(habitat_raster_wgs84, coords_test)
+
+cat("\nTest extraction with WGS84 raster:\n")
+cat("  Total points:", length(hab_values_test), "\n")
+cat("  NA values:", sum(is.na(hab_values_test)), "\n")
+cat("  Unique values:", unique(hab_values_test), "\n")
+
+
+plot(habitat_raster_wgs84)
+
+# If this works, save it
+raster::writeRaster(habitat_raster_wgs84, 
+                    "./data/lake_coords/muddyfoot_habitat_raster_2m_squares_WGS84.grd", 
+                    overwrite = TRUE)
+
+cat("\n✓ Habitat raster transformed to WGS84 and saved\n")
 
 
 #---------------------------------------------------------------------------------------------------------#
@@ -446,31 +498,58 @@ cat("\n=== Fitting Perch RSFs ===\n")
 
 # Control
 cat("Perch Control...\n")
-cl <- makeCluster(min(3, detectCores() - 1))
+n_workers <- length(perch_control_tel)
+cl <- makeCluster(n_workers)
 registerDoParallel(cl)
 
+cat("Running RSF on", length(perch_control_tel), "fish with", n_workers, "workers\n")
+
+# Run RSF
 rsf_perch_control_list <- foreach(i = seq_along(perch_control_tel), 
                                   .packages = c("ctmm", "raster"),
                                   .errorhandling = "pass") %dopar% {
                                     rsf_model <- rsf.fit(perch_control_tel[[i]], 
                                                          perch_control_akdes[[i]], 
-                                                         R = list(habitat1 = habitat_raster))
+                                                         R = list(habitat1 = habitat_raster_final))
                                     saveRDS(rsf_model, paste0(rsf_path, "muddyfoot_perch/", 
                                                               names(perch_control_tel)[i], "_habitat_rsf.rds"))
                                     rsf_model
                                   }
 stopCluster(cl)
 
-# Remove any failed models
-failed_control <- sapply(rsf_perch_control_list, function(x) inherits(x, "error"))
-if(any(failed_control)) {
-  cat("  Warning:", sum(failed_control), "models failed\n")
-  rsf_perch_control_list <- rsf_perch_control_list[!failed_control]
+# Check results
+cat("\nTotal models returned:", length(rsf_perch_control_list), "\n")
+
+# Check for failures
+failed <- sapply(rsf_perch_control_list, function(x) {
+  !inherits(x, "ctmm") || is.null(x) || inherits(x, "error")
+})
+
+cat("Failed:", sum(failed), "\n")
+cat("Succeeded:", sum(!failed), "\n")
+
+if(any(failed)) {
+  cat("\nFailed IDs:", names(perch_control_tel)[failed], "\n")
+  
+  # Show error messages for failed models
+  for(i in which(failed)) {
+    cat("\nModel", i, "-", names(perch_control_tel)[i], ":\n")
+    if(inherits(rsf_perch_control_list[[i]], "error")) {
+      cat("  Error:", rsf_perch_control_list[[i]]$message, "\n")
+    }
+  }
 }
 
-names(rsf_perch_control_list) <- names(perch_control_tel)[1:length(rsf_perch_control_list)]
+# Remove failed models and fix names
+rsf_perch_control_list <- rsf_perch_control_list[!failed]
+names(rsf_perch_control_list) <- names(perch_control_tel)[!failed]
+
+# Save successful models
 saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
-cat("  Completed:", length(rsf_perch_control_list), "models\n")
+
+cat("\nFinal: Saved", length(rsf_perch_control_list), "successful models\n")
+
+
 
 # Exposed
 cat("Perch Exposed...\n")
