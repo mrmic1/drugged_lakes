@@ -59,7 +59,7 @@ message("========================================\n")
 
 # Use the first pike's ctmm fit projection as the standard
 # This is the custom tpeqd projection optimized for your study area
-target_projection <- projection(pike_muddyfoot_ctmm_fits[[1]])
+target_projection <- ctmm::projection(pike_muddyfoot_ctmm_fits[[1]])
 
 message("Target projection (from pike ctmm fit):\n")
 cat(target_projection, "\n\n")
@@ -82,9 +82,9 @@ message("  CURRENT PROJECTION STATUS")
 message("========================================\n")
 
 # Check telemetry projections
-pike_tel_proj <- projection(pike_muddyfoot_tel[[1]])
-perch_tel_proj <- projection(perch_muddyfoot_tel[[1]])
-roach_tel_proj <- projection(roach_muddyfoot_tel[[1]])
+pike_tel_proj <- ctmm::projection(pike_muddyfoot_tel[[1]])
+perch_tel_proj <- ctmm::projection(perch_muddyfoot_tel[[1]])
+roach_tel_proj <- ctmm::projection(roach_muddyfoot_tel[[1]])
 
 message("Current telemetry projections:")
 message("  Pike:  ", ifelse(is.null(pike_tel_proj) || pike_tel_proj == "", 
@@ -95,9 +95,9 @@ message("  Roach: ", ifelse(is.null(roach_tel_proj) || roach_tel_proj == "",
                             "NOT SET", roach_tel_proj), "\n")
 
 # Check fit projections
-pike_fit_proj <- projection(pike_muddyfoot_ctmm_fits[[1]])
-perch_fit_proj <- projection(perch_muddyfoot_ctmm_fits[[1]])
-roach_fit_proj <- projection(roach_muddyfoot_ctmm_fits[[1]])
+pike_fit_proj <- ctmm::projection(pike_muddyfoot_ctmm_fits[[1]])
+perch_fit_proj <- ctmm::projection(perch_muddyfoot_ctmm_fits[[1]])
+roach_fit_proj <- ctmm::projection(roach_muddyfoot_ctmm_fits[[1]])
 
 message("Current ctmm fit projections:")
 message("  Pike:  ", pike_fit_proj)
@@ -152,18 +152,18 @@ message("========================================\n")
 # Update telemetry projections
 message("Updating pike telemetry projections...")
 for(i in 1:length(pike_muddyfoot_tel)) {
-  projection(pike_muddyfoot_tel[[i]]) <- target_projection
+  ctmm::projection(pike_muddyfoot_tel[[i]]) <- target_projection
 }
 message("✓ Pike telemetry: ", length(pike_muddyfoot_tel), " objects updated\n")
 
 # Update ctmm fit projections (should already match, but ensure consistency)
 message("Updating pike ctmm fit projections...")
-projection(pike_muddyfoot_ctmm_fits) <- target_projection
+ctmm::projection(pike_muddyfoot_ctmm_fits) <- target_projection
 message("✓ Pike fits: ", length(pike_muddyfoot_ctmm_fits), " objects updated\n")
 
 # Verify
-pike_tel_check <- projection(pike_muddyfoot_tel[[1]])
-pike_fit_check <- projection(pike_muddyfoot_ctmm_fits[[1]])
+pike_tel_check <- ctmm::projection(pike_muddyfoot_tel[[1]])
+pike_fit_check <- ctmm::projection(pike_muddyfoot_ctmm_fits[[1]])
 pike_match <- identical(pike_tel_check, target_projection) && 
   identical(pike_fit_check, target_projection)
 
@@ -184,18 +184,18 @@ message("========================================\n")
 # Update telemetry projections
 message("Updating perch telemetry projections...")
 for(i in 1:length(perch_muddyfoot_tel)) {
-  projection(perch_muddyfoot_tel[[i]]) <- target_projection
+  ctmm::projection(perch_muddyfoot_tel[[i]]) <- target_projection
 }
 message("✓ Perch telemetry: ", length(perch_muddyfoot_tel), " objects updated\n")
 
 # Update ctmm fit projections
 message("Updating perch ctmm fit projections...")
-projection(perch_muddyfoot_ctmm_fits) <- target_projection
+ctmm::projection(perch_muddyfoot_ctmm_fits) <- target_projection
 message("✓ Perch fits: ", length(perch_muddyfoot_ctmm_fits), " objects updated\n")
 
 # Verify
-perch_tel_check <- projection(perch_muddyfoot_tel[[1]])
-perch_fit_check <- projection(perch_muddyfoot_ctmm_fits[[1]])
+perch_tel_check <- ctmm::projection(perch_muddyfoot_tel[[1]])
+perch_fit_check <- ctmm::projection(perch_muddyfoot_ctmm_fits[[1]])
 perch_match <- identical(perch_tel_check, target_projection) && 
   identical(perch_fit_check, target_projection)
 
@@ -216,18 +216,18 @@ message("========================================\n")
 # Update telemetry projections
 message("Updating roach telemetry projections...")
 for(i in 1:length(roach_muddyfoot_tel)) {
-  projection(roach_muddyfoot_tel[[i]]) <- target_projection
+  ctmm::projection(roach_muddyfoot_tel[[i]]) <- target_projection
 }
 message("✓ Roach telemetry: ", length(roach_muddyfoot_tel), " objects updated\n")
 
 # Update ctmm fit projections
 message("Updating roach ctmm fit projections...")
-projection(roach_muddyfoot_ctmm_fits) <- target_projection
+ctmm::projection(roach_muddyfoot_ctmm_fits) <- target_projection
 message("✓ Roach fits: ", length(roach_muddyfoot_ctmm_fits), " objects updated\n")
 
 # Verify
-roach_tel_check <- projection(roach_muddyfoot_tel[[1]])
-roach_fit_check <- projection(roach_muddyfoot_ctmm_fits[[1]])
+roach_tel_check <- ctmm::projection(roach_muddyfoot_tel[[1]])
+roach_fit_check <- ctmm::projection(roach_muddyfoot_ctmm_fits[[1]])
 roach_match <- identical(roach_tel_check, target_projection) && 
   identical(roach_fit_check, target_projection)
 
@@ -247,13 +247,13 @@ message("========================================\n")
 
 # Check all projections match
 all_projections <- c(
-  projection(pike_muddyfoot_tel[[1]]),
-  projection(pike_muddyfoot_ctmm_fits[[1]]),
-  projection(perch_muddyfoot_tel[[1]]),
-  projection(perch_muddyfoot_ctmm_fits[[1]]),
-  projection(roach_muddyfoot_tel[[1]]),
-  projection(roach_muddyfoot_ctmm_fits[[1]]),
-  projection(muddyfoot_sp_data)
+  ctmm::projection(pike_muddyfoot_tel[[1]]),
+  ctmm::projection(pike_muddyfoot_ctmm_fits[[1]]),
+  ctmm::projection(perch_muddyfoot_tel[[1]]),
+  ctmm::projection(perch_muddyfoot_ctmm_fits[[1]]),
+  ctmm::projection(roach_muddyfoot_tel[[1]]),
+  ctmm::projection(roach_muddyfoot_ctmm_fits[[1]]),
+  ctmm::projection(muddyfoot_sp_data)
 )
 
 all_match <- all(sapply(all_projections, function(x) identical(x, target_projection)))

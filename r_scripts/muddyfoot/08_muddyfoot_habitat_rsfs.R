@@ -268,6 +268,42 @@ ggsave(file = paste0(figure_path, "UD_plots/pike_total_UD_habitats_muddyfoot.png
 #----------------------------------------------------------------------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------#
 
+#---------------------------------------------#
+# 3. Split telemetry objects by treatment ####
+#---------------------------------------------#
+
+#> 3.1 Perch ########################
+
+# Split telemetry objects based on verified treatment assignment
+perch_control_tel <- perch_muddyfoot_tel[1:15]
+perch_mix_tel <- perch_muddyfoot_tel[16:30]
+
+# Split AKDEs
+perch_control_akdes <- perch_muddyfoot_akdes[1:15]
+perch_mix_akdes <- perch_muddyfoot_akdes[16:30]
+
+#> 3.2 Roach ########################
+
+# Split telemetry objects
+roach_control_tel <- roach_muddyfoot_tel[1:13]
+roach_mix_tel <- roach_muddyfoot_tel[14:26]
+
+# Split AKDEs
+roach_control_akdes <- roach_muddyfoot_akdes[1:13]
+roach_mix_akdes <- roach_muddyfoot_akdes[14:26]
+
+#> 3.3 Pike ########################
+
+# Split telemetry objects
+pike_control_tel <- pike_muddyfoot_tel[1:3]
+pike_mix_tel <- pike_muddyfoot_tel[4:6]
+
+# Split AKDEs
+pike_control_akdes <- pike_muddyfoot_akdes[1:3]
+pike_mix_akdes <- pike_muddyfoot_akdes[4:6]
+
+
+
 #-----------------------------------------#
 # 2. Create lake and habitat raster - IMPROVED ####
 #-----------------------------------------#
@@ -387,39 +423,7 @@ cat("\n✓ Habitat raster transformed to WGS84 and saved\n")
 #---------------------------------------------------------------------------------------------------------#
 #---------------------------------------------------------------------------------------------------------#
 
-#---------------------------------------------#
-# 3. Split telemetry objects by treatment ####
-#---------------------------------------------#
 
-#> 3.1 Perch ########################
-
-# Split telemetry objects based on verified treatment assignment
-perch_control_tel <- perch_muddyfoot_tel[1:15]
-perch_mix_tel <- perch_muddyfoot_tel[16:30]
-
-# Split AKDEs
-perch_control_akdes <- perch_muddyfoot_akdes[1:15]
-perch_mix_akdes <- perch_muddyfoot_akdes[16:30]
-
-#> 3.2 Roach ########################
-
-# Split telemetry objects
-roach_control_tel <- roach_muddyfoot_tel[1:13]
-roach_mix_tel <- roach_muddyfoot_tel[14:26]
-
-# Split AKDEs
-roach_control_akdes <- roach_muddyfoot_akdes[1:13]
-roach_mix_akdes <- roach_muddyfoot_akdes[14:26]
-
-#> 3.3 Pike ########################
-
-# Split telemetry objects
-pike_control_tel <- pike_muddyfoot_tel[1:3]
-pike_mix_tel <- pike_muddyfoot_tel[4:6]
-
-# Split AKDEs
-pike_control_akdes <- pike_muddyfoot_akdes[1:3]
-pike_mix_akdes <- pike_muddyfoot_akdes[4:6]
 
 #-----------------------------------------------------------------------------------------------#
 #-----------------------------------------------------------------------------------------------
@@ -499,6 +503,7 @@ cat("\n=== Fitting Perch RSFs ===\n")
 # Control
 cat("Perch Control...\n")
 n_workers <- length(perch_control_tel)
+
 cl <- makeCluster(n_workers)
 registerDoParallel(cl)
 
@@ -583,31 +588,32 @@ cat("  Completed:", length(rsf_perch_mix_list), "models\n")
 cat("\n=== Fitting Roach RSFs ===\n")
 
 # Control
-cat("Roach Control...\n")
-cl <- makeCluster(min(3, detectCores() - 1))
+# Start cluster
+n_workers <- length(roach_control_tel)
+cl <- makeCluster(n_workers)
 registerDoParallel(cl)
 
+# Run RSF
 rsf_roach_control_list <- foreach(i = seq_along(roach_control_tel), 
                                   .packages = c("ctmm", "raster"),
                                   .errorhandling = "pass") %dopar% {
                                     rsf_model <- rsf.fit(roach_control_tel[[i]], 
                                                          roach_control_akdes[[i]], 
-                                                         R = list(habitat1 = habitat_raster))
+                                                         R = list(habitat1 = habitat_raster_final))
                                     saveRDS(rsf_model, paste0(rsf_path, "muddyfoot_roach/", 
                                                               names(roach_control_tel)[i], "_habitat_rsf.rds"))
                                     rsf_model
                                   }
+
 stopCluster(cl)
 
-failed_control <- sapply(rsf_roach_control_list, function(x) inherits(x, "error"))
-if(any(failed_control)) {
-  cat("  Warning:", sum(failed_control), "models failed\n")
-  rsf_roach_control_list <- rsf_roach_control_list[!failed_control]
-}
+# Check failures
+failed_roach <- sapply(rsf_roach_control_list, function(x) {
+  !inherits(x, "ctmm") || is.null(x) || inherits(x, "error")
+})
 
-names(rsf_roach_control_list) <- names(roach_control_tel)[1:length(rsf_roach_control_list)]
-saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
-cat("  Completed:", length(rsf_roach_control_list), "models\n")
+cat("Roach Control Failed IDs:\n")
+print(names(roach_control_tel)[failed_roach])
 
 # Exposed
 cat("Roach Exposed...\n")

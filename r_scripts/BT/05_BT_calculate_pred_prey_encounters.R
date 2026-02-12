@@ -1172,8 +1172,6 @@ roach_tel <- readRDS(file.path(paths$telem, 'roach_BT_tel_thinned.rds'))
 message(sprintf("Loaded telemetry: %d pike, %d perch, %d roach",
                 length(pike_tel), length(perch_tel), length(roach_tel)))
 
-# Remove problematic individual
-roach_tel <- roach_tel[names(roach_tel) != "F59707"]
 
 ## 3.2 Load CTMM Fits ----
 pike_fits <- readRDS(file.path(paths$ctmm, "BT_pike_fits/BT_pike_best_models.rds"))
