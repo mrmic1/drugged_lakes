@@ -1,4 +1,4 @@
-#################################################################################
+################################################################################
 ### TRACKING DATA QUALITY ANALYSIS - LAKE COW PARADISE
 ### Purpose: Extract and analyze tracking summary statistics, identify data
 ###          quality issues, and flag irregular sampling patterns
@@ -38,8 +38,8 @@ set_flextable_defaults(
 ctmm_path <- "./data/ctmm_fits/"
 filtered_data_path <- "./data/tracks_filtered/cow_paradise/"
 telem_path <- "./data/telem_obj/cow_paradise/"
-enc_path <- "./data/encounters/cow_paradise/"
-size_path <- "./data/fish_size/"
+enc_path <- "./data/encounters/"
+biometric_path <- "./data/fish_biometrics/"
 
 # Output directories
 save_tables_path <- "./tables/cow_paradise/"
@@ -49,12 +49,12 @@ save_figures_path <- "./figures/cow_paradise/"
 cow_filt_data <- readRDS(paste0(filtered_data_path, "03_cow_sub.rds"))
 
 ## 1.5 Define Study Period ----
-date_range <- range(cow_filt_data$Date, na.rm = TRUE) #"2022-09-27" "2022-10-31"
-number_of_days <- as.integer(difftime(date_range[2], date_range[1], units = "days")) + 1 #35
+date_range <- range(cow_filt_data$date, na.rm = TRUE)
+number_of_days <- as.integer(difftime(date_range[2], date_range[1], units = "days")) + 1
 
 cat("Study Period:\n")
-cat("  Start:", as.character(date_range[1]), "\n")
-cat("  End:", as.character(date_range[2]), "\n")
+cat("  Start:", as.character(date_range[1]), "\n") #Start: 2022-09-27
+cat("  End:", as.character(date_range[2]), "\n") # End: 2022-10-30
 cat("  Total Days:", number_of_days, "\n\n") #34 days
 
 # =============================================================================
@@ -63,8 +63,7 @@ cat("  Total Days:", number_of_days, "\n\n") #34 days
 
 ## 1.1 Time Intervals Between Positions ----
 # Calculate time difference (in seconds) between consecutive GPS fixes
-cow_filt_data <- 
-  cow_filt_data %>%
+cow_filt_data <- cow_filt_data %>%
   group_by(individual_ID) %>%
   mutate(
     time_diff = c(NA, diff(timestamp)),  # First fix has no previous fix
@@ -99,13 +98,13 @@ print(
 # Determine how many unique days each fish was tracked
 cow_filt_data <- cow_filt_data %>%
   group_by(individual_ID) %>%
-  mutate(n_days_tracked = n_distinct(Date)) %>%
+  mutate(n_days_tracked = n_distinct(date)) %>%
   ungroup()
 
 ## 1.4 Daily Position Metrics ----
 # Calculate positions per day and location frequency
 cow_filt_data <- cow_filt_data %>%
-  group_by(individual_ID, Date) %>%
+  group_by(individual_ID, date) %>%
   mutate(
     n_positions_day = n(),
     median_day_time_diff = median(time_diff, na.rm = TRUE),
@@ -125,7 +124,7 @@ full_date_range <- seq(as.Date(date_range[1]), as.Date(date_range[2]), by = "day
 
 all_combinations <- expand.grid(
   individual_ID = unique(cow_filt_data$individual_ID),
-  Date = full_date_range,
+  date = full_date_range,
   stringsAsFactors = FALSE
 )
 
@@ -133,7 +132,7 @@ all_combinations <- expand.grid(
 all_combinations <- all_combinations %>%
   left_join(
     cow_filt_data %>%
-      select(individual_ID, Species, Treatment) %>%
+      select(individual_ID, species, treatment) %>%
       distinct(),
     by = "individual_ID"
   )
@@ -141,21 +140,21 @@ all_combinations <- all_combinations %>%
 ## 2.2 Find Missing Dates ----
 # Identify dates where individuals were not tracked at all
 missing_dates <- all_combinations %>%
-  anti_join(cow_filt_data, by = c("individual_ID", "Date")) %>%
-  arrange(individual_ID, Date)
+  anti_join(cow_filt_data, by = c("individual_ID", "date")) %>%
+  arrange(individual_ID, date)
 
 ## 2.3 Summarize Missing Data Patterns ----
 summary_missing_dates <- missing_dates %>%
   group_by(individual_ID) %>%
   summarise(
-    Species = first(Species),
-    Treatment = first(Treatment),
-    missing_dates = paste(Date, collapse = ", "),
+    species = first(species),
+    treatment = first(treatment),
+    missing_dates = paste(date, collapse = ", "),
     n = n(),  # Total missing days
     n_breaks = if_else(
       n() == 1,
       0,
-      sum(diff(Date) != 1)  # Number of gaps in tracking
+      sum(diff(date) != 1)  # Number of gaps in tracking
     ),
     .groups = "drop"
   )
@@ -173,15 +172,14 @@ missing_dates_table <- flextable(summary_missing_dates) %>%
 # Export table
 save_as_docx(
   missing_dates_table,
-  path = paste0(save_tables_path, "cow_paradise_IDs_missing_dates.docx")
+  path = paste0(save_tables_path, "cow_IDs_missing_dates.docx")
 )
 
 ## 2.5 Merge Missing Data Info with Main Dataset ----
 # Create summary of tracking quality metrics
-positions_sum <- 
-  cow_filt_data %>%
+positions_sum <- cow_filt_data %>%
   select(
-    individual_ID, Treatment, Species,
+    individual_ID, treatment, species,
     n_positions, n_days_tracked,
     mean_time_diff, median_time_diff
   ) %>%
@@ -206,7 +204,8 @@ positions_sum_table <- flextable(positions_sum %>% select(-mean_time_diff)) %>%
   bold(part = "header") %>%
   set_header_labels(
     individual_ID = "ID",
-    Treatment = "Treatment",
+    treatment = "Treatment",
+    species = "Species",
     n_positions = "Number of locations",
     n_days_tracked = "Number of days tracked",
     median_time_diff = "Median location frequency (s)",
@@ -219,7 +218,7 @@ positions_sum_table <- flextable(positions_sum %>% select(-mean_time_diff)) %>%
 # Export table
 save_as_docx(
   positions_sum_table,
-  path = paste0(save_tables_path, "cow_paradise_ID_positions_summary_pre_predation_event_filtering.docx")
+  path = paste0(save_tables_path, "cow_ID_posititions_sum_unfilt.docx")
 )
 
 ## 2.8 Update Main Dataset ----
@@ -238,10 +237,10 @@ cow_filt_data <- cow_filt_data %>%
 ## 3.1 Create Daily Sampling Summary ----
 # Aggregate position data by individual and date
 daily_sampling_sum <- cow_filt_data %>%
-  group_by(individual_ID, Date) %>%
+  group_by(individual_ID, date) %>%
   summarise(
-    Species = first(Species),
-    Treatment = first(Treatment),
+    species = first(species),
+    treatment = first(treatment),
     n_positions_day = n(),
     avg_time_diff = mean(time_diff, na.rm = TRUE),
     median_day_time_diff = first(median_day_time_diff),
@@ -255,7 +254,7 @@ daily_sampling_sum <- cow_filt_data %>%
 ## 3.2 Calculate Species-Level Position Statistics ----
 # Overall statistics across all dates
 species_day_positions_stats <- daily_sampling_sum %>%
-  group_by(Species) %>%
+  group_by(species) %>%
   summarise(
     mean = mean(n_positions_day, na.rm = TRUE),
     median = median(n_positions_day, na.rm = TRUE),
@@ -272,16 +271,16 @@ print(species_day_positions_stats)
 ## 3.3 Visualize Daily Position Distribution ----
 species_positions_histogram <- ggplot(
   daily_sampling_sum,
-  aes(x = n_positions_day, fill = Species)
+  aes(x = n_positions_day, fill = species)
 ) +
   geom_histogram(
-    binwidth = 500,
+    binwidth = 200,
     position = "dodge",
     color = "black",
     fill = "lightgrey",
     alpha = 0.8
   ) +
-  facet_wrap(~Species, scales = "free") +
+  facet_wrap(~species, scales = "free") +
   # Add reference lines
   geom_vline(
     data = species_day_positions_stats,
@@ -326,7 +325,7 @@ species_positions_histogram <- ggplot(
 
 print(species_positions_histogram)
 ggsave(
-  filename = "cow_paradise_species_daily_positions_histogram.jpg",
+  filename = "cow_species_daily_positions_histogram.jpg",
   plot = species_positions_histogram,
   path = save_figures_path,
   width = 210,        # A4 width in mm
@@ -340,7 +339,7 @@ ggsave(
 # Account for temporal variation (e.g., battery degradation, weather)
 daily_species_positions_stats <- 
   daily_sampling_sum %>%
-  group_by(Species, Date) %>%
+  group_by(species, date) %>%
   summarise(
     mean = mean(n_positions_day, na.rm = TRUE),
     median = median(n_positions_day, na.rm = TRUE),
@@ -353,8 +352,8 @@ daily_species_positions_stats <-
 daily_sampling_sum <- daily_sampling_sum %>%
   left_join(
     daily_species_positions_stats %>%
-      select(Date, Species, lower_25_quartile),
-    by = c("Date", "Species")
+      select(date, species, lower_25_quartile),
+    by = c("date", "species")
   ) %>%
   mutate(
     poor_tracking_day = if_else(n_positions_day <= lower_25_quartile, 1, 0)
@@ -391,7 +390,7 @@ print(poor_tracking_summary)
 
 ## 3.7 Extract Irregular Individuals ----
 # Threshold based on median + buffer
-POOR_TRACKING_THRESHOLD <- 9  # Days with poor tracking
+POOR_TRACKING_THRESHOLD <- 8  # Days with poor tracking
 
 irreg_indiv <- daily_sampling_sum %>%
   filter(poor_tracking_day == 1 & n_poor_tracking_days > POOR_TRACKING_THRESHOLD)
@@ -405,7 +404,7 @@ cat(
 cow_filt_data <- cow_filt_data %>%
   mutate(
     poor_tracking_day = if_else(
-      paste(individual_ID, Date) %in% paste(irreg_indiv$individual_ID, irreg_indiv$Date),
+      paste(individual_ID, date) %in% paste(irreg_indiv$individual_ID, irreg_indiv$date),
       1,
       0
     )
@@ -419,7 +418,7 @@ cow_filt_data <- cow_filt_data %>%
 # Reduce to one row per individual per date
 reduced_data <- 
   cow_filt_data %>%
-  group_by(Species, individual_ID, Date) %>%
+  group_by(species, individual_ID, date) %>%
   summarise(
     poor_tracking_day = max(poor_tracking_day),
     n_missing_dates = max(n_missing_dates),
@@ -428,12 +427,12 @@ reduced_data <-
 
 ## 4.2 Create Individual-Level Summary ----
 summary_data <- reduced_data %>%
-  group_by(Species, individual_ID) %>%
+  group_by(species, individual_ID) %>%
   summarise(
     n_poor_tracking_days = sum(poor_tracking_day == 1),
     total_missing_days = max(n_missing_dates),
     total_irregular_or_missing_days = n_poor_tracking_days + total_missing_days,
-    dates_irregular_positions = paste(Date[poor_tracking_day == 1], collapse = ", "),
+    dates_irregular_positions = paste(date[poor_tracking_day == 1], collapse = ", "),
     .groups = "drop"
   )
 
@@ -457,7 +456,7 @@ daily_irregular_sample_table <- flextable(summary_data) %>%
   fontsize(part = "all", size = 11) %>%
   bold(part = "header") %>%
   set_header_labels(
-    Species = "Species",
+    species = "Species",
     individual_ID = "ID",
     n_poor_tracking_days = "Number of poor tracking days",
     total_missing_days = "Number of days not tracked",
@@ -472,9 +471,19 @@ daily_irregular_sample_table <- flextable(summary_data) %>%
 # Export table
 save_as_docx(
   daily_irregular_sample_table,
-  path = paste0(save_tables_path, "cow_paradise_ID_irregular_tracking_summary.docx")
+  path = paste0(save_tables_path, "cow_ID_irregular_tracking_summary.docx")
 )
 
 ################################################################################
 # END OF SCRIPT
 ################################################################################
+
+colnames(cow_filt_data)
+saveRDS(cow_filt_data, paste0(filtered_data_path, "04_cow_sub.rds"))
+#Added postional and tracking quality information to dataset, including
+#time difference
+#number of positions
+#days tracked
+#missing and poor tracking dates
+
+
