@@ -155,6 +155,9 @@ habitat_patches_vect  <- vect(habitat_patches_buffered)
 
 habitat_raster_utm <- rasterize(habitat_patches_vect, lake_raster, field = 1, background = 0)
 habitat_raster_utm <- mask(habitat_raster_utm, polyProj)
+habitat_raster_final <- raster::raster(habitat_raster_utm)
+
+
 
 # Step 3: Transform to WGS84 (required by rsf.fit which uses lon/lat internally)
 habitat_raster_wgs84_terra <- project(habitat_raster_utm, "EPSG:4326", method = "near")
