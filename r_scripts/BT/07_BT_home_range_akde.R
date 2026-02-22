@@ -75,7 +75,7 @@ perch_BT_ctmm_fits <- readRDS(paste0(ctmm_path, "BT_perch_fits/BT_perch_best_mod
 roach_BT_ctmm_fits <- readRDS(paste0(ctmm_path, "BT_roach_fits/BT_roach_best_models.rds"))
 
 # Lake boundary
-BT_polygon <- st_read(paste0(polygon_path, "BT_polygon_tpeqd.gpkg"), quiet = TRUE)
+BT_polygon <- st_read(paste0(polygon_path, "BT_polygon.gpkg"), quiet = TRUE)
 BT_sp_data <- as(BT_polygon, "Spatial")
 
 message("\nPolygon CRS: ", st_crs(BT_polygon)$input, "\n")
@@ -400,6 +400,7 @@ perch_results <- run_species_akde(
   min_N         = 3
 )
 
+
 perch_BT_akdes <- perch_results$akdes
 perch_control_akdes   <- perch_results$control_akdes
 perch_mix_akdes       <- perch_results$exposed_akdes
@@ -468,7 +469,7 @@ summary_data <- data.frame(
 print(summary_data)
 
 write.csv(summary_data,
-          paste0(tables_path, "home_range_summary.csv"),
+          paste0(tables_path, "BT_home_range_summary.csv"),
           row.names = FALSE)
 
 message("\nSummary saved to: ", tables_path, "home_range_summary.csv")
