@@ -36,6 +36,7 @@ enc_path <- "./data/encounters/BT/"
 BT_telem_data <- readRDS(paste0(filtered_data_path, "04_BT_sub.rds"))
 mortality_preds <- readxl::read_excel("./data/encounters/suspected_mortality_updated.xlsx")
 message("\nOriginal dataset: ", nrow(BT_telem_data), " rows")
+pike_mortality <- read.csv("./data/pike_deaths.csv")
 
 # Prepare mortality data
 BT_pred_prey_cols <- mortality_preds %>%
@@ -67,6 +68,27 @@ BT_telem_data_2 <- BT_telem_data %>%
 rows_removed <- nrow(BT_telem_data) - nrow(BT_telem_data_2)
 message("\nRows removed after filtering: ", format(rows_removed, big.mark = ",")) #Rows removed after filtering: 168,308
 message("Filtered dataset: ", nrow(BT_telem_data_2), " rows") #2859218 rows
+
+#Now I need to filter out pike mortality
+BT_pike_mort <- pike_mortality %>%
+  filter(lake == 'BT') %>% 
+  dplyr::select(individual_ID, likely_death_date) %>%  # Remove species here
+  rename(death_date = likely_death_date)
+
+# Ensure death_date is Date type
+BT_pike_mort$death_date <- as.Date(BT_pike_mort$death_date, origin = "1970-01-01")
+
+# Filter out data after the predation or mortality event
+BT_telem_data_3 <- BT_telem_data_2 %>%
+  left_join(BT_pike_mort %>% select(individual_ID, death_date), 
+            by = "individual_ID") %>%
+  filter(is.na(death_date) | date < death_date) %>%
+  select(-death_date)  # Remove the death_date column after filtering
+
+rows_removed <- nrow(BT_telem_data_2) - nrow(BT_telem_data_3)
+message("\nRows removed after filtering: ", format(rows_removed, big.mark = ",")) #Rows removed after filtering: 31,886
+message("Filtered dataset: ", nrow(BT_telem_data_3), " rows") #2827332 rows
+
 
 # Save filtered data
 saveRDS(BT_telem_data_2, paste0(filtered_data_path, "05_BT_sub.rds"))
