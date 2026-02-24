@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document id="root_doc">
+<Schema name="BT_rec_hab_locations_corrected" id="BT_rec_hab_locations_corrected">
+	<SimpleField name="ID" type="string"></SimpleField>
+	<SimpleField name="Latitude" type="string"></SimpleField>
+	<SimpleField name="Longitude" type="string"></SimpleField>
+</Schema>
+<Folder><name>BT_rec_hab_locations_corrected</name>
+  <Placemark id="BT_rec_hab_locations_corrected.1">
+	<name>461861</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">461861</SimpleData>
+		<SimpleData name="Latitude">63°46'15.55886&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'51.93341&quot;E</SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0477592805556,63.7709885722222</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.2">
+	<name>461367</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">461367</SimpleData>
+		<SimpleData name="Latitude">63°46'15.60439&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'50.46060&quot;E</SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0473501666667,63.7710012194444</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.3">
+	<name>461571</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">461571</SimpleData>
+		<SimpleData name="Latitude">63°46'14.79157&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'51.19866&quot;E</SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0475551833333,63.7707754361111</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.4">
+	<name>461577</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">461577</SimpleData>
+		<SimpleData name="Latitude">63°46'14.62371&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'49.91135&quot;E</SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0471975972222,63.7707288083333</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.5">
+	<name>461053</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">461053</SimpleData>
+		<SimpleData name="Latitude">63°46'14.64172&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'48.56880&quot;E</SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0468246666667,63.7707338111111</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.6">
+	<name>Habitat1</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">Habitat1</SimpleData>
+		<SimpleData name="Latitude">63°46'14.84979&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'49.80291&quot;E  </SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.047167475,63.7707916083333</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.7">
+	<name>Habitat2</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">Habitat2</SimpleData>
+		<SimpleData name="Latitude">63°46'15.03154&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'50.45748&quot;E  </SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0473493,63.7708420944444</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.8">
+	<name>Habitat3</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">Habitat3</SimpleData>
+		<SimpleData name="Latitude">63°46'15.25865&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'50.99323&quot;E  </SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0474981194444,63.7709051805556</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.9">
+	<name>Habitat4</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">Habitat4</SimpleData>
+		<SimpleData name="Latitude">63°46'15.46832&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'51.50310&quot;E  </SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.04763975,63.7709634222222</coordinates></Point>
+  </Placemark>
+  <Placemark id="BT_rec_hab_locations_corrected.10">
+	<name>ref</name>
+	<ExtendedData><SchemaData schemaUrl="#BT_rec_hab_locations_corrected">
+		<SimpleData name="ID">ref</SimpleData>
+		<SimpleData name="Latitude">63°46'14.83758&quot;N</SimpleData>
+		<SimpleData name="Longitude">20°02'50.27620&quot;E</SimpleData>
+	</SchemaData></ExtendedData>
+      <Point><coordinates>20.0472989444444,63.7707882166667</coordinates></Point>
+  </Placemark>
+</Folder>
+</Document></kml>

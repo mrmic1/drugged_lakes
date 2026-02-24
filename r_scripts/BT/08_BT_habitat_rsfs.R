@@ -28,7 +28,7 @@ figure_path       <- "./figures/BT/"
 ### LOAD DATA ###
 
 # Receiver and habitat locations
-BT_rec_locs_kml <- paste0(rec_data_path, "BT_rec_hab_locations.kml")
+BT_rec_locs_kml <- paste0(rec_data_path, "BT_rec_hab_locations_corrected.kml")
 BT_rec_locs <- st_read(BT_rec_locs_kml)
 BT_rec_locs     <- st_read(BT_rec_locs_kml)[1:5,]
 BT_hab_locs     <- st_read(BT_rec_locs_kml)[6:9,]
@@ -97,15 +97,15 @@ BT_bbox_pike  <- st_transform(BT_polygon, crs(raster(pike_total_PKDE)))
 
 # Perch plots
 perch_control_plot_habitats <- generate_ud_plot_whabitats(
-  perch_control_PKDE, BT_bbox_perch, BT_hab_locs_perch, "Perch Control")
+  perch_control_PKDE, BT_bbox_perch, BT_hab_locs, "Perch Control")
 perch_exposed_plot_habitats <- generate_ud_plot_whabitats(
-  perch_mix_PKDE, BT_bbox_perch, BT_hab_locs_perch, "Perch Exposed")
+  perch_mix_PKDE, BT_bbox_perch, BT_hab_locs, "Perch Exposed")
 
 # Roach plots
 roach_control_plot_habitats <- generate_ud_plot_whabitats(
-  roach_control_PKDE, BT_bbox_roach, BT_hab_locs_roach, "Roach Control")
+  roach_control_PKDE, BT_bbox_roach, BT_hab_locs, "Roach Control")
 roach_exposed_plot_habitats <- generate_ud_plot_whabitats(
-  roach_mix_PKDE, BT_bbox_roach, BT_hab_locs_roach, "Roach Exposed")
+  roach_mix_PKDE, BT_bbox_roach, BT_hab_locs, "Roach Exposed")
 
 #Pike plot
 pike_total_plot_habitats <- generate_ud_plot_whabitats(
@@ -139,15 +139,10 @@ ggsave(paste0(figure_path, "UD_plots/pike_total_UD_habitats_BT.png"),
 #-----------------------------------------#
 
 # NOTE: rsf.fit() uses longitude/latitude columns from telemetry internally,
-# so the raster must be in WGS84 (EPSG:4326)
+# so the raster must be in WGS84 (EPSG:4326). We build in UTM for accuracy,
+# then transform to WGS84.
 
-# Step 1: Create raster in UTM for accurate square geometry
-polyProj <- st_transform(BT_polygon, crs = "EPSG:32633")
-
-lake_raster <- rast(ext(polyProj), res = 0.25, crs = "EPSG:32633")
-lake_raster <- rasterize(polyProj, lake_raster, background = NA)
-
-# Step 2: Create 2m x 2m square habitat patches in UTM
+# Helper function to create square buffers
 create_square_buffer <- function(points, size = 2) {
   squares <- lapply(1:nrow(points), function(i) {
     center <- st_coordinates(points[i,])
@@ -161,40 +156,47 @@ create_square_buffer <- function(points, size = 2) {
   st_sf(geometry = do.call(c, squares), crs = st_crs(points))
 }
 
+# Transform polygon to UTM and add 2m buffer to catch edge cases
+polyProj_buffered <- st_buffer(st_transform(BT_polygon, "EPSG:32633"), dist = 2)
+
+# Create base raster in UTM
+lake_raster <- rast(ext(polyProj_buffered), res = 0.25, crs = "EPSG:32633")
+lake_raster <- rasterize(polyProj_buffered, lake_raster, background = NA)
+
+# Create 2m × 2m square habitat patches in UTM
 BT_hab_locs_utm      <- st_transform(BT_hab_locs, crs = "EPSG:32633")
-habitat_patches_buffered <- create_square_buffer(BT_hab_locs_utm, size = 2.0)
-habitat_patches_vect  <- vect(habitat_patches_buffered)
+habitat_patches      <- create_square_buffer(BT_hab_locs_utm, size = 2.0)
+habitat_patches_vect <- vect(habitat_patches)
 
-habitat_raster_utm <- rasterize(habitat_patches_vect, lake_raster, field = 1, background = 0)
-habitat_raster_utm <- mask(habitat_raster_utm, polyProj)
+# Rasterize habitats
+habitat_raster_utm <- rasterize(habitat_patches_vect, lake_raster, 
+                                field = 1, background = 0)
+habitat_raster_utm <- mask(habitat_raster_utm, polyProj_buffered)
 
-habitat_raster_final <- raster::raster(habitat_raster_utm)
+# Transform to WGS84 (required by rsf.fit)
+habitat_raster_wgs84 <- project(habitat_raster_utm, "EPSG:4326", method = "near")
+
+# Force binary values after reprojection
+habitat_raster_wgs84[habitat_raster_wgs84 > 0.5] <- 1
+habitat_raster_wgs84[habitat_raster_wgs84 <= 0.5 & !is.na(habitat_raster_wgs84)] <- 0
+
+# Convert to raster package format for ctmm
+habitat_raster_final <- raster::raster(habitat_raster_wgs84)
 
 plot(habitat_raster_final)
 
+# Verify
+cat("Raster extent (WGS84):\n")
+print(raster::extent(habitat_raster_final))
+cat("Unique values:", unique(raster::values(habitat_raster_final)), "\n")
+plot(habitat_raster_final, main = "BT Habitat Raster (WGS84, 2m buffer)")
+
+# Save
+raster::writeRaster(habitat_raster_final,
+                    "./data/lake_params/BT_habitat_raster_wgs84_buffered.grd",
+                    overwrite = TRUE)
 
 
-
-# # Step 3: Transform to WGS84 (required by rsf.fit which uses lon/lat internally)
-# habitat_raster_wgs84_terra <- project(habitat_raster_utm, "EPSG:4326", method = "near")
-# 
-# # Force binary values after reprojection
-# habitat_raster_wgs84_terra[habitat_raster_wgs84_terra > 0.5]  <- 1
-# habitat_raster_wgs84_terra[habitat_raster_wgs84_terra <= 0.5 & !is.na(habitat_raster_wgs84_terra)] <- 0
-# 
-# # Convert to raster package format for ctmm
-# habitat_raster_final <- raster::raster(habitat_raster_wgs84_terra)
-# 
-# plot(habitat_raster_final)
-# 
-# cat("Raster extent (WGS84):\n")
-# print(raster::extent(habitat_raster_final))
-# cat("Unique values:", unique(raster::values(habitat_raster_final)), "\n")
-# 
-# # Save
-# raster::writeRaster(habitat_raster_final,
-#                     "./data/lake_coords/BT_habitat_raster_wgs84.grd",
-#                     overwrite = TRUE)
 
 #-----------------------------------------#
 # 3. Split telemetry and AKDEs by treatment ####
@@ -244,6 +246,27 @@ check_rsf_results <- function(rsf_list, tel_list, label) {
 #> 4.1 Perch ####
 cat("\n=== Fitting Perch RSFs ===\n")
 
+#Identified problematic individual that needs to be removed from analysis
+#remove F59753 from telemetry and AKDE lists
+perch_control_tel_filtered <- perch_control_tel[names(perch_control_tel) != "F59753"]
+perch_control_akdes_filtered <- perch_control_akdes[names(perch_control_akdes) != "F59753"]
+
+cat("Original n:", length(perch_control_tel), "\n")
+cat("Filtered n:", length(perch_control_tel_filtered), "\n\n")
+
+# Replace the main objects
+perch_control_tel <- perch_control_tel_filtered
+perch_control_akdes <- perch_control_akdes_filtered
+
+# Delete the old F59753 RSF file
+old_file <- paste0(rsf_path, "BT_perch/F59753_habitat_rsf.rds")
+if(file.exists(old_file)) {
+  file.remove(old_file)
+  cat("✓ Deleted old F59753 RSF file\n\n")
+}
+
+
+
 # Control
 cl <- makeCluster(length(perch_control_tel))
 registerDoParallel(cl)
@@ -291,15 +314,15 @@ cat("\n=== Fitting Roach RSFs ===\n")
 cl <- makeCluster(length(roach_control_tel))
 registerDoParallel(cl)
 rsf_roach_control_list <- foreach(i = seq_along(roach_control_tel),
-                                  .packages = c("ctmm", "raster"),
-                                  .errorhandling = "pass") %dopar% {
-                                    rsf_model <- rsf.fit(roach_control_tel[[i]],
-                                                         roach_control_akdes[[i]],
-                                                         R = list(habitat1 = habitat_raster_final))
-                                    saveRDS(rsf_model, paste0(rsf_path, "BT_roach/",
-                                                              names(roach_control_tel)[i], "_habitat_rsf.rds"))
-                                    rsf_model
-                                  }
+                              .packages = c("ctmm", "raster"),
+                              .errorhandling = "pass") %dopar% {
+                                rsf_model <- rsf.fit(roach_control_tel[[i]],
+                                                     roach_control_akdes[[i]],
+                                                     R = list(habitat1 = habitat_raster_final))
+                                saveRDS(rsf_model, paste0(rsf_path, "BT_roach/",
+                                                          names(roach_control_tel)[i], "_habitat_rsf.rds"))
+                                rsf_model
+                              }
 stopCluster(cl)
 
 failed_roach_control <- check_rsf_results(rsf_roach_control_list, roach_control_tel, "Roach Control")
@@ -367,26 +390,71 @@ cat("\n=== PERCH ANALYSIS ===\n")
 rsf_perch_control_list <- readRDS(paste0(rsf_path, "BT_perch/rsf_perch_control_list.rds"))
 rsf_perch_mix_list     <- readRDS(paste0(rsf_path, "BT_perch/rsf_perch_mix_list.rds"))
 
-rsf_perch_control_mean <- mean(rsf_perch_control_list)
-rsf_perch_exposed_mean <- mean(rsf_perch_mix_list)
+# Extract individual coefficients - CONTROL
+perch_control_coefs <- data.frame(
+  id = character(), est = numeric(), low = numeric(), high = numeric()
+)
 
-rsf_coef_control_perch <- as.data.frame(t(summary(rsf_perch_control_mean)$CI[1,]))
-rsf_coef_exposed_perch <- as.data.frame(t(summary(rsf_perch_exposed_mean)$CI[1,]))
-rsf_coef_control_perch$treatment <- "Control"
-rsf_coef_exposed_perch$treatment <- "Exposed"
+for(i in seq_along(rsf_perch_control_list)) {
+  summ <- summary(rsf_perch_control_list[[i]])
+  coef <- summ$CI["habitat1 (1/habitat1)",]
+  perch_control_coefs <- rbind(perch_control_coefs, 
+                               data.frame(id = names(rsf_perch_control_list)[i],
+                                          est = coef["est"],
+                                          low = coef["low"],
+                                          high = coef["high"]))
+}
+
+# Manual population mean - CONTROL
+mean_est <- mean(perch_control_coefs$est)
+se_est <- sd(perch_control_coefs$est) / sqrt(nrow(perch_control_coefs))
+
+rsf_coef_control_perch <- data.frame(
+  low = mean_est - 1.96 * se_est,
+  est = mean_est,
+  high = mean_est + 1.96 * se_est,
+  treatment = "Control"
+)
+
+# Extract individual coefficients - EXPOSED
+perch_exposed_coefs <- data.frame(
+  id = character(), est = numeric(), low = numeric(), high = numeric()
+)
+
+for(i in seq_along(rsf_perch_mix_list)) {
+  summ <- summary(rsf_perch_mix_list[[i]])
+  coef <- summ$CI["habitat1 (1/habitat1)",]
+  perch_exposed_coefs <- rbind(perch_exposed_coefs, 
+                               data.frame(id = names(rsf_perch_mix_list)[i],
+                                          est = coef["est"],
+                                          low = coef["low"],
+                                          high = coef["high"]))
+}
+
+# Manual population mean - EXPOSED
+mean_est_exp <- mean(perch_exposed_coefs$est)
+se_est_exp <- sd(perch_exposed_coefs$est) / sqrt(nrow(perch_exposed_coefs))
+
+rsf_coef_exposed_perch <- data.frame(
+  low = mean_est_exp - 1.96 * se_est_exp,
+  est = mean_est_exp,
+  high = mean_est_exp + 1.96 * se_est_exp,
+  treatment = "Exposed"
+)
 
 perch_habitat_rsf_coefs <- rbind(rsf_coef_control_perch, rsf_coef_exposed_perch)
 
 cat("Perch Control CI:\n"); print(rsf_coef_control_perch)
 cat("Perch Exposed CI:\n"); print(rsf_coef_exposed_perch)
 
+# Plot
 perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y = est)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  coord_cartesian(ylim = c(-2, 6)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
@@ -405,26 +473,71 @@ cat("\n=== ROACH ANALYSIS ===\n")
 rsf_roach_control_list <- readRDS(paste0(rsf_path, "BT_roach/rsf_roach_control_list.rds"))
 rsf_roach_mix_list     <- readRDS(paste0(rsf_path, "BT_roach/rsf_roach_mix_list.rds"))
 
-rsf_roach_control_mean <- mean(rsf_roach_control_list)
-rsf_roach_exposed_mean <- mean(rsf_roach_mix_list)
+# Extract individual coefficients - CONTROL
+roach_control_coefs <- data.frame(
+  id = character(), est = numeric(), low = numeric(), high = numeric()
+)
 
-rsf_coef_control_roach <- as.data.frame(t(summary(rsf_roach_control_mean)$CI[1,]))
-rsf_coef_exposed_roach <- as.data.frame(t(summary(rsf_roach_exposed_mean)$CI[1,]))
-rsf_coef_control_roach$treatment <- "Control"
-rsf_coef_exposed_roach$treatment <- "Exposed"
+for(i in seq_along(rsf_roach_control_list)) {
+  summ <- summary(rsf_roach_control_list[[i]])
+  coef <- summ$CI["habitat1 (1/habitat1)",]
+  roach_control_coefs <- rbind(roach_control_coefs, 
+                               data.frame(id = names(rsf_roach_control_list)[i],
+                                          est = coef["est"],
+                                          low = coef["low"],
+                                          high = coef["high"]))
+}
+
+# Manual population mean - CONTROL
+mean_est <- mean(roach_control_coefs$est)
+se_est <- sd(roach_control_coefs$est) / sqrt(nrow(roach_control_coefs))
+
+rsf_coef_control_roach <- data.frame(
+  low = mean_est - 1.96 * se_est,
+  est = mean_est,
+  high = mean_est + 1.96 * se_est,
+  treatment = "Control"
+)
+
+# Extract individual coefficients - EXPOSED
+roach_exposed_coefs <- data.frame(
+  id = character(), est = numeric(), low = numeric(), high = numeric()
+)
+
+for(i in seq_along(rsf_roach_mix_list)) {
+  summ <- summary(rsf_roach_mix_list[[i]])
+  coef <- summ$CI["habitat1 (1/habitat1)",]
+  roach_exposed_coefs <- rbind(roach_exposed_coefs, 
+                               data.frame(id = names(rsf_roach_mix_list)[i],
+                                          est = coef["est"],
+                                          low = coef["low"],
+                                          high = coef["high"]))
+}
+
+# Manual population mean - EXPOSED
+mean_est_exp <- mean(roach_exposed_coefs$est)
+se_est_exp <- sd(roach_exposed_coefs$est) / sqrt(nrow(roach_exposed_coefs))
+
+rsf_coef_exposed_roach <- data.frame(
+  low = mean_est_exp - 1.96 * se_est_exp,
+  est = mean_est_exp,
+  high = mean_est_exp + 1.96 * se_est_exp,
+  treatment = "Exposed"
+)
 
 roach_habitat_rsf_coefs <- rbind(rsf_coef_control_roach, rsf_coef_exposed_roach)
 
 cat("Roach Control CI:\n"); print(rsf_coef_control_roach)
 cat("Roach Exposed CI:\n"); print(rsf_coef_exposed_roach)
 
+# Plot
 roach_habitat_rsf_plot <- ggplot(roach_habitat_rsf_coefs, aes(x = treatment, y = est)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  coord_cartesian(ylim = c(-2, 6)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
@@ -438,34 +551,46 @@ ggsave(paste0(figure_path, "roach_habitats_rsf_BT.png"),
        roach_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
 
 #> 5.3 Pike ####
-cat("\n=== PIKE ANALYSIS ===\n")
+cat("\n=== PIKE ANALYSIS (Overall) ===\n")
 
 rsf_pike_list <- readRDS(paste0(rsf_path, "BT_pike/rsf_pike_list.rds"))
 
-# Split into control and exposed for plotting
-rsf_pike_control_list <- rsf_pike_list[1:3]
-rsf_pike_mix_list     <- rsf_pike_list[4:6]
+# Extract individual coefficients - ALL PIKE
+pike_all_coefs <- data.frame(
+  id = character(), est = numeric(), low = numeric(), high = numeric()
+)
 
-rsf_pike_control_mean <- mean(rsf_pike_control_list)
-rsf_pike_exposed_mean <- mean(rsf_pike_mix_list)
+for(i in seq_along(rsf_pike_list)) {
+  summ <- summary(rsf_pike_list[[i]])
+  coef <- summ$CI["habitat1 (1/habitat1)",]
+  pike_all_coefs <- rbind(pike_all_coefs, 
+                          data.frame(id = names(rsf_pike_list)[i],
+                                     est = coef["est"],
+                                     low = coef["low"],
+                                     high = coef["high"]))
+}
 
-rsf_coef_control_pike <- as.data.frame(t(summary(rsf_pike_control_mean)$CI[1,]))
-rsf_coef_exposed_pike <- as.data.frame(t(summary(rsf_pike_exposed_mean)$CI[1,]))
-rsf_coef_control_pike$treatment <- "Control"
-rsf_coef_exposed_pike$treatment <- "Exposed"
+# Manual population mean - ALL PIKE
+mean_est <- mean(pike_all_coefs$est)
+se_est <- sd(pike_all_coefs$est) / sqrt(nrow(pike_all_coefs))
 
-pike_habitat_rsf_coefs <- rbind(rsf_coef_control_pike, rsf_coef_exposed_pike)
+rsf_coef_pike <- data.frame(
+  low = mean_est - 1.96 * se_est,
+  est = mean_est,
+  high = mean_est + 1.96 * se_est,
+  species = "Pike"
+)
 
-cat("Pike Control CI:\n"); print(rsf_coef_control_pike)
-cat("Pike Exposed CI:\n"); print(rsf_coef_exposed_pike)
+cat("Pike Overall CI:\n"); print(rsf_coef_pike)
+cat("Individual pike (n =", nrow(pike_all_coefs), "):\n")
+print(pike_all_coefs)
 
-pike_habitat_rsf_plot <- ggplot(pike_habitat_rsf_coefs, aes(x = treatment, y = est)) +
+# Plot (single point)
+pike_habitat_rsf_plot <- ggplot(rsf_coef_pike, aes(x = species, y = est)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
-  geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
-  scale_shape_manual(values = c(21, 21)) +
-  scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  geom_point(size = 4, color = "black", fill = "gray", shape = 21) +
+  coord_cartesian(ylim = c(-2, 6)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
