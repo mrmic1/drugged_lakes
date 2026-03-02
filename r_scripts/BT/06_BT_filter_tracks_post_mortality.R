@@ -678,7 +678,7 @@ roach_BT_tel <- readRDS(paste0(save_telem_path, "BT/roach_BT_tel_thinned_final.r
 
 if (length(roach_BT_tel) > 0) {
   # Fit models using parallel processing -----------------------------------
-  roach_cores <- ifelse(length(roach_BT_tel) > 15, 15, 3)
+  roach_cores <- ifelse(length(roach_BT_tel) > 15, 20, 3)
   
   roach_results <- fit_ctmm_species_parallel(
     roach_BT_tel,
