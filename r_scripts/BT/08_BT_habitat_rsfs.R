@@ -454,7 +454,7 @@ perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y =
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 6)) +
+  coord_cartesian(ylim = c(-2, 4)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
@@ -537,7 +537,7 @@ roach_habitat_rsf_plot <- ggplot(roach_habitat_rsf_coefs, aes(x = treatment, y =
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 6)) +
+  coord_cartesian(ylim = c(-2, 4)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
