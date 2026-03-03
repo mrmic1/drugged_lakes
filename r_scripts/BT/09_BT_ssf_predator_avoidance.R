@@ -225,7 +225,7 @@ resolution <- 1
 # Saving as GeoTIFF avoids terra pointer issues that occur when
 # SpatRaster objects are passed across parallel workers or saved
 # with saveRDS().
-od_dir <- paste0(ssf_path, "pike_ods/")
+od_dir <- paste0(ssf_path, "pike_ods/BT/")
 dir.create(od_dir, recursive = TRUE, showWarnings = FALSE)
 
 pike_ids <- unique(pike_df_thinned$id)
@@ -320,7 +320,7 @@ for (pid in names(pike_rolling_ods)) {
 
 
 # Check temporal coverage of the OD stack
-od <- pike_rolling_ods$F59880
+od <- pike_rolling_ods$F59886
 
 cat("Total layers:", terra::nlyr(od), "\n")
 
@@ -331,7 +331,7 @@ cat("Last layer: ", layer_names[terra::nlyr(od)], "\n")
 
 # Or check via the thinned track directly
 pike_df_thinned %>%
-  dplyr::filter(id == "F59880") %>%
+  dplyr::filter(id == "F59888") %>%
   dplyr::summarise(
     start = min(t),
     end   = max(t),
