@@ -191,84 +191,155 @@ plot(trast_terra, main = "Template raster - UTM 33N (terra)")
 # 5. COMPUTE ROLLING PIKE ODs ####
 # ------------------------------------------ #
 
-# Verify median fix interval for pike
-median_interval_mins <- median(diff(as.numeric(pike_muddyfoot_tel[[1]]$timestamp))) / 60
-cat("Median fix interval:", round(median_interval_mins, 2), "minutes\n")
+# Thin telemetry to 5-minute fixes to reduce computation time.
+# 30-second fixes are temporally redundant for estimating pike
+# occurrence distributions at the scale of this small lake.
+thin_interval_mins <- 5
 
-# With ~30 second (0.5 min) fixes:
-# 120 points = 60 minutes  (1 hour)
-# 60  points = 30 minutes
-# 240 points = 120 minutes (2 hours)
-#
-# For a small lake (~40 x 30 m), pike can traverse the entire
-# lake in minutes, so a 1-hour window is ecologically reasonable
-# as a timescale over which prey could perceive cumulative pike
-# space use through direct encounters or chemical/visual cues.
-# This matches the 4-hour window used in Schlägel et al. (2019)
-# scaled to the much finer fix rate here.
+pike_df_thinned <- pike_df %>%
+  dplyr::group_by(id) %>%                    # process each pike separately
+  dplyr::arrange(t) %>%                      # ensure chronological order
+  dplyr::filter(
+    as.numeric(difftime(t,                   # time difference between current
+                        dplyr::lag(t,        # and previous fix
+                                   default = t[1]),     # first fix always kept
+                        units = "mins")) >= thin_interval_mins |
+      dplyr::row_number() == 1              # always keep first location
+  ) %>%
+  dplyr::ungroup()
 
-n_points_window <- 120  # ~1 hour at 30-second fix rate
-cat("Window size:", n_points_window, "points =",
-    round(n_points_window * median_interval_mins, 0), "minutes\n\n")
+cat("Thinned location counts per pike:\n")
+pike_df_thinned %>% dplyr::count(id) %>% print()
 
-pike_ids <- unique(pike_df$id)
-cat("Computing rolling ODs for", length(pike_ids), "pike individuals\n")
+# n_points_window: number of consecutive locations used to estimate
+# each occurrence distribution. 12 x 5-min fixes = 60-min window,
+# representing the timescale over which prey perceive pike presence.
+n_points_window <- 12
 
-pike_rolling_ods <- lapply(pike_ids, function(pid) {
-  cat("Computing rolling OD for pike:", pid, "\n")
+# resolution: spatial grain of the occurrence distribution raster.
+# 2m is sufficient for a ~40x30m lake and reduces computation time
+# compared to 1m (4x fewer cells).
+resolution <- 1
+
+# Output directory for GeoTIFF files — one per pike individual.
+# Saving as GeoTIFF avoids terra pointer issues that occur when
+# SpatRaster objects are passed across parallel workers or saved
+# with saveRDS().
+od_dir <- paste0(ssf_path, "pike_ods/")
+dir.create(od_dir, recursive = TRUE, showWarnings = FALSE)
+
+pike_ids <- unique(pike_df_thinned$id)
+
+for (pid in pike_ids) {
   
-  # Check column names first
-  cat("  Columns in pike_df:", names(pike_df), "\n")
+  cat("Computing rolling OD for:", pid, "—", format(Sys.time(), "%H:%M:%S"), "\n")
   
-  # Select using actual column names from pike_df
-  pike_sub_df <- pike_df %>%
+  # Subset to single pike and rename t to t_ as required by amt
+  pike_sub <- pike_df_thinned %>%
     dplyr::filter(id == pid) %>%
-    dplyr::select(x_, y_, t)  # t not t_
+    dplyr::select(x_, y_, t) %>%
+    dplyr::rename(t_ = t)
   
-  # Rename t to t_ as required by amt track format
-  names(pike_sub_df)[names(pike_sub_df) == "t"] <- "t_"
-  
-  # Rebuild as fresh minimal track
-  pike_sub_track <- structure(
-    pike_sub_df,
-    class = c("track_xyt", "track_xy", "tbl_df", "tbl", "data.frame"),
-    crs_  = sf::st_crs(32633)
+  # make_track(): converts data frame to amt track_xyt object.
+  # Required input format for all amt movement functions.
+  pike_track <- amt::make_track(
+    pike_sub, .x = x_, .y = y_, .t = t_,
+    crs = sf::st_crs(32633)             # UTM 33N coordinate system
   )
   
-  cat("  Locations:", nrow(pike_sub_track), "\n")
-  cat("  Columns:", names(pike_sub_track), "\n")
+  # Build the template raster that defines the spatial grid on which
+  # occurrence distributions are computed. Extent covers the full lake
+  # plus a 20m buffer. All values set to 1 as a placeholder — the
+  # actual OD values are computed by rolling_od().
+  trast_worker <- terra::rast(
+    xmin = min(pike_df_thinned$x_) - 20,
+    xmax = max(pike_df_thinned$x_) + 20,
+    ymin = min(pike_df_thinned$y_) - 20,
+    ymax = max(pike_df_thinned$y_) + 20,
+    resolution = resolution,
+    crs = "EPSG:32633"
+  )
+  terra::values(trast_worker) <- 1
   
-  tryCatch(
-    rolling_od(pike_sub_track, trast_terra,
-               n.points      = n_points_window,
-               show.progress = TRUE),
+  # rolling_od(): core function from Schlägel et al. (2019) via amt.
+  # For each time step k, uses locations k to k+n_points_window to
+  # compute a kriged occurrence distribution (OD) via ctmm.
+  # Returns a SpatRaster stack with one layer per time step,
+  # where high values indicate areas the pike most likely occupied
+  # during that time window. This becomes the dynamic predation
+  # risk covariate in the prey SSF.
+  result <- tryCatch(
+    amt::rolling_od(pike_track, trast_worker,
+                    n.points = n_points_window,  # locations per OD window
+                    show.progress = TRUE),        # progress bar per pike
     error = function(e) {
-      message("  rolling_od FAILED: ", e$message)
+      message("FAILED: ", pid, " — ", e$message)
       return(NULL)
     }
   )
-})
-
-names(pike_rolling_ods) <- pike_ids
-
-names(pike_rolling_ods) <- pike_ids
-
-# Summary
-cat("\n--- Rolling OD summary ---\n")
-for (pid in pike_ids) {
-  od <- pike_rolling_ods[[pid]]
-  if (is.null(od)) {
-    cat(sprintf("  %-10s  FAILED\n", pid))
-  } else {
-    cat(sprintf("  %-10s  SUCCESS — %d layers\n", pid, raster::nlayers(od)))
+  
+  # writeRaster(): saves the SpatRaster stack to a GeoTIFF file.
+  # This is done immediately inside the loop so results are preserved
+  # even if a later pike fails. GeoTIFF is the correct format for
+  # SpatRaster objects — unlike saveRDS(), it stores the actual raster
+  # data on disk rather than relying on C++ memory pointers.
+  if (!is.null(result)) {
+    out_file <- paste0(od_dir, pid, "_rolling_od.tif")
+    terra::writeRaster(result, out_file, overwrite = TRUE)
+    cat("  Saved:", out_file, "\n")
+    rm(result)   # remove from memory immediately to free RAM
+    gc()         # trigger garbage collection
   }
 }
 
-pike_rolling_ods <- Filter(Negate(is.null), pike_rolling_ods)
-cat("\nSuccessful ODs:", length(pike_rolling_ods), "/", length(pike_ids), "\n")
+# ---- Reload from GeoTIFF files ----
+# terra::rast() loads each GeoTIFF back into R as a fresh SpatRaster
+# with valid pointers. This is always safe regardless of how the
+# files were originally created.
+cat("\nReloading pike ODs from GeoTIFF files...\n")
 
-saveRDS(pike_rolling_ods, paste0(ssf_path, "pike_rolling_ods.rds"))
-# pike_rolling_ods <- readRDS(paste0(ssf_path, "pike_rolling_ods.rds"))
+od_files <- list.files(od_dir, pattern = "_rolling_od.tif$",
+                       full.names = TRUE)
+print(od_files)
+
+pike_rolling_ods <- lapply(od_files, terra::rast)
+
+# Extract pike IDs from filenames to use as list names
+names(pike_rolling_ods) <- gsub("_rolling_od.tif", "",
+                                basename(od_files))
+
+# Verify pointers are valid after reload
+cat("\nVerification:\n")
+for (pid in names(pike_rolling_ods)) {
+  cat(sprintf("  %-10s  layers: %d  pointer: %s\n",
+              pid,
+              terra::nlyr(pike_rolling_ods[[pid]]),
+              tryCatch({ terra::nlyr(pike_rolling_ods[[pid]]); "VALID" },
+                       error = function(e) "INVALID")))
+}
+
+
+# Check temporal coverage of the OD stack
+od <- pike_rolling_ods$F59880
+
+cat("Total layers:", terra::nlyr(od), "\n")
+
+# Layer names contain the timestamps
+layer_names <- names(od)
+cat("First layer:", layer_names[1], "\n")
+cat("Last layer: ", layer_names[terra::nlyr(od)], "\n")
+
+# Or check via the thinned track directly
+pike_df_thinned %>%
+  dplyr::filter(id == "F59880") %>%
+  dplyr::summarise(
+    start = min(t),
+    end   = max(t),
+    n_locs = dplyr::n(),
+    days  = round(difftime(max(t), min(t), units = "days"), 1)
+  ) %>%
+  print()
+
 
 # ------------------------------------------ #
 # 6. FIT PREY SSFs ####
@@ -283,37 +354,71 @@ saveRDS(pike_rolling_ods, paste0(ssf_path, "pike_rolling_ods.rds"))
 # 3. Extract the pike OD value at each step endpoint
 # 4. Fit conditional logistic regression
 
-fit_prey_ssf <- function(prey_track_sub, pike_od_list, max_time_mins = 30) {
-  
-  # Average pike ODs across individuals to get a single
-  # population-level pike occurrence surface per time step
-  # (simpler than fitting one covariate per pike individual,
-  # and more appropriate for a predation risk question)
-  if (length(pike_od_list) > 1) {
-    # Stack and average across pike ODs
-    # (raster stacks must have same dimensions - check trast alignment)
-    pike_od_mean <- Reduce("+", pike_od_list) / length(pike_od_list)
-  } else {
-    pike_od_mean <- pike_od_list[[1]]
-  }
+# Extract pike_od value for each pike individually, then average
+# across pike. This preserves time attributes and handles different
+# layer counts correctly.
+
+fit_prey_ssf <- function(steps_xyt, pike_od_list, max_time_mins = 60) {
   
   tryCatch({
-    prey_track_sub %>%
-      steps() %>%
-      random_steps(n_control = 10) %>%
-      extract_covariates_var_time(
-        pike_od_mean,
-        max_time  = minutes(max_time_mins),  # max time lag for covariate matching
-        when      = "end",                   # extract at step endpoint
-        name_covar = "pike_od"
-      ) %>%
-      filter(!is.na(pike_od)) %>%
-      fit_ssf(case_ ~ pike_od + strata(step_id_))
-  },
-  error = function(e) {
+    
+    # Extract covariate from each pike OD separately
+    pike_od_extractions <- lapply(names(pike_od_list), function(pid) {
+      
+      od <- pike_od_list[[pid]]
+      
+      # Verify time is set
+      if (is.null(terra::time(od))) {
+        stop("No time attribute on OD for pike: ", pid)
+      }
+      
+      amt::extract_covariates_var_time(
+        steps_xyt,
+        od,
+        max_time   = lubridate::minutes(max_time_mins),
+        when       = "any",
+        name_covar = paste0("pike_od_", pid)
+      )[[paste0("pike_od_", pid)]]
+    })
+    
+    # Average extracted values across pike individuals
+    # Each element is a vector of length nrow(steps_xyt)
+    od_matrix <- do.call(cbind, pike_od_extractions)
+    steps_xyt$pike_od <- rowMeans(od_matrix, na.rm = TRUE)
+    
+    cat("    Non-NA pike_od values:",
+        sum(!is.na(steps_xyt$pike_od)), "/", nrow(steps_xyt), "\n")
+    
+    steps_xyt %>%
+      dplyr::filter(!is.na(pike_od)) %>%
+      amt::fit_ssf(case_ ~ pike_od + strata(step_id_))
+    
+  }, error = function(e) {
     message("SSF failed: ", e$message)
     return(NULL)
   })
+}
+
+# ---- Rebuild perch steps and test on one individual ----
+pid_test  <- perch_ids[1]
+prey_sub  <- dplyr::filter(perch_track, id == pid_test)
+
+steps_test <- prey_sub %>%
+  amt::steps() %>%
+  amt::random_steps(n_control = 10) %>%
+  dplyr::mutate(
+    t1_ = lubridate::with_tz(t1_, "UTC"),
+    t2_ = lubridate::with_tz(t2_, "UTC")
+  )
+
+cat("Testing SSF for:", pid_test, "\n")
+model_test <- fit_prey_ssf(steps_test, pike_rolling_ods)
+
+if (!is.null(model_test)) {
+  cat("SUCCESS\n")
+  print(summary(model_test$model)$coefficients)
+} else {
+  cat("FAILED\n")
 }
 
 # ---- 6.1 Perch ####
@@ -325,10 +430,18 @@ perch_ssf_results <- lapply(perch_ids, function(pid) {
   
   cat("Fitting SSF for perch:", pid, "\n")
   
-  prey_sub  <- filter(perch_track, id == pid)
+  prey_sub  <- dplyr::filter(perch_track, id == pid)
   treatment <- perch_treatments$treatment[perch_treatments$id == pid]
   
-  model <- fit_prey_ssf(prey_sub, pike_rolling_ods)
+  steps_xyt <- prey_sub %>%
+    amt::steps() %>%
+    amt::random_steps(n_control = 10) %>%
+    dplyr::mutate(
+      t1_ = lubridate::with_tz(t1_, "UTC"),
+      t2_ = lubridate::with_tz(t2_, "UTC")
+    )
+  
+  model <- fit_prey_ssf(steps_xyt, pike_rolling_ods)
   
   if (!is.null(model)) {
     saveRDS(model, paste0(ssf_path, "muddyfoot_perch/", pid, "_ssf.rds"))
@@ -340,6 +453,8 @@ perch_ssf_results <- lapply(perch_ids, function(pid) {
 names(perch_ssf_results) <- perch_ids
 saveRDS(perch_ssf_results, paste0(ssf_path, "muddyfoot_perch/perch_ssf_results.rds"))
 
+
+
 # ---- 6.2 Roach ####
 
 roach_ids        <- unique(roach_track$id)
@@ -349,10 +464,19 @@ roach_ssf_results <- lapply(roach_ids, function(rid) {
   
   cat("Fitting SSF for roach:", rid, "\n")
   
-  prey_sub  <- filter(roach_track, id == rid)
+  prey_sub  <- dplyr::filter(roach_track, id == rid)
   treatment <- roach_treatments$treatment[roach_treatments$id == rid]
   
-  model <- fit_prey_ssf(prey_sub, pike_rolling_ods)
+  # Convert to steps first — this creates the case_ column
+  steps_xyt <- prey_sub %>%
+    amt::steps() %>%
+    amt::random_steps(n_control = 10) %>%
+    dplyr::mutate(
+      t1_ = lubridate::with_tz(t1_, "UTC"),
+      t2_ = lubridate::with_tz(t2_, "UTC")
+    )
+  
+  model <- fit_prey_ssf(steps_xyt, pike_rolling_ods)
   
   if (!is.null(model)) {
     saveRDS(model, paste0(ssf_path, "muddyfoot_roach/", rid, "_ssf.rds"))
@@ -412,9 +536,9 @@ roach_ssf_coefs <- extract_ssf_coefs(roach_ssf_results, "Roach")
 
 # Tidy treatment labels
 perch_ssf_coefs <- perch_ssf_coefs %>%
-  mutate(treatment = ifelse(treatment == "control", "Control", "Exposed"))
+  mutate(treatment = ifelse(treatment == "Control", "Control", "Exposed"))
 roach_ssf_coefs <- roach_ssf_coefs %>%
-  mutate(treatment = ifelse(treatment == "control", "Control", "Exposed"))
+  mutate(treatment = ifelse(treatment == "Control", "Control", "Exposed"))
 
 print(perch_ssf_coefs)
 print(roach_ssf_coefs)
@@ -479,3 +603,85 @@ ggsave(paste0(fig_path, "perch_ssf_pike_od_muddyfoot.png"), perch_ssf_plot,
        width = 8, height = 8, units = "cm", dpi = 300, device = "png")
 ggsave(paste0(fig_path, "roach_ssf_pike_od_muddyfoot.png"), roach_ssf_plot,
        width = 8, height = 8, units = "cm", dpi = 300, device = "png")
+
+
+# ---- Statistical comparison: Control vs Exposed ----
+# Two-sample t-test on individual coefficients
+# This is the standard "two-stage" approach in movement ecology:
+# Stage 1 = fit individual models (done)
+# Stage 2 = compare coefficients across groups
+
+compare_treatments <- function(coef_df, species_label) {
+  
+  cat("\n=============================\n")
+  cat(species_label, "— Treatment comparison\n")
+  cat("=============================\n")
+  
+  control <- coef_df$est[coef_df$treatment == "Control"]
+  exposed <- coef_df$est[coef_df$treatment == "Exposed"]
+  
+  cat("Control n:", length(control), "\n")
+  cat("Exposed n:", length(exposed), "\n\n")
+  
+  # Descriptive statistics
+  cat("Control  mean:", round(mean(control), 3),
+      " SD:", round(sd(control), 3), "\n")
+  cat("Exposed  mean:", round(mean(exposed), 3),
+      " SD:", round(sd(exposed), 3), "\n\n")
+  
+  # Test if each group differs from zero (is there avoidance?)
+  cat("--- One-sample t-tests vs zero ---\n")
+  t_control <- t.test(control, mu = 0)
+  t_exposed <- t.test(exposed, mu = 0)
+  cat("Control vs 0:  t =", round(t_control$statistic, 3),
+      " p =", round(t_control$p.value, 4), "\n")
+  cat("Exposed vs 0:  t =", round(t_exposed$statistic, 3),
+      " p =", round(t_exposed$p.value, 4), "\n\n")
+  
+  # Test if groups differ from each other
+  cat("--- Two-sample t-test: Control vs Exposed ---\n")
+  t_between <- t.test(exposed, control, var.equal = FALSE)  # Welch t-test
+  cat("t =", round(t_between$statistic, 3),
+      " df =", round(t_between$parameter, 1),
+      " p =", round(t_between$p.value, 4), "\n")
+  cat("Mean difference (Exposed - Control):",
+      round(mean(exposed) - mean(control), 3), "\n")
+  cat("95% CI of difference: [",
+      round(t_between$conf.int[1], 3), ",",
+      round(t_between$conf.int[2], 3), "]\n\n")
+  
+  # Non-parametric alternative (use if small n or non-normal)
+  cat("--- Wilcoxon rank-sum test (non-parametric) ---\n")
+  w_test <- wilcox.test(exposed, control, exact = FALSE)
+  cat("W =", w_test$statistic,
+      " p =", round(w_test$p.value, 4), "\n")
+  
+  # Return results as data frame
+  data.frame(
+    species          = species_label,
+    n_control        = length(control),
+    n_exposed        = length(exposed),
+    mean_control     = mean(control),
+    mean_exposed     = mean(exposed),
+    t_control_vs0    = t_control$statistic,
+    p_control_vs0    = t_control$p.value,
+    t_exposed_vs0    = t_exposed$statistic,
+    p_exposed_vs0    = t_exposed$p.value,
+    t_between        = t_between$statistic,
+    p_between        = t_between$p.value,
+    mean_diff        = mean(exposed) - mean(control),
+    ci_low           = t_between$conf.int[1],
+    ci_high          = t_between$conf.int[2],
+    p_wilcoxon       = w_test$p.value
+  )
+}
+
+perch_stats <- compare_treatments(perch_ssf_coefs, "Perch")
+roach_stats  <- compare_treatments(roach_ssf_coefs,  "Roach")
+
+# Combined results table
+all_stats <- dplyr::bind_rows(perch_stats, roach_stats)
+print(all_stats)
+
+write.csv(all_stats, paste0(ssf_path, "treatment_comparison_stats.csv"),
+          row.names = FALSE)
