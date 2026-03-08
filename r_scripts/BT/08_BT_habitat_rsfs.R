@@ -444,17 +444,26 @@ rsf_coef_exposed_perch <- data.frame(
 
 perch_habitat_rsf_coefs <- rbind(rsf_coef_control_perch, rsf_coef_exposed_perch)
 
+# Combine individual coefficients and add treatment label
+perch_control_coefs$treatment <- "Control"
+perch_exposed_coefs$treatment <- "Exposed"
+ind_coefs_perch <- rbind(perch_control_coefs, perch_exposed_coefs)
+
 cat("Perch Control CI:\n"); print(rsf_coef_control_perch)
 cat("Perch Exposed CI:\n"); print(rsf_coef_exposed_perch)
 
 # Plot
 perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y = est)) +
+  geom_jitter(data = ind_coefs_perch,
+              aes(x = treatment, y = est, color = treatment),
+              width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
+  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey50")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  coord_cartesian(ylim = c(-2.5, 6)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
@@ -464,7 +473,7 @@ perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y =
         panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))
 
 print(perch_habitat_rsf_plot)
-ggsave(paste0(figure_path, "perch_habitats_rsf_BT.png"),
+ggsave(paste0(figure_path, "rsf_plots/perch_habitats_rsf_BT.png"),
        perch_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
 
 #> 5.2 Roach ####
@@ -527,11 +536,20 @@ rsf_coef_exposed_roach <- data.frame(
 
 roach_habitat_rsf_coefs <- rbind(rsf_coef_control_roach, rsf_coef_exposed_roach)
 
+# Combine individual coefficients and add treatment label
+roach_control_coefs$treatment <- "Control"
+roach_exposed_coefs$treatment <- "Exposed"
+ind_coefs_roach <- rbind(roach_control_coefs, roach_exposed_coefs)
+
 cat("Roach Control CI:\n"); print(rsf_coef_control_roach)
 cat("Roach Exposed CI:\n"); print(rsf_coef_exposed_roach)
 
 # Plot
 roach_habitat_rsf_plot <- ggplot(roach_habitat_rsf_coefs, aes(x = treatment, y = est)) +
+  geom_jitter(data = ind_coefs_roach,
+              aes(x = treatment, y = est, color = treatment),
+              width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
+  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey50")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +

@@ -348,9 +348,22 @@ cat("Pike:", length(rsf_pike_list), "models\n")
 # 5. Explore RSF results ####
 #-----------------------------------------#
 
+#> Helper function to extract individual coefficients ####
+extract_ind_coefs <- function(rsf_list, treatment_label) {
+  do.call(rbind, lapply(seq_along(rsf_list), function(i) {
+    coef_ci <- summary(rsf_list[[i]])$CI[1, ]  # first habitat covariate row
+    data.frame(
+      id        = i,
+      est       = coef_ci["est"],
+      low       = coef_ci["low"],
+      high      = coef_ci["high"],
+      treatment = treatment_label
+    )
+  }))
+}
+
 #> 5.1 Perch ####
 cat("\n=== PERCH ANALYSIS ===\n")
-
 rsf_perch_control_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
 rsf_perch_mix_list     <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
 
@@ -361,19 +374,28 @@ rsf_coef_control_perch <- as.data.frame(t(summary(rsf_perch_control_mean)$CI[1,]
 rsf_coef_exposed_perch <- as.data.frame(t(summary(rsf_perch_exposed_mean)$CI[1,]))
 rsf_coef_control_perch$treatment <- "Control"
 rsf_coef_exposed_perch$treatment <- "Exposed"
-
 perch_habitat_rsf_coefs <- rbind(rsf_coef_control_perch, rsf_coef_exposed_perch)
+
+# Extract individual-level coefficients for perch
+ind_coefs_perch <- rbind(
+  extract_ind_coefs(rsf_perch_control_list, "Control"),
+  extract_ind_coefs(rsf_perch_mix_list,     "Exposed")
+)
 
 cat("Perch Control CI:\n"); print(rsf_coef_control_perch)
 cat("Perch Exposed CI:\n"); print(rsf_coef_exposed_perch)
 
 perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y = est)) +
+  geom_jitter(data = ind_coefs_perch,
+              aes(x = treatment, y = est, color = treatment),
+              width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
+  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey50")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  coord_cartesian(ylim = c(-1, 4)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
@@ -383,12 +405,11 @@ perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y =
         panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))
 
 print(perch_habitat_rsf_plot)
-ggsave(paste0(figure_path, "perch_habitats_rsf_muddyfoot.png"),
+ggsave(paste0(figure_path, "rsf_plots/perch_habitats_rsf_muddyfoot.png"),
        perch_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
 
 #> 5.2 Roach ####
 cat("\n=== ROACH ANALYSIS ===\n")
-
 rsf_roach_control_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
 rsf_roach_mix_list     <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
 
@@ -399,19 +420,28 @@ rsf_coef_control_roach <- as.data.frame(t(summary(rsf_roach_control_mean)$CI[1,]
 rsf_coef_exposed_roach <- as.data.frame(t(summary(rsf_roach_exposed_mean)$CI[1,]))
 rsf_coef_control_roach$treatment <- "Control"
 rsf_coef_exposed_roach$treatment <- "Exposed"
-
 roach_habitat_rsf_coefs <- rbind(rsf_coef_control_roach, rsf_coef_exposed_roach)
+
+# Extract individual-level coefficients for roach
+ind_coefs_roach <- rbind(
+  extract_ind_coefs(rsf_roach_control_list, "Control"),
+  extract_ind_coefs(rsf_roach_mix_list,     "Exposed")
+)
 
 cat("Roach Control CI:\n"); print(rsf_coef_control_roach)
 cat("Roach Exposed CI:\n"); print(rsf_coef_exposed_roach)
 
 roach_habitat_rsf_plot <- ggplot(roach_habitat_rsf_coefs, aes(x = treatment, y = est)) +
+  geom_jitter(data = ind_coefs_roach,
+              aes(x = treatment, y = est, color = treatment),
+              width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
+  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey50")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
   geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  coord_cartesian(ylim = c(-2.5, 2)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
@@ -421,7 +451,7 @@ roach_habitat_rsf_plot <- ggplot(roach_habitat_rsf_coefs, aes(x = treatment, y =
         panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))
 
 print(roach_habitat_rsf_plot)
-ggsave(paste0(figure_path, "roach_habitats_rsf_muddyfoot.png"),
+ggsave(paste0(figure_path, "rsf_plots/roach_habitats_rsf_muddyfoot.png"),
        roach_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
 
 #> 5.3 Pike ####
