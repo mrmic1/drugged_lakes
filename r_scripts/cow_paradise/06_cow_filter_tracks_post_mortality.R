@@ -519,7 +519,7 @@ verify_fits_quick <- function(fit_list, species_name) {
 
 
 # Load filtered data
-cow_paradise_filt_data <- readRDS(paste0(filtered_data_path, "05_cow_paradise_sub.rds"))
+cow_paradise_filt_data <- readRDS(paste0(filtered_data_path, "05_cow_sub.rds"))
 
 
 # Convert to Movebank format for ctmm package ------------------------------

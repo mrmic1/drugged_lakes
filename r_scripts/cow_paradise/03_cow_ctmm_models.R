@@ -26,7 +26,7 @@ output_path <- "./output/"
 # 1. LOAD AND PREPARE DATA
 #==============================================================================
 
-# Load filtered tracking data -----------------------------------------------
+# Load filte  red tracking data -----------------------------------------------
 cow_paradise_sub <- readRDS(paste0(filtered_data_path, '03_cow_sub.rds'))
 message("Loaded ", nrow(cow_paradise_sub), " detections for ", 
         n_distinct(cow_paradise_sub$individual_ID), " individuals")
