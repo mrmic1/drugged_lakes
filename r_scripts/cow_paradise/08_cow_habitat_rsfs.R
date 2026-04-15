@@ -206,19 +206,19 @@ raster::writeRaster(habitat_raster_final,
 perch_treatments <- sapply(perch_cow_tel, function(tel) unique(tel$treatment))
 print(perch_treatments)
 
-perch_control_tel  <- perch_cow_tel[1:15]
-perch_mix_tel      <- perch_cow_tel[16:30]
-perch_control_akdes <- perch_cow_akdes[1:15]
-perch_mix_akdes     <- perch_cow_akdes[16:30]
+perch_control_tel  <- perch_cow_tel[c(1, 21:37)]
+perch_mix_tel      <- perch_cow_tel[2:20]
+perch_control_akdes <- perch_cow_akdes[c(1, 21:37)]
+perch_mix_akdes     <- perch_cow_akdes[2:20]
 
 #> 3.2 Roach ####
 roach_treatments <- sapply(roach_cow_tel, function(tel) unique(tel$treatment))
 print(roach_treatments)
 
-roach_control_tel  <- roach_cow_tel[1:15]
-roach_mix_tel      <- roach_cow_tel[16:30]
-roach_control_akdes <- roach_cow_akdes[1:15]
-roach_mix_akdes     <- roach_cow_akdes[16:30]
+roach_control_tel  <- roach_cow_tel[1:9]
+roach_mix_tel      <- roach_cow_tel[10:19]
+roach_control_akdes <- roach_cow_akdes[1:9]
+roach_mix_akdes     <- roach_cow_akdes[10:19]
 
 
 #-----------------------#
@@ -245,27 +245,6 @@ check_rsf_results <- function(rsf_list, tel_list, label) {
 
 #> 4.1 Perch ####
 cat("\n=== Fitting Perch RSFs ===\n")
-
-#Identified problematic individual that needs to be removed from analysis
-#remove F59753 from telemetry and AKDE lists
-perch_control_tel_filtered <- perch_control_tel[names(perch_control_tel) != "F59753"]
-perch_control_akdes_filtered <- perch_control_akdes[names(perch_control_akdes) != "F59753"]
-
-cat("Original n:", length(perch_control_tel), "\n")
-cat("Filtered n:", length(perch_control_tel_filtered), "\n\n")
-
-# Replace the main objects
-perch_control_tel <- perch_control_tel_filtered
-perch_control_akdes <- perch_control_akdes_filtered
-
-# Delete the old F59753 RSF file
-old_file <- paste0(rsf_path, "cow_perch/F59753_habitat_rsf.rds")
-if(file.exists(old_file)) {
-  file.remove(old_file)
-  cat("✓ Deleted old F59753 RSF file\n\n")
-}
-
-
 
 # Control
 cl <- makeCluster(length(perch_control_tel))
