@@ -358,6 +358,8 @@ pike_df_thinned %>%
 # across pike. This preserves time attributes and handles different
 # layer counts correctly.
 
+
+
 fit_prey_ssf <- function(steps_xyt, pike_od_list, max_time_mins = 60) {
   
   tryCatch({
@@ -398,6 +400,8 @@ fit_prey_ssf <- function(steps_xyt, pike_od_list, max_time_mins = 60) {
     return(NULL)
   })
 }
+
+
 
 # ---- Rebuild perch steps and test on one individual ----
 pid_test  <- perch_ids[1]
