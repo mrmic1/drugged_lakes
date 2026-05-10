@@ -452,7 +452,7 @@ perch_ssf_results <- lapply(perch_ids, function(pid) {
 
 names(perch_ssf_results) <- perch_ids
 saveRDS(perch_ssf_results, paste0(ssf_path, "muddyfoot_perch/perch_ssf_results.rds"))
-
+perch_ssf_results <- readRDS(paste0(ssf_path, "muddyfoot_perch/perch_ssf_results.rds"))
 
 
 # ---- 6.2 Roach ####
@@ -487,6 +487,8 @@ roach_ssf_results <- lapply(roach_ids, function(rid) {
 
 names(roach_ssf_results) <- roach_ids
 saveRDS(roach_ssf_results, paste0(ssf_path, "muddyfoot_roach/roach_ssf_results.rds"))
+roach_ssf_results <- readRDS(paste0(ssf_path, "muddyfoot_roach/roach_ssf_results.rds"))
+
 
 # ------------------------------------------ #
 # 7. EXTRACT SSF COEFFICIENTS ####
@@ -545,7 +547,11 @@ print(roach_ssf_coefs)
 
 # Save
 write_csv(perch_ssf_coefs, paste0(ssf_path, "muddyfoot_perch/perch_ssf_coefs.csv"))
+perch_ssf_coefs <- read_csv(paste0(ssf_path, "muddyfoot_perch/perch_ssf_coefs.csv"))
+
 write_csv(roach_ssf_coefs, paste0(ssf_path, "muddyfoot_roach/roach_ssf_coefs.csv"))
+roach_ssf_coefs <- read_csv(paste0(ssf_path, "muddyfoot_roach/roach_ssf_coefs.csv"))
+
 
 # ------------------------------------------ #
 # 8. PLOT SSF COEFFICIENTS ####
@@ -554,7 +560,7 @@ write_csv(roach_ssf_coefs, paste0(ssf_path, "muddyfoot_roach/roach_ssf_coefs.csv
 # Individual points + population mean (simple mean of
 # individual estimates) with SE.
 
-plot_ssf_coefs <- function(coef_df, species_label, y_limits = c(-5, 5)) {
+plot_ssf_coefs <- function(coef_df, species_label, y_limits = c(-3, 4)) {
   
   pop_summary <- coef_df %>%
     group_by(treatment) %>%
@@ -571,19 +577,18 @@ plot_ssf_coefs <- function(coef_df, species_label, y_limits = c(-5, 5)) {
   ggplot() +
     geom_jitter(data = coef_df,
                 aes(x = treatment, y = est, color = treatment),
-                width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
+                width = 0.08, size = 1.25, alpha = 0.5, shape = 16) +
     geom_errorbar(data = pop_summary,
                   aes(x = treatment, ymin = low, ymax = high),
-                  width = 0.12, linewidth = 0.9, color = "black") +
+                  width = 0, linewidth = 0.8, color = "black") +
     geom_point(data = pop_summary,
                aes(x = treatment, y = mean_est, fill = treatment),
-               size = 4, shape = 21, color = "black") +
+               size = 3.5, shape = 21, color = "black") +
     scale_fill_manual(values  = c("Control" = "white", "Exposed" = "black")) +
     scale_color_manual(values = c("Control" = "grey60", "Exposed" = "grey20")) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
     coord_cartesian(ylim = y_limits) +
-    labs(y     = "Selection coefficient (pike OD)",
-         title = species_label) +
+    labs(y     = "Selection coefficient") +
     theme_classic() +
     theme(legend.position  = "none",
           axis.title.x     = element_blank(),
@@ -599,10 +604,10 @@ roach_ssf_plot <- plot_ssf_coefs(roach_ssf_coefs, "Roach")
 print(perch_ssf_plot)
 print(roach_ssf_plot)
 
-ggsave(paste0(fig_path, "perch_ssf_pike_od_muddyfoot.png"), perch_ssf_plot,
-       width = 8, height = 8, units = "cm", dpi = 300, device = "png")
-ggsave(paste0(fig_path, "roach_ssf_pike_od_muddyfoot.png"), roach_ssf_plot,
-       width = 8, height = 8, units = "cm", dpi = 300, device = "png")
+ggsave(paste0(fig_path, "perch_ssf_pike_od_muddyfoot.pdf"), perch_ssf_plot,
+       width = 8, height = 7, units = "cm", dpi = 300, device = "pdf")
+ggsave(paste0(fig_path, "roach_ssf_pike_od_muddyfoot.pdf"), roach_ssf_plot,
+       width = 8, height = 7, units = "cm", dpi = 300, device = "pdf")
 
 
 # ---- Statistical comparison: Control vs Exposed ----
