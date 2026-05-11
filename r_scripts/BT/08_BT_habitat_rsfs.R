@@ -64,24 +64,23 @@ BT_polygon <- st_read(paste0(polygon_path, "BT_polygon.gpkg"))
 # 1. Plot population AKDEs with habitats ####
 #-----------------------------------------#
 
-generate_ud_plot_whabitats <- function(pkde_data, bbox, hab_locs, title = "") {
+generate_ud_plot_whabitats <- function(pkde_data, bbox, hab_locs) {
   ud_raster        <- raster(pkde_data, DF = "CDF")
   masked_ud_raster <- mask(ud_raster, bbox)
   ud_df            <- as.data.frame(masked_ud_raster, xy = TRUE, na.rm = TRUE)
   colnames(ud_df)  <- c("x", "y", "value")
-  ud_df$value      <- 1 - ud_df$value  # Invert: high = core use area
+  ud_df$value      <- 1 - ud_df$value
   
   ggplot() +
     geom_sf(data = bbox, color = "black") +
     geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
-    geom_sf(data = hab_locs, color = "green", size = 3, fill = NA, shape = 3, stroke = 2) +
+    geom_sf(data = hab_locs, color = "green", size = 1.5, fill = NA, shape = 3, stroke = 2) +
     scale_fill_viridis_c(na.value = 'transparent', option = 'magma', direction = -1) +
     coord_sf() +
     theme_classic() +
-    labs(fill = "Utilization Distribution", title = title, x = "", y = '') +
+    labs(fill = "Utilization Distribution", x = "", y = '') +
     theme(
-      legend.position  = "bottom",
-      plot.title       = element_text(hjust = 0.5, face = "bold", size = 12),
+      legend.position  = "none",   # Legend removed from plot
       axis.line        = element_blank(),
       axis.ticks       = element_blank(),
       axis.text        = element_blank(),
@@ -97,19 +96,19 @@ BT_bbox_pike  <- st_transform(BT_polygon, crs(raster(pike_total_PKDE)))
 
 # Perch plots
 perch_control_plot_habitats <- generate_ud_plot_whabitats(
-  perch_control_PKDE, BT_bbox_perch, BT_hab_locs, "Perch Control")
+  perch_control_PKDE, BT_bbox_perch, BT_hab_locs)
 perch_exposed_plot_habitats <- generate_ud_plot_whabitats(
-  perch_mix_PKDE, BT_bbox_perch, BT_hab_locs, "Perch Exposed")
+  perch_mix_PKDE, BT_bbox_perch, BT_hab_locs)
 
 # Roach plots
 roach_control_plot_habitats <- generate_ud_plot_whabitats(
-  roach_control_PKDE, BT_bbox_roach, BT_hab_locs, "Roach Control")
+  roach_control_PKDE, BT_bbox_roach, BT_hab_locs)
 roach_exposed_plot_habitats <- generate_ud_plot_whabitats(
-  roach_mix_PKDE, BT_bbox_roach, BT_hab_locs, "Roach Exposed")
+  roach_mix_PKDE, BT_bbox_roach, BT_hab_locs)
 
 #Pike plot
 pike_total_plot_habitats <- generate_ud_plot_whabitats(
-  pike_total_PKDE, BT_bbox_pike, BT_hab_locs, "Pike Total")
+  pike_total_PKDE, BT_bbox_pike, BT_hab_locs)
 
 
 #View plots
@@ -449,6 +448,9 @@ perch_control_coefs$treatment <- "Control"
 perch_exposed_coefs$treatment <- "Exposed"
 ind_coefs_perch <- rbind(perch_control_coefs, perch_exposed_coefs)
 
+#save coefficient list
+saveRDS(ind_coefs_perch, paste0(rsf_path, "BT_perch/rsf_habitat_BT_perch_coeffs.rds"))
+
 cat("Perch Control CI:\n"); print(rsf_coef_control_perch)
 cat("Perch Exposed CI:\n"); print(rsf_coef_exposed_perch)
 
@@ -456,25 +458,26 @@ cat("Perch Exposed CI:\n"); print(rsf_coef_exposed_perch)
 perch_habitat_rsf_plot <- ggplot(perch_habitat_rsf_coefs, aes(x = treatment, y = est)) +
   geom_jitter(data = ind_coefs_perch,
               aes(x = treatment, y = est, color = treatment),
-              width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
-  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey50")) +
+              width = 0.08, size = 1.25, alpha = 0.5, shape = 16) +
+  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey20")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-  geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
-  geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
+  geom_errorbar(aes(ymin = low, ymax = high), width = 0, linewidth = 0.8, color = "black") +
+  geom_point(aes(shape = treatment, fill = treatment), size = 3.5, color = "black", shape = 21) +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2.5, 6)) +
+  coord_cartesian(ylim = c(-3, 5)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
         axis.title.x = element_blank(),
-        axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),
+        axis.title.y = element_text(face = 'bold', size = 14, margin = margin(r = 10)),
         axis.text = element_text(size = 12, color = 'black'),
         panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))
 
+
 print(perch_habitat_rsf_plot)
-ggsave(paste0(figure_path, "rsf_plots/perch_habitats_rsf_BT.png"),
-       perch_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
+ggsave(paste0(figure_path, "rsf_plots/perch_habitats_rsf_BT.pdf"),
+       perch_habitat_rsf_plot, width = 8, height = 7, units = 'cm', dpi = 300)
 
 #> 5.2 Roach ####
 cat("\n=== ROACH ANALYSIS ===\n")
@@ -541,6 +544,8 @@ roach_control_coefs$treatment <- "Control"
 roach_exposed_coefs$treatment <- "Exposed"
 ind_coefs_roach <- rbind(roach_control_coefs, roach_exposed_coefs)
 
+saveRDS(ind_coefs_roach, paste0(rsf_path, "BT_roach/rsf_habitat_BT_roach_coeffs.rds"))
+
 cat("Roach Control CI:\n"); print(rsf_coef_control_roach)
 cat("Roach Exposed CI:\n"); print(rsf_coef_exposed_roach)
 
@@ -548,25 +553,25 @@ cat("Roach Exposed CI:\n"); print(rsf_coef_exposed_roach)
 roach_habitat_rsf_plot <- ggplot(roach_habitat_rsf_coefs, aes(x = treatment, y = est)) +
   geom_jitter(data = ind_coefs_roach,
               aes(x = treatment, y = est, color = treatment),
-              width = 0.08, size = 1.8, alpha = 0.5, shape = 16) +
-  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey50")) +
+              width = 0.08, size = 1.25, alpha = 0.5, shape = 16) +
+  scale_color_manual(values = c("Control" = "grey50", "Exposed" = "grey20")) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-  geom_errorbar(aes(ymin = low, ymax = high), width = 0.1, linewidth = 1, color = "black") +
-  geom_point(aes(shape = treatment, fill = treatment), size = 4, color = "black") +
+  geom_errorbar(aes(ymin = low, ymax = high), width = 0, linewidth = 0.8, color = "black") +
+  geom_point(aes(shape = treatment, fill = treatment), size = 3.5, color = "black", shape = 21) +
   scale_shape_manual(values = c(21, 21)) +
   scale_fill_manual(values = c("Control" = "white", "Exposed" = "black")) +
-  coord_cartesian(ylim = c(-2, 4)) +
+  coord_cartesian(ylim = c(-2.5, 3.5)) +
   labs(y = "Selection coefficient") +
   theme_classic() +
   theme(legend.position = "none",
         axis.title.x = element_blank(),
-        axis.title.y = element_text(face = 'bold', size = 16, margin = margin(r = 10)),
+        axis.title.y = element_text(face = 'bold', size = 14, margin = margin(r = 10)),
         axis.text = element_text(size = 12, color = 'black'),
         panel.border = element_rect(color = 'black', fill = NA, linewidth = 1))
 
 print(roach_habitat_rsf_plot)
-ggsave(paste0(figure_path, "roach_habitats_rsf_BT.png"),
-       roach_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
+ggsave(paste0(figure_path, "rsf_plots/roach_habitats_rsf_BT.pdf"),
+       roach_habitat_rsf_plot, width = 8, height = 7, units = 'cm', dpi = 300)
 
 #> 5.3 Pike ####
 cat("\n=== PIKE ANALYSIS (Overall) ===\n")
