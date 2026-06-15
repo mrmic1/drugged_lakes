@@ -400,10 +400,9 @@ doc <- body_add_par(doc,
     "(B) Post-filtered Q1 models (encounter rates after removal of",
     "post-predation tracks); and",
     "(C) Q2/Q3 diel pattern GAMMs (post-filtered data only).",
-    "All three lakes use the same encounter thresholds: high-confidence = ≤1.4m,",
-    "combined (high-confidence + probable) = ≤2.8m. Note that GPS error in Cow",
-    "Paradise (σ = 0.827m) is higher than BT/Muddyfoot (0.379–0.500m), but",
-    "thresholds are kept identical for cross-lake comparability."
+    "BT and Muddyfoot use high-confidence = ≤1.4m, combined = ≤2.8m.",
+    "Cow Paradise uses high-confidence = ≤2.0m, combined = ≤4.0m, to account",
+    "for its higher GPS error (σ = 0.827m vs 0.379–0.500m at BT/Muddyfoot)."
   ),
   style = "Normal")
 doc <- gap(doc)
@@ -436,7 +435,7 @@ doc <- add_q1_block(
   ind_csv      = file.path(mf_path, "individual_total_encounters_pre_filter.csv"),
   lake         = "Muddyfoot",
   filter_label = "Pre-filter",
-  hc_label     = "≤1.4m"
+  hc_label     = "≤2.0m"
 )
 
 # ---- 1B: Post-filter ----
@@ -460,7 +459,7 @@ doc <- add_q1_block(
   ind_csv      = file.path(mf_path, "individual_total_encounters_with_treatment.csv"),
   lake         = "Muddyfoot",
   filter_label = "Post-filter (high-confidence)",
-  hc_label     = "≤1.4m"
+  hc_label     = "≤2.0m"
 )
 
 doc <- h3(doc, "Muddyfoot — Post-Filter | Combined Encounters (≤2.8m)")
@@ -531,7 +530,7 @@ doc <- add_q1_block(
   ind_csv      = file.path(bt_path, "individual_total_encounters_pre_filter.csv"),
   lake         = "BT",
   filter_label = "Pre-filter",
-  hc_label     = "≤1.4m"
+  hc_label     = "≤2.0m"
 )
 
 # ---- 2B: Post-filter ----
@@ -551,7 +550,7 @@ doc <- add_q1_block(
   ind_csv      = file.path(bt_path, "individual_total_encounters_with_treatment.csv"),
   lake         = "BT",
   filter_label = "Post-filter (high-confidence)",
-  hc_label     = "≤1.4m"
+  hc_label     = "≤2.0m"
 )
 
 doc <- h3(doc, "BT — Post-Filter | Combined Encounters (≤2.8m)")
@@ -564,7 +563,7 @@ for (sp_label in c("Roach", "Perch")) {
   mod     <- if (sp_label == "Roach") bt_roach_comb else bt_perch_comb
   sp_data <- filter(bt_post_data, Species == sp_label)
   lbl     <- sprintf("BT Post-filter %s Combined", sp_label)
-  doc <- body_add_par(doc, sprintf("%s — Combined GLMM (≤2.8m)", sp_label), style = "Normal")
+  doc <- body_add_par(doc, sprintf("%s — Combined GLMM (≤4.0m)", sp_label), style = "Normal")
   doc <- body_add_par(doc, glmm_fit_str(mod), style = "Normal")
   doc <- body_add_flextable(doc, glmm_coef_df(mod) %>% flextable() %>% ft_style())
   doc <- cap(doc, sprintf("Table: Fixed-effect coefficients, combined GLMM (≤2.8m). BT, Post-filter, %s.", sp_label))
@@ -601,9 +600,9 @@ cow_path <- paths$cow
 
 doc <- h1(doc, "3. Cow Paradise")
 doc <- body_add_par(doc,
-  paste("Note: GPS error at Cow Paradise (σ = 0.827m) is higher than at BT or Muddyfoot,",
-        "but encounter thresholds match all other lakes for cross-lake comparability:",
-        "high-confidence = ≤1.4m, combined (high-confidence + probable) = ≤2.8m."),
+  paste("Note: GPS error at Cow Paradise (σ = 0.827m) is higher than at BT or Muddyfoot.",
+        "Encounter thresholds are set accordingly:",
+        "high-confidence = ≤2.0m, combined (high-confidence + probable) = ≤4.0m."),
   style = "Normal")
 doc <- gap(doc)
 
@@ -622,7 +621,7 @@ doc <- add_q1_block(
   ind_csv      = file.path(cow_path, "individual_total_encounters_pre_filter.csv"),
   lake         = "Cow Paradise",
   filter_label = "Pre-filter",
-  hc_label     = "≤1.4m"
+  hc_label     = "≤2.0m"
 )
 
 # ---- 3B: Post-filter ----
@@ -642,10 +641,10 @@ doc <- add_q1_block(
   ind_csv      = file.path(cow_path, "individual_total_encounters_with_treatment.csv"),
   lake         = "Cow Paradise",
   filter_label = "Post-filter (high-confidence)",
-  hc_label     = "≤1.4m"
+  hc_label     = "≤2.0m"
 )
 
-doc <- h3(doc, "Cow Paradise — Post-Filter | Combined Encounters (≤2.8m)")
+doc <- h3(doc, "Cow Paradise — Post-Filter | Combined Encounters (≤4.0m)")
 
 cow_post_data <- read.csv(file.path(cow_path, "individual_total_encounters_with_treatment.csv")) %>%
   mutate(treatment = factor(treatment, levels = c("Control", "Mix")),
@@ -655,7 +654,7 @@ for (sp_label in c("Roach", "Perch")) {
   mod     <- if (sp_label == "Roach") cow_roach_comb else cow_perch_comb
   sp_data <- filter(cow_post_data, Species == sp_label)
   lbl     <- sprintf("Cow Paradise Post-filter %s Combined", sp_label)
-  doc <- body_add_par(doc, sprintf("%s — Combined GLMM (≤2.8m)", sp_label), style = "Normal")
+  doc <- body_add_par(doc, sprintf("%s — Combined GLMM (≤4.0m)", sp_label), style = "Normal")
   doc <- body_add_par(doc, glmm_fit_str(mod), style = "Normal")
   doc <- body_add_flextable(doc, glmm_coef_df(mod) %>% flextable() %>% ft_style())
   doc <- cap(doc, sprintf("Table: Fixed-effect coefficients, combined GLMM (≤6.0m). Cow Paradise, Post-filter, %s.", sp_label))

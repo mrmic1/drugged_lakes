@@ -60,10 +60,11 @@ params <- list(
   gps_error_sd                  = 0.827,   # GPS error SD (meters) — Cow Paradise specific
   fixes_per_day                 = 2880,    # 30-second fixes
 
-  # Tiered distance thresholds — same as BT/Muddyfoot for cross-lake comparability
-  high_confidence_threshold     = 1.4,     # ≤1.4m: matches BT/Muddyfoot threshold
-  probable_threshold            = 2.8,     # ≤2.8m: matches BT/Muddyfoot threshold
-  possible_threshold            = 4.2,     # ≤4.2m: matches BT/Muddyfoot threshold
+  # Tiered distance thresholds — slightly wider than BT/Muddyfoot (1.4m) to
+  # account for Cow Paradise's higher GPS error (σ = 0.827m vs 0.379–0.500m)
+  high_confidence_threshold     = 2.0,     # ≤2.0m: high-confidence threshold
+  probable_threshold            = 4.0,     # ≤4.0m: probable threshold (2x high-conf)
+  possible_threshold            = 6.0,     # ≤6.0m: possible threshold (3x high-conf)
   strike_distance               = 0.45,    # Pike strike distance (unchanged)
 
   # Encounter count thresholds (same logic as BT — counts are scale-independent)
@@ -71,7 +72,7 @@ params <- list(
   encounter_threshold_high      = 50,      # High encounter threshold
 
   # Distance-based thresholds
-  min_distance_threshold        = 1.4,     # Min distance for high-confidence flag
+  min_distance_threshold        = 2.0,     # Min distance for high-confidence flag
   
   # Sustained contact: same consecutive-day logic as BT
   consecutive_days_threshold    = 2,       # Days required for predation signal
@@ -124,9 +125,9 @@ calculate_gps_noise_threshold <- function(gps_error = 0.827, fixes_per_day = 288
 # accounting. Identical logic to BT script; thresholds passed as arguments.
 calculate_pairwise_distances <- function(prey_tel, pred_tel, prey_fits, pred_fits,
                                          prey_species = "Prey", strike_dist = 0.45,
-                                         high_conf_threshold = 1.4,
-                                         probable_threshold   = 2.8,
-                                         possible_threshold   = 4.2,
+                                         high_conf_threshold = 2.0,
+                                         probable_threshold   = 4.0,
+                                         possible_threshold   = 6.0,
                                          parallel = TRUE, n_cores = NULL) {
   
   ctmm::projection(prey_tel)   <- ctmm::projection(pred_tel)
@@ -236,7 +237,7 @@ calculate_total_encounters <- function(distances_df) {
 identify_predation_events <- function(distances_df,
                                       enc_threshold_low         = 10,
                                       enc_threshold_high        = 50,
-                                      min_dist_threshold        = 1.4,
+                                      min_dist_threshold        = 2.0,
                                       consec_days_threshold     = 2,
                                       probable_threshold_low    = 50,
                                       probable_threshold_high   = 100,
@@ -403,9 +404,9 @@ plot_distance_timeseries <- function(distances_df, prey_id, pred_id, species,
     scale_color_manual(
       values = c("high_confidence" = "#d62728", "probable" = "#ff7f0e",
                  "possible" = "#1f77b4", "no_encounter" = "gray80"),
-      labels = c("high_confidence" = "High Confidence (≤1.4m)",
-                 "probable"        = "Probable (1.4–2.8m)",
-                 "possible"        = "Possible (2.8–4.2m)",
+      labels = c("high_confidence" = "High Confidence (≤2.0m)",
+                 "probable"        = "Probable (2.0–4.0m)",
+                 "possible"        = "Possible (4.0–6.0m)",
                  "no_encounter"    = "No Encounter"),
       name = "Encounter Type"
     ) +
@@ -426,17 +427,17 @@ plot_distance_timeseries <- function(distances_df, prey_id, pred_id, species,
     p <- p +
       # Thresholds match BT/Muddyfoot for cross-lake comparability
       geom_hline(yintercept = 0.54, linetype = "dashed", color = "#8B0000", alpha = 0.6) +
-      geom_hline(yintercept = 1.4,  linetype = "dashed", color = "#d62728", alpha = 0.5) +
-      geom_hline(yintercept = 2.8,  linetype = "dashed", color = "#ff7f0e", alpha = 0.5) +
-      geom_hline(yintercept = 4.2,  linetype = "dashed", color = "#1f77b4", alpha = 0.5) +
+      geom_hline(yintercept = 2.0,  linetype = "dashed", color = "#d62728", alpha = 0.5) +
+      geom_hline(yintercept = 4.0,  linetype = "dashed", color = "#ff7f0e", alpha = 0.5) +
+      geom_hline(yintercept = 6.0,  linetype = "dashed", color = "#1f77b4", alpha = 0.5) +
       annotate("text", x = min(pair_data$timestamp), y = 0.54,
                label = "0.54m (≈0 contact)", hjust = 0, vjust = -0.5, size = 3, color = "#8B0000") +
-      annotate("text", x = min(pair_data$timestamp), y = 1.4,
-               label = "1.4m (high-conf)",   hjust = 0, vjust = -0.5, size = 3, color = "#d62728") +
-      annotate("text", x = min(pair_data$timestamp), y = 2.8,
-               label = "2.8m (probable)",    hjust = 0, vjust = -0.5, size = 3, color = "#ff7f0e") +
-      annotate("text", x = min(pair_data$timestamp), y = 4.2,
-               label = "4.2m (possible)",    hjust = 0, vjust = -0.5, size = 3, color = "#1f77b4")
+      annotate("text", x = min(pair_data$timestamp), y = 2.0,
+               label = "2.0m (high-conf)",   hjust = 0, vjust = -0.5, size = 3, color = "#d62728") +
+      annotate("text", x = min(pair_data$timestamp), y = 4.0,
+               label = "4.0m (probable)",    hjust = 0, vjust = -0.5, size = 3, color = "#ff7f0e") +
+      annotate("text", x = min(pair_data$timestamp), y = 6.0,
+               label = "6.0m (possible)",    hjust = 0, vjust = -0.5, size = 3, color = "#1f77b4")
   }
   
   # Highlight sustained contact period
@@ -920,13 +921,13 @@ p1 <- combined_distances %>%
   filter(!is.na(treatment)) %>%
   mutate(encounter_type = factor(encounter_type,
                                  levels = c("high_confidence", "probable"),
-                                 labels = c("High Confidence (≤1.4m)", "Probable (1.4–2.8m)"))) %>%
+                                 labels = c("High Confidence (≤2.0m)", "Probable (2.0–4.0m)"))) %>%
   ggplot(aes(x = encounter_type, fill = treatment)) +
   geom_bar(position = "dodge", alpha = 0.8, color = "black", linewidth = 0.5) +
   facet_wrap(~Species, scales = "free_y") +
   scale_fill_brewer(palette = "Set1", name = "Treatment") +
   labs(y = "Count",
-       caption = sprintf("GPS error: σ = %.3fm | Thresholds match BT/Muddyfoot (≤1.4m high-conf)",
+       caption = sprintf("GPS error: σ = %.3fm | High-confidence threshold: ≤2.0m",
                          params$gps_error_sd)) +
   theme_classic() +
   theme(axis.text.x   = element_text(angle = 45, hjust = 1, vjust = 1),

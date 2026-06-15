@@ -273,7 +273,7 @@ message("\n=== Q1: CROSS-LAKE ENCOUNTER RATE GLMMs ===")
 # ---- A: HIGH-CONFIDENCE ENCOUNTERS ONLY ----
 
 message("\n--- A: High-confidence encounters only ---")
-message("(≤1.4m for all three lakes)")
+message("(≤1.4m for BT/Muddyfoot; ≤2.0m for Cow Paradise)")
 
 ## 5.1 Roach — high-confidence ----
 message("\nRoach:")
@@ -338,7 +338,7 @@ print(pairs(emm_perch_hc))
 # ---- B: COMBINED ENCOUNTERS ----
 
 message("\n--- B: Combined encounters (high-confidence + probable) ---")
-message("(≤2.8m for all three lakes)")
+message("(≤2.8m for BT/Muddyfoot; ≤4.0m for Cow Paradise)")
 
 ## 5.3 Roach — combined ----
 message("\nRoach:")

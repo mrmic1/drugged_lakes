@@ -1,3 +1,5 @@
 lake_maps.R
 stacked_bar_chart_survival_muddyfoot.R
 tracking_summary_table.R
+mortality_summary_table.R
+roach_predation_fishers_test.R

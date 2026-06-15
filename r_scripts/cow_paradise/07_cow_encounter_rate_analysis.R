@@ -19,8 +19,9 @@
 #
 # NOTE — COW PARADISE GPS ERROR:
 # GPS error is higher here (σ = 0.827m) than in BT or Muddyfoot, but
-# encounter thresholds match BT/Muddyfoot for cross-lake comparability:
-#   High-confidence: ≤1.4m | Probable: 1.4–2.8m
+# encounter thresholds are set at ≤2.0m (high-confidence) to account for
+# the higher GPS error at this lake:
+#   High-confidence: ≤2.0m | Probable: 2.0–4.0m
 #
 #=================================================================-
 # =================================================================-
@@ -123,8 +124,8 @@ print_gamm_results <- function(model, lake, species) {
 # =================================================================-
 
 ## 2.1 Load encounter distance data (produced by script 05) ----
-# encounter_high_conf = ≤1.4m | encounter_probable = 1.4–2.8m
-# (same thresholds as BT/Muddyfoot for cross-lake comparability)
+# encounter_high_conf = ≤2.0m | encounter_probable = 2.0–4.0m
+# (Cow Paradise threshold accounts for higher GPS error: σ = 0.827m)
 roach_pike_distances_df <- readRDS(
   paste0(paths$encounters, "cow_pike_roach_distances_tiered_df.rds")
 )
@@ -311,7 +312,7 @@ perch_hourly <- perch_pike_distances_df %>%
 # =================================================================-
 # Encounter rates estimated from the UNFILTERED dataset (before removal
 # of post-predation/mortality tracks). High-confidence encounters only.
-# Note: high-confidence = ≤1.4m (same as BT/Muddyfoot).
+# Note: high-confidence = ≤2.0m (Cow Paradise threshold).
 
 message("\n=== Q1 PRE-FILTERING ANALYSIS (COW PARADISE) ===")
 
@@ -414,7 +415,7 @@ print_glmm_results(enc_mod_roach_hc_pre,
                    lake         = "COW PARADISE",
                    question     = "Q1 Pre-filter",
                    species      = "Roach",
-                   response_var = "total_encounters_high_conf (<=1.4m)")
+                   response_var = "total_encounters_high_conf (<=2.0m)")
 message("  Marginal means (encounters/day):")
 print(emm_roach_hc_pre)
 message("  Pairwise contrast (Mix vs Control):")
@@ -449,7 +450,7 @@ print_glmm_results(enc_mod_perch_hc_pre,
                    lake         = "COW PARADISE",
                    question     = "Q1 Pre-filter",
                    species      = "Perch",
-                   response_var = "total_encounters_high_conf (<=1.4m)")
+                   response_var = "total_encounters_high_conf (<=2.0m)")
 message("  Marginal means (encounters/day):")
 print(emm_perch_hc_pre)
 message("  Pairwise contrast (Mix vs Control):")
@@ -461,15 +462,15 @@ print(pairs(emm_perch_hc_pre))
 # =================================================================-
 # Models run separately per species and for two encounter definitions:
 #
-#   (A) HIGH-CONFIDENCE ONLY: encounters <= 1.4m (same as BT/Muddyfoot).
+#   (A) HIGH-CONFIDENCE ONLY: encounters <= 2.0m (Cow Paradise threshold).
 #
-#   (B) COMBINED (high-confidence + probable): encounters <= 2.8m.
+#   (B) COMBINED (high-confidence + probable): encounters <= 4.0m.
 #       Both definitions are run to assess robustness of treatment effects
 #       to threshold choice.
 #
 # Single-lake analysis (Cow Paradise); individual as random intercept.
 
-# ---- A: HIGH-CONFIDENCE ENCOUNTERS ONLY (<=1.4m) ----
+# ---- A: HIGH-CONFIDENCE ENCOUNTERS ONLY (<=2.0m) ----
 
 ## 5.1 Roach — high-confidence GLMM ----
 enc_mod_roach_hc <- glmmTMB(
@@ -501,7 +502,7 @@ print_glmm_results(enc_mod_roach_hc,
                    lake         = "COW PARADISE",
                    question     = "Q1 Post-filter",
                    species      = "Roach",
-                   response_var = "total_encounters_high_conf (<=1.4m)")
+                   response_var = "total_encounters_high_conf (<=2.0m)")
 message("  Marginal means (encounters/day):")
 print(emm_roach_hc)
 message("  Pairwise contrast (Mix vs Control):")
@@ -539,13 +540,13 @@ print_glmm_results(enc_mod_perch_hc,
                    lake         = "COW PARADISE",
                    question     = "Q1 Post-filter",
                    species      = "Perch",
-                   response_var = "total_encounters_high_conf (<=1.4m)")
+                   response_var = "total_encounters_high_conf (<=2.0m)")
 message("  Marginal means (encounters/day):")
 print(emm_perch_hc)
 message("  Pairwise contrast (Mix vs Control):")
 print(pairs(emm_perch_hc))
 
-# ---- B: COMBINED ENCOUNTERS (high-confidence + probable, <=2.8m) ----
+# ---- B: COMBINED ENCOUNTERS (high-confidence + probable, <=4.0m) ----
 
 
 ## 5.3 Roach — combined GLMM ----
@@ -579,7 +580,7 @@ print_glmm_results(enc_mod_roach_comb,
                    lake         = "COW PARADISE",
                    question     = "Q1 Post-filter",
                    species      = "Roach",
-                   response_var = "total_encounters_combined (<=2.8m)")
+                   response_var = "total_encounters_combined (<=4.0m)")
 message("  Marginal means (encounters/day):")
 print(emm_roach_comb)
 message("  Pairwise contrast (Mix vs Control):")
@@ -615,7 +616,7 @@ print_glmm_results(enc_mod_perch_comb,
                    lake         = "COW PARADISE",
                    question     = "Q1 Post-filter",
                    species      = "Perch",
-                   response_var = "total_encounters_combined (<=2.8m)")
+                   response_var = "total_encounters_combined (<=4.0m)")
 message("  Marginal means (encounters/day):")
 print(emm_perch_comb)
 message("  Pairwise contrast (Mix vs Control):")
@@ -679,7 +680,7 @@ ggsave(file.path(paths$figures, "cow_encounter_rates_combined.png"),
 # 6. Q2 & Q3: DIEL ENCOUNTER PATTERNS — GAMMs ####
 # =================================================================-
 # Same model structure as BT and Muddyfoot. Encounter thresholds
-# (1.4m / 2.8m) are already embedded in the
+# (2.0m / 4.0m) are already embedded in the
 # encounter_high_conf / encounter_probable columns.
 # Single-lake analysis (Cow Paradise).
 
