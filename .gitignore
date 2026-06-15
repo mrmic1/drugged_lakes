@@ -27,3 +27,5 @@ plots
 telem_obj/
 .RDataTmp
 .positai
+figures
+tables
