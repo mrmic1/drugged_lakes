@@ -114,9 +114,6 @@ saveRDS(pike_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/pike_muddyfoot_te
 saveRDS(perch_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/perch_muddyfoot_tel_thinned.rds"))
 saveRDS(roach_muddyfoot_tel, paste0(save_telem_path, "muddyfoot/roach_muddyfoot_tel_thinned.rds"))
 
-# [Variogram plotting and analysis functions remain the same]
-# ... [keeping all the variogram functions as they are]
-
 #==============================================================================
 # 3. HELPER FUNCTIONS
 #==============================================================================

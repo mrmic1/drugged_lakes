@@ -305,98 +305,6 @@ fit_ctmm_species_parallel <- function(telem_list, species_name, lake_name = "mud
   ))
 }
 
-# Sequential model selection function (backup) -----------------------------
-fit_ctmm_species_sequential <- function(telem_list, species_name, lake_name = "muddyfoot",
-                                        ic = "AICc") {
-  
-  message("\n", strrep("=", 80))
-  message("=== SELECTING BEST CTMM MODELS FOR ", toupper(species_name), " (SEQUENTIAL) ===")
-  message(strrep("=", 80))
-  
-  assess_ctmm_guess(telem_list)
-  
-  best_models_list <- vector("list", length(telem_list))
-  selection_list <- vector("list", length(telem_list))
-  names(best_models_list) <- names(telem_list)
-  names(selection_list) <- names(telem_list)
-  
-  output_dir <- file.path(save_ctmm_path, paste0(lake_name, "_", species_name, "_fits"))
-  if (!dir.exists(output_dir)) {
-    dir.create(output_dir, recursive = TRUE)
-  }
-  
-  message("\n=== Starting Sequential Model Selection ===")
-  message("Information criterion: ", ic)
-  start_time <- Sys.time()
-  fit_times <- numeric(length(telem_list))
-  
-  for (i in seq_along(telem_list)) {
-    tel_i <- telem_list[[i]]
-    id_i <- names(telem_list)[i]
-    
-    # Estimate time remaining
-    if (i > 1) {
-      avg_time <- mean(fit_times[1:(i-1)])
-      remaining <- (length(telem_list) - i + 1) * avg_time / 60
-      message(sprintf("\n[%d/%d] %s | Est. remaining: %.1f min", 
-                      i, length(telem_list), id_i, remaining))
-    } else {
-      message(sprintf("\n[%d/%d] %s", i, length(telem_list), id_i))
-    }
-    
-    ind_start <- Sys.time()
-    
-    guess_model <- ctmm.guess(tel_i, CTMM = ctmm(error = TRUE), interactive = FALSE)
-    
-    # Use ctmm.select
-    model_selection <- ctmm.select(
-      data = tel_i,
-      CTMM = guess_model,
-      method = "ML",
-      IC = ic,
-      verbose = TRUE
-    )
-    
-    best_model <- model_selection[[1]]
-    
-    fit_times[i] <- as.numeric(difftime(Sys.time(), ind_start, units = "secs"))
-    message(sprintf("  Selected best model in %.1f seconds: %s", 
-                    fit_times[i], summary(best_model)$name))
-    
-    # Save files
-    output_file_selection <- file.path(output_dir, paste0(id_i, "_ctmm_selection.rds"))
-    output_file_best <- file.path(output_dir, paste0(id_i, "_ctmm_best_fit.rds"))
-    
-    saveRDS(model_selection, file = output_file_selection)
-    saveRDS(best_model, file = output_file_best)
-    
-    best_models_list[[i]] <- best_model
-    selection_list[[i]] <- model_selection
-    gc()
-  }
-  
-  total_elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
-  message(sprintf("\n=== Completed in %.1f minutes ===", total_elapsed))
-  
-  # Print model summary
-  message("\n=== Model Selection Summary ===")
-  selected_models <- sapply(best_models_list, function(x) summary(x)$name)
-  model_table <- table(selected_models)
-  message("Selected models across individuals:")
-  print(model_table)
-  
-  # Save combined lists
-  output_best_file <- file.path(output_dir, paste0(lake_name, "_", species_name, "_best_models.rds"))
-  output_selection_file <- file.path(output_dir, paste0(lake_name, "_", species_name, "_all_selections.rds"))
-  
-  saveRDS(best_models_list, output_best_file)
-  saveRDS(selection_list, output_selection_file)
-  
-  return(list(
-    best_models = best_models_list,
-    selection_results = selection_list
-  ))
-}
 
 # Function to verify model fits ---------------------------------------------
 verify_fits <- function(telem_list, fit_list, species_name, n_check = NULL) {
@@ -447,47 +355,6 @@ verify_fits <- function(telem_list, fit_list, species_name, n_check = NULL) {
   message("\n", strrep("=", 80))
   message("Verification complete!")
   message(strrep("=", 80))
-}
-
-# Quick verification function (summaries only, no plots) -------------------
-verify_fits_quick <- function(fit_list, species_name) {
-  
-  message("\n=== Quick Summary of ", species_name, " Model Fits ===")
-  
-  if (length(fit_list) == 0) {
-    message("No fits to verify!")
-    return(invisible())
-  }
-  
-  # Create a summary dataframe
-  summary_df <- data.frame(
-    ID = names(fit_list),
-    Model = character(length(fit_list)),
-    AIC = numeric(length(fit_list)),
-    DOF_area = numeric(length(fit_list)),
-    DOF_speed = numeric(length(fit_list)),
-    stringsAsFactors = FALSE
-  )
-  
-  for (i in seq_along(fit_list)) {
-    model_sum <- summary(fit_list[[i]])
-    summary_df$Model[i] <- model_sum$name
-    summary_df$AIC[i] <- model_sum$IC
-    
-    # Extract DOF information if available
-    if ("DOF" %in% names(model_sum)) {
-      summary_df$DOF_area[i] <- model_sum$DOF["area"]
-      summary_df$DOF_speed[i] <- ifelse("speed" %in% names(model_sum$DOF), 
-                                        model_sum$DOF["speed"], NA)
-    }
-  }
-  
-  print(summary_df)
-  
-  message("\nModel type distribution:")
-  print(table(summary_df$Model))
-  
-  return(invisible(summary_df))
 }
 
 
@@ -551,7 +418,7 @@ uere(muddyfoot_tels) <- muddyfoot_UERE
 
 
 #==============================================================================-
-# 4. ORGANIZE INDIVIDUALS BY SPECIES ####
+# 4. ORGANISE INDIVIDUALS BY SPECIES ####
 #==============================================================================-
 
 # Verify individual order ---------------------------------------------------

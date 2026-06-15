@@ -1,37 +1,49 @@
 # =================================================================-
-# Predator-Prey Interaction Analysis - COW PARADISE ####
+# Predator-Prey Interactions and encounter rate - Cow Paradise ####
 # =================================================================-
-# Identifies potential predation events using GPS tracking data
-# Key approach: Sustained contact detection (distances ~0m for multiple days)
 #
-# IMPORTANT DIFFERENCE FROM BT LAKE:
-# GPS error is substantially higher in Cow Paradise (σ = 0.827m vs 0.379m in BT)
-# This means:
-#   - Combined pairwise GPS error: √(0.827² + 0.827²) = 1.17m (vs 0.536m in BT)
-#   - Distance thresholds are scaled up accordingly (~2.2x BT values)
-#   - High-confidence: ≤3.0m (vs ≤1.4m in BT)
-#   - Probable:        3.0–6.0m (vs 1.4–2.8m in BT)
-#   - Possible:        6.0–9.0m (vs 2.8–4.2m in BT)
-#   - GPS noise (random walk): ~80m/day (vs ~30m/day in BT)
-#   - Mortality threshold: ~200m/day (vs ~75m/day in BT)
-#   - Sustained contact criteria are relaxed proportionally
+# ANALYSIS OVERVIEW:
+# This script identifies potential predation events by analyzing movement
+# tracking data for prey (roach/perch) and predators (pike), and calculates
+# encounter summaries used by the downstream encounter rate analysis script.
 #
-# Author: Marcus Michelangeli | Date: 2024
+# METHODOLOGY:
+# 1. TIERED ENCOUNTER DETECTION based on GPS error (0.827m)
+#    Distance thresholds are set to match BT/Muddyfoot for cross-lake comparability:
+#    - High-confidence: ≤1.4m  (same as BT/Muddyfoot)
+#    - Probable:        1.4–2.8m (same as BT/Muddyfoot)
+#    - Possible:        2.8–4.2m (same as BT/Muddyfoot)
+#
+# 2. MOVEMENT CESSATION DETECTION
+#    GPS noise (~80m/day) and mortality threshold (~200m/day) are also
+#    scaled up from BT (~30m/day and ~75m/day respectively).
+#
+## OUTPUTS USED DOWNSTREAM:
+#   data/encounters/cow_paradise/cow_pike_roach_distances_tiered_df.rds
+#   data/encounters/cow_paradise/cow_pike_perch_distances_tiered_df.rds
+#   -> Read by 07_cow_encounter_rate_analysis.R
+#
 # =================================================================-
 
-
 # =================================================================-
-# 1. SETUP ####
+# 1. SETUP & CONFIGURATION ####
 # =================================================================-
 
-## Libraries ----
+## 1.1 Load Required Libraries ----
 suppressPackageStartupMessages({
-  library(dplyr); library(ctmm); library(lubridate); library(data.table)
-  library(sf); library(parallel); library(ggplot2); library(openxlsx); library(patchwork)
+  library(dplyr)        # Data manipulation
+  library(ctmm)         # Movement modeling and distance calculations
+  library(lubridate)    # Date/time handling
+  library(data.table)   # Fast data operations
+  library(sf)           # Spatial data
+  library(parallel)     # Parallel processing
+  library(ggplot2)      # Plotting
+  library(openxlsx)     # Excel export
+  library(patchwork)    # Combining plots
 })
 Sys.setenv(TZ = 'Europe/Stockholm')
 
-## Paths ----
+## 1.2 Define Directory Paths ----
 paths <- list(
   filtered_data  = "./data/tracks_filtered/cow_paradise/",
   ctmm           = "./data/ctmm_fits/",
@@ -44,28 +56,26 @@ paths <- list(
 )
 for (path in paths) if (!dir.exists(path)) dir.create(path, recursive = TRUE)
 
-## Parameters ----
-# GPS error for Cow Paradise is 0.827m (vs 0.379m for BT).
-# Combined pairwise error = √2 × 0.827 = 1.170m.
-# All distance thresholds are scaled by the ratio of combined errors:
-#   scale_factor ≈ 1.170 / 0.536 ≈ 2.18
-# Thresholds are rounded to ecologically sensible values.
+## 1.3 Define Analysis Parameters ----
+# Distance thresholds set to match BT/Muddyfoot for cross-lake comparability.
+# GPS error in Cow Paradise (σ = 0.827m) is higher than BT (0.379m), but
+# thresholds are kept identical to allow direct cross-lake comparison.
 params <- list(
   gps_error_sd                  = 0.827,   # GPS error SD (meters) — Cow Paradise specific
   fixes_per_day                 = 2880,    # 30-second fixes
-  
-  # Tiered distance thresholds (scaled from BT by ~2.18x)
-  high_confidence_threshold     = 3.0,     # ≤3.0m: Within 95% combined GPS error
-  probable_threshold            = 6.0,     # ≤6.0m: 2x combined GPS error
-  possible_threshold            = 9.0,     # ≤9.0m: 3x combined GPS error
+
+  # Tiered distance thresholds — same as BT/Muddyfoot for cross-lake comparability
+  high_confidence_threshold     = 1.4,     # ≤1.4m: matches BT/Muddyfoot threshold
+  probable_threshold            = 2.8,     # ≤2.8m: matches BT/Muddyfoot threshold
+  possible_threshold            = 4.2,     # ≤4.2m: matches BT/Muddyfoot threshold
   strike_distance               = 0.45,    # Pike strike distance (unchanged)
-  
+
   # Encounter count thresholds (same logic as BT — counts are scale-independent)
   encounter_threshold_low       = 10,      # Min encounters/day
   encounter_threshold_high      = 50,      # High encounter threshold
-  
-  # Distance-based thresholds (scaled from BT)
-  min_distance_threshold        = 3.0,     # Min distance for high-confidence flag
+
+  # Distance-based thresholds
+  min_distance_threshold        = 1.4,     # Min distance for high-confidence flag
   
   # Sustained contact: same consecutive-day logic as BT
   consecutive_days_threshold    = 2,       # Days required for predation signal
@@ -84,7 +94,7 @@ message(sprintf("High-confidence: ≤%.1fm | Probable: %.1f-%.1fm | Possible: %.
                 params$high_confidence_threshold,
                 params$high_confidence_threshold, params$probable_threshold,
                 params$probable_threshold, params$possible_threshold))
-message(sprintf("(BT equivalents were: ≤1.4m | 1.4-2.8m | 2.8-4.2m)"))
+message(sprintf("(Same thresholds as BT/Muddyfoot — cross-lake comparability)"))
 gps_combined <- sqrt(2) * params$gps_error_sd
 gps_noise_daily <- gps_combined * sqrt(params$fixes_per_day)
 message(sprintf("Expected GPS noise: ~%.0fm/day | Mortality threshold: ~%.0fm/day",
@@ -118,9 +128,9 @@ calculate_gps_noise_threshold <- function(gps_error = 0.827, fixes_per_day = 288
 # accounting. Identical logic to BT script; thresholds passed as arguments.
 calculate_pairwise_distances <- function(prey_tel, pred_tel, prey_fits, pred_fits,
                                          prey_species = "Prey", strike_dist = 0.45,
-                                         high_conf_threshold = 3.0,
-                                         probable_threshold   = 6.0,
-                                         possible_threshold   = 9.0,
+                                         high_conf_threshold = 1.4,
+                                         probable_threshold   = 2.8,
+                                         possible_threshold   = 4.2,
                                          parallel = TRUE, n_cores = NULL) {
   
   ctmm::projection(prey_tel)   <- ctmm::projection(pred_tel)
@@ -150,7 +160,7 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel, prey_fits, pred_fit
       # Legacy strike flag
       df$encounter <- ifelse(df$est <= strike_dist, 1, 0)
       
-      # Tiered encounter flags (Cow Paradise thresholds)
+      # Tiered encounter flags (matching BT/Muddyfoot thresholds)
       df$encounter_high_conf <- ifelse(df$est <= high_conf_threshold, 1, 0)
       df$encounter_probable  <- ifelse(df$est > high_conf_threshold &
                                          df$est <= probable_threshold, 1, 0)
@@ -225,23 +235,12 @@ calculate_total_encounters <- function(distances_df) {
 }
 
 ## Identify Predation Events ----
-# Ports BT's sophisticated multi-criteria detection, with all distance and
-# encounter thresholds rescaled for Cow Paradise's higher GPS error (~2.18x BT).
-#
-# SCALING RATIONALE:
-#   BT combined error = 0.536m → Cow Paradise combined error = 1.170m
-#   Scale factor ≈ 2.18
-#
-#   Sustained-contact distance cut-offs:
-#     BT:  <0.5m, <0.1m, <1.0m, <1.5m, <2.0m
-#     Cow: <1.1m, <0.2m, <2.2m, <3.3m, <4.4m  (each × 2.18, rounded)
-#
-#   Encounter count thresholds remain the same (counts are scale-independent).
-#
+# Multi-criteria detection using same thresholds as BT/Muddyfoot for
+# cross-lake comparability.
 identify_predation_events <- function(distances_df,
                                       enc_threshold_low         = 10,
                                       enc_threshold_high        = 50,
-                                      min_dist_threshold        = 3.0,
+                                      min_dist_threshold        = 1.4,
                                       consec_days_threshold     = 2,
                                       probable_threshold_low    = 50,
                                       probable_threshold_high   = 100,
@@ -408,9 +407,9 @@ plot_distance_timeseries <- function(distances_df, prey_id, pred_id, species,
     scale_color_manual(
       values = c("high_confidence" = "#d62728", "probable" = "#ff7f0e",
                  "possible" = "#1f77b4", "no_encounter" = "gray80"),
-      labels = c("high_confidence" = "High Confidence (≤3.0m)",
-                 "probable"        = "Probable (3.0–6.0m)",
-                 "possible"        = "Possible (6.0–9.0m)",
+      labels = c("high_confidence" = "High Confidence (≤1.4m)",
+                 "probable"        = "Probable (1.4–2.8m)",
+                 "possible"        = "Possible (2.8–4.2m)",
                  "no_encounter"    = "No Encounter"),
       name = "Encounter Type"
     ) +
@@ -429,19 +428,19 @@ plot_distance_timeseries <- function(distances_df, prey_id, pred_id, species,
   
   if (threshold_lines) {
     p <- p +
-      # Cow Paradise thresholds: 1.1m (near-zero), 3.0m (high-conf), 6.0m (probable)
-      geom_hline(yintercept = 1.1, linetype = "dashed", color = "#8B0000", alpha = 0.6) +
-      geom_hline(yintercept = 3.0, linetype = "dashed", color = "#d62728", alpha = 0.5) +
-      geom_hline(yintercept = 6.0, linetype = "dashed", color = "#ff7f0e", alpha = 0.5) +
-      geom_hline(yintercept = 9.0, linetype = "dashed", color = "#1f77b4", alpha = 0.5) +
-      annotate("text", x = min(pair_data$timestamp), y = 1.1,
-               label = "1.1m (≈0 contact)", hjust = 0, vjust = -0.5, size = 3, color = "#8B0000") +
-      annotate("text", x = min(pair_data$timestamp), y = 3.0,
-               label = "3.0m (high-conf)",  hjust = 0, vjust = -0.5, size = 3, color = "#d62728") +
-      annotate("text", x = min(pair_data$timestamp), y = 6.0,
-               label = "6.0m (probable)",   hjust = 0, vjust = -0.5, size = 3, color = "#ff7f0e") +
-      annotate("text", x = min(pair_data$timestamp), y = 9.0,
-               label = "9.0m (possible)",   hjust = 0, vjust = -0.5, size = 3, color = "#1f77b4")
+      # Thresholds match BT/Muddyfoot for cross-lake comparability
+      geom_hline(yintercept = 0.54, linetype = "dashed", color = "#8B0000", alpha = 0.6) +
+      geom_hline(yintercept = 1.4,  linetype = "dashed", color = "#d62728", alpha = 0.5) +
+      geom_hline(yintercept = 2.8,  linetype = "dashed", color = "#ff7f0e", alpha = 0.5) +
+      geom_hline(yintercept = 4.2,  linetype = "dashed", color = "#1f77b4", alpha = 0.5) +
+      annotate("text", x = min(pair_data$timestamp), y = 0.54,
+               label = "0.54m (≈0 contact)", hjust = 0, vjust = -0.5, size = 3, color = "#8B0000") +
+      annotate("text", x = min(pair_data$timestamp), y = 1.4,
+               label = "1.4m (high-conf)",   hjust = 0, vjust = -0.5, size = 3, color = "#d62728") +
+      annotate("text", x = min(pair_data$timestamp), y = 2.8,
+               label = "2.8m (probable)",    hjust = 0, vjust = -0.5, size = 3, color = "#ff7f0e") +
+      annotate("text", x = min(pair_data$timestamp), y = 4.2,
+               label = "4.2m (possible)",    hjust = 0, vjust = -0.5, size = 3, color = "#1f77b4")
   }
   
   # Highlight sustained contact period
@@ -925,13 +924,13 @@ p1 <- combined_distances %>%
   filter(!is.na(treatment)) %>%
   mutate(encounter_type = factor(encounter_type,
                                  levels = c("high_confidence", "probable"),
-                                 labels = c("High Confidence (≤3.0m)", "Probable (3.0–6.0m)"))) %>%
+                                 labels = c("High Confidence (≤1.4m)", "Probable (1.4–2.8m)"))) %>%
   ggplot(aes(x = encounter_type, fill = treatment)) +
   geom_bar(position = "dodge", alpha = 0.8, color = "black", linewidth = 0.5) +
   facet_wrap(~Species, scales = "free_y") +
   scale_fill_brewer(palette = "Set1", name = "Treatment") +
   labs(y = "Count",
-       caption = sprintf("GPS error: σ = %.3fm | Thresholds scaled × 2.18 from BT lake",
+       caption = sprintf("GPS error: σ = %.3fm | Thresholds match BT/Muddyfoot (≤1.4m high-conf)",
                          params$gps_error_sd)) +
   theme_classic() +
   theme(axis.text.x   = element_text(angle = 45, hjust = 1, vjust = 1),

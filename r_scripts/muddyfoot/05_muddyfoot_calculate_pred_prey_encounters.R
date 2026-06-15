@@ -1,27 +1,24 @@
 # =================================================================-
-# Predator-Prey Interaction Analysis - Muddyfoot ####
+# Predator-Prey Interactions and encounter rate - Muddyfoot ####
 # =================================================================-
 # 
 # ANALYSIS OVERVIEW:
 # This script identifies potential predation events by analyzing movement 
-# tracking data for prey (roach/perch) and predators (pike).
-#
+# tracking data for prey (roach/perch) and predators (pike), and calculates
+# encounter summaries used by the downstream encounter rate analysis script.
+
 # METHODOLOGY:
 # 1. TIERED ENCOUNTER DETECTION based on GPS error (0.5m)
 #    - High-confidence: ≤1.4m (within 95% combined GPS error)
-#    - Probable: 1.4-2.8m (requires temporal confirmation)
-#    - Possible: 2.8-4.2m (shared space use)
+#    - Probable:        1.4-2.8m (requires temporal confirmation)
 #
-# 2. MOVEMENT CESSATION DETECTION accounting for GPS noise
-#    - GPS error produces ~38m/day apparent movement (random walk)
-#    - Mortality threshold: ~95m/day (2.5x random walk)
-#    - Requires 2+ consecutive days below threshold
+# 2. MOVEMENT CESSATION DETECTION
 #
-# 3. OPTIONAL: Proximity analysis (ctmm::proximity) to detect
-#    non-independent movement patterns between prey-predator pairs
+## OUTPUTS USED DOWNSTREAM:
+#   data/encounters/muddyfoot/muddyfoot_pike_roach_distances_tiered_df.rds
+#   data/encounters/muddyfoot/muddyfoot_pike_perch_distances_tiered_df.rds
+#   -> Read by 07_muddyfoot_encounter_rate_analysis.R
 #
-# Author: Marcus Michelangeli
-# Date: 2024
 # =================================================================-
 
 # =================================================================-
@@ -47,17 +44,17 @@ suppressPackageStartupMessages({
 # Configure time zone
 Sys.setenv(TZ = 'Europe/Stockholm')
 
+
 ## 1.2 Define Directory Paths ----
 paths <- list(
-  filtered_data = "./data/tracks_filtered/muddyfoot/",
-  lake_polygon  = "./data/lake_params/polygons/",
-  ctmm          = "./data/ctmm_fits/",
-  telem         = "./data/telem_obj/muddyfoot/",
-  encounters    = "./data/encounters/muddyfoot/",
-  proximity     = "./data/proximity/muddyfoot/",
-  size          = "./data/fish_biometrics/",
-  tables        = "./tables/muddyfoot/",
-  figures       = "./figures/muddyfoot/",
+  filtered_data  = "./data/tracks_filtered/muddyfoot/",
+  lake_polygon   = "./data/lake_params/polygons/",
+  ctmm           = "./data/ctmm_fits/",
+  telem          = "./data/telem_obj/muddyfoot/",
+  encounters     = "./data/encounters/muddyfoot/",
+  size           = "./data/fish_biometrics/",
+  tables         = "./tables/muddyfoot/",
+  figures        = "./figures/muddyfoot/",
   distance_plots = "./figures/muddyfoot/distance_plots/"
 )
 
@@ -76,19 +73,11 @@ params <- list(
   strike_distance = 0.45,              # Pike max strike distance
   high_confidence_threshold = 1.4,     # ≤1.4m: Within 95% combined GPS error
   probable_threshold = 2.8,            # ≤2.8m: 2x GPS error
-  possible_threshold = 4.2,            # ≤4.2m: 3x GPS error
   
-  # Encounter count thresholds
-  encounter_threshold_low = 10,        # Min high-confidence encounters/day
-  encounter_threshold_high = 50,       # High encounter threshold
-  
-  # Distance-based thresholds
-  min_distance_threshold = 1.4,        # Min distance for high-confidence
-  consecutive_days_threshold = 2,      # Consecutive days for predation
-  
-  # Proximity analysis settings (OPTIONAL - computationally expensive)
-  run_proximity_analysis = FALSE,      # Toggle proximity analysis
-  proximity_encounter_threshold = 100, # Min encounters for proximity
+  # Encounter count thresholds (passed to identify_predation_events)
+  encounter_threshold_low = 10,        # Min high-conf encounters/day to flag a day
+  encounter_threshold_high = 50,       # High encounter threshold (stricter flag)
+  consecutive_days_threshold = 2,      # Consecutive days required for predation signal
   
   # Distance plot settings
   create_distance_plots = TRUE,        # Create time series plots
@@ -100,21 +89,6 @@ params <- list(
   mortality_cessation_threshold = 0.15, # 15% of baseline movement
   mortality_consecutive_days = 2       # Consecutive low-movement days
 )
-
-# Print analysis strategy
-message("\n=== ENCOUNTER DETECTION STRATEGY ===")
-message("Tiered approach based on GPS error (σ = 0.5m per fish):")
-message(sprintf("  High-confidence: ≤%.1fm (within 95%% combined GPS error)",
-                params$high_confidence_threshold))
-message(sprintf("  Probable: %.1f-%.1fm (2x GPS error)",
-                params$high_confidence_threshold, params$probable_threshold))
-message(sprintf("  Possible: %.1f-%.1fm (3x GPS error)",
-                params$probable_threshold, params$possible_threshold))
-message(sprintf("\nProximity analysis: %s",
-                ifelse(params$run_proximity_analysis, "ENABLED", "DISABLED")))
-message(sprintf("Distance plots: %s",
-                ifelse(params$create_distance_plots, "ENABLED", "DISABLED")))
-message("=====================================\n")
 
 # =================================================================-
 # 2. CUSTOM FUNCTIONS ####
@@ -129,6 +103,7 @@ message("=====================================\n")
 #' @param fixes_per_day Number of GPS fixes per day
 #' 
 #' @return Data frame with apparent movement estimates
+
 calculate_gps_noise_threshold <- function(gps_error = 0.5, fixes_per_day = 2880) {
   
   # Error in distance between two consecutive positions
@@ -178,7 +153,6 @@ calculate_gps_noise_threshold <- function(gps_error = 0.5, fixes_per_day = 2880)
 #' @param strike_dist Legacy strike distance (kept for compatibility)
 #' @param high_conf_threshold High-confidence threshold (m)
 #' @param probable_threshold Probable encounter threshold (m)
-#' @param possible_threshold Possible encounter threshold (m)
 #' @param parallel Use parallel processing?
 #' @param n_cores Number of cores (NULL = auto-detect)
 #' 
@@ -189,7 +163,6 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
                                          strike_dist = 0.45,
                                          high_conf_threshold = 1.4,
                                          probable_threshold = 2.8,
-                                         possible_threshold = 4.2,
                                          parallel = TRUE,
                                          n_cores = NULL) {
   
@@ -239,14 +212,11 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
       df$encounter_high_conf <- ifelse(df$est <= high_conf_threshold, 1, 0)
       df$encounter_probable <- ifelse(df$est > high_conf_threshold &
                                         df$est <= probable_threshold, 1, 0)
-      df$encounter_possible <- ifelse(df$est > probable_threshold &
-                                        df$est <= possible_threshold, 1, 0)
       
       # Categorical encounter type
       df$encounter_type <- dplyr::case_when(
         df$est <= high_conf_threshold ~ "high_confidence",
         df$est <= probable_threshold ~ "probable",
-        df$est <= possible_threshold ~ "possible",
         TRUE ~ "no_encounter"
       )
       
@@ -277,8 +247,7 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
     # Export required objects to cluster
     parallel::clusterExport(cl, c("prey_tel", "pred_tel", "prey_fits",
                                   "pred_fits", "strike_dist", "prey_species",
-                                  "high_conf_threshold", "probable_threshold",
-                                  "possible_threshold", "combinations"),
+                                  "high_conf_threshold", "probable_threshold", "combinations"),
                             envir = environment())
     
     parallel::clusterEvalQ(cl, {
@@ -305,75 +274,6 @@ calculate_pairwise_distances <- function(prey_tel, pred_tel,
   message(sprintf("Completed: %d distance calculations", nrow(distances_df)))
   
   return(as.data.frame(distances_df))
-}
-
-
-#' Summarize Daily Encounters with Tiered Approach
-#' 
-#' Aggregates encounter data by prey-predator pair and date.
-#' Counts encounters in each tier and calculates daily distance metrics.
-#' 
-#' @param distances_df Data frame from calculate_pairwise_distances()
-#' @return Daily encounter summary with tiered counts
-summarize_daily_encounters <- function(distances_df) {
-  daily_summary <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, Date) %>%
-    summarise(
-      Species = first(Species),
-      
-      # Count encounters by tier
-      encounter_count_high_conf = sum(encounter_high_conf, na.rm = TRUE),
-      encounter_count_probable = sum(encounter_probable, na.rm = TRUE),
-      encounter_count_possible = sum(encounter_possible, na.rm = TRUE),
-      encounter_count_legacy = sum(encounter, na.rm = TRUE),
-      
-      # Daily distance metrics
-      daily_avg_dist = mean(est, na.rm = TRUE),
-      daily_min_dist = min(est, na.rm = TRUE),
-      
-      # Check for consecutive probable encounters (temporal confirmation)
-      has_consecutive_probable = any(encounter_probable == 1) &
-        any(lag(encounter_probable, default = 0) == 1),
-      
-      .groups = "drop"
-    )
-  
-  return(daily_summary)
-}
-
-
-#' Calculate Total Encounters Per Prey-Predator Pair
-#' 
-#' Aggregates encounter counts across all observations for each pair.
-#' Provides summary statistics useful for identifying high-risk pairs.
-#' 
-#' @param distances_df Data frame from calculate_pairwise_distances()
-#' @return Summary with tiered total encounters
-calculate_total_encounters <- function(distances_df) {
-  total_encounters <- distances_df %>%
-    group_by(Prey_ID, Pred_ID, Species) %>%
-    summarise(
-      # Total encounters by tier
-      total_encounters_high_conf = sum(encounter_high_conf, na.rm = TRUE),
-      total_encounters_probable = sum(encounter_probable, na.rm = TRUE),
-      total_encounters_possible = sum(encounter_possible, na.rm = TRUE),
-      total_encounters_legacy = sum(encounter, na.rm = TRUE),
-      
-      # Distance metrics
-      min_distance = min(est, na.rm = TRUE),
-      mean_distance = mean(est, na.rm = TRUE),
-      
-      # Temporal metrics
-      n_days = n_distinct(Date),
-      n_days_high_conf = n_distinct(Date[encounter_high_conf == 1]),
-      n_days_probable = n_distinct(Date[encounter_probable == 1]),
-      n_days_possible = n_distinct(Date[encounter_possible == 1]),
-      
-      .groups = "drop"
-    ) %>%
-    arrange(desc(total_encounters_high_conf))
-  
-  return(total_encounters)
 }
 
 
@@ -414,209 +314,183 @@ calc_max_consecutive <- function(dates) {
 }
 
 
-#' Perform Proximity Analysis on Prey-Predator Pair
-#' 
-#' Uses ctmm::proximity() to test if two individuals' movements are
-#' statistically independent. Non-independence suggests predation.
-#' 
-#' Proximity ratio < 1: closer than expected (potential predation)
-#' Proximity ratio > 1: farther than expected (avoidance)
-#' CI contains 1: movements are independent
-#' 
-#' @param prey_tel Single prey telemetry object
-#' @param pred_tel Single predator telemetry object
-#' @param prey_fit CTMM fit for prey
-#' @param pred_fit CTMM fit for predator
-#' @param prey_id Prey individual ID
-#' @param pred_id Predator individual ID
-#' 
-#' @return List with proximity results and statistics
-perform_proximity_analysis <- function(prey_tel, pred_tel,
-                                       prey_fit, pred_fit,
-                                       prey_id, pred_id) {
-  
-  tryCatch({
-    # Ensure matching projections
-    target_proj <- projection(pred_tel)
-    projection(prey_tel) <- target_proj
-    projection(pred_tel) <- target_proj
-    projection(prey_fit) <- target_proj
-    projection(pred_fit) <- target_proj
-    
-    # Create named lists (required format for ctmm::proximity)
-    combined_tel <- list(prey_tel, pred_tel)
-    names(combined_tel) <- c(prey_id, pred_id)
-    
-    combined_fits <- list(prey_fit, pred_fit)
-    names(combined_fits) <- c(prey_id, pred_id)
-    
-    # Verify structure
-    stopifnot(
-      length(combined_tel) == 2,
-      length(combined_fits) == 2,
-      all(names(combined_tel) == names(combined_fits))
-    )
-    
-    # Run proximity analysis
-    message(sprintf("  Running proximity for %s - %s", prey_id, pred_id))
-    proximity_result <- ctmm::proximity(combined_tel, combined_fits,
-                                        GUESS = ctmm(error = FALSE))
-    
-    # Extract statistics
-    # proximity() returns named vector: 'low', 'est', 'high'
-    proximity_stats <- list(
-      prey_id = prey_id,
-      pred_id = pred_id,
-      proximity_ratio_est = unname(proximity_result["est"]),
-      proximity_ratio_low = unname(proximity_result["low"]),
-      proximity_ratio_high = unname(proximity_result["high"]),
-      # Independent if CI contains 1
-      independent = proximity_result["low"] < 1 & proximity_result["high"] > 1,
-      proximity_object = proximity_result
-    )
-    
-    return(proximity_stats)
-    
-  }, error = function(e) {
-    warning(sprintf("Proximity analysis failed for %s - %s: %s",
-                    prey_id, pred_id, e$message))
-    return(list(
-      prey_id = prey_id,
-      pred_id = pred_id,
-      proximity_ratio_est = NA,
-      proximity_ratio_low = NA,
-      proximity_ratio_high = NA,
-      independent = NA,
-      error = e$message
-    ))
-  })
-}
 
 
-#' Identify Suspected Predation Events with Tiered Approach
-#' 
-#' Identifies predation candidates based on:
-#' 1. High frequency of close encounters
-#' 2. Sustained encounters over consecutive days
-#' 3. Very close minimum approach distances
-#' 
-#' @param distances_df Data frame with pairwise distances
-#' @param enc_threshold_low Min encounters per day
+#' Identify Suspected Predation Events
+#'
+#' Detects sustained contact periods using multi-criteria approach.
+#' Thresholds scaled from BT (sigma=0.379m) to Muddyfoot (sigma=0.5m):
+#'   Scale factor = combined_error_muddyfoot / combined_error_BT
+#'                = (sqrt(2)*0.5) / (sqrt(2)*0.379) = 0.707 / 0.536 = 1.32
+#'
+#' Sustained-contact distance cutoffs (* 1.32 from BT):
+#'   BT <0.5m  -> Muddyfoot <0.66m  |  BT <0.1m  -> Muddyfoot <0.13m
+#'   BT <1.0m  -> Muddyfoot <1.32m  |  BT <1.5m  -> Muddyfoot <2.0m
+#'   BT <2.0m  -> Muddyfoot <2.64m
+#' "At-zero" threshold = combined GPS error = 0.707m
+#'
+#' @param distances_df Data frame from calculate_pairwise_distances()
+#' @param enc_threshold_low Min encounters per day for high-conf flag
 #' @param enc_threshold_high High encounter threshold
 #' @param min_dist_threshold Distance threshold (m)
 #' @param consec_days_threshold Consecutive days required
-#' 
-#' @return Data frame with suspected predation events
+#'
+#' @return Data frame with predation likelihood per prey-predator pair
 identify_predation_events <- function(distances_df,
-                                      enc_threshold_low = 10,
-                                      enc_threshold_high = 50,
-                                      min_dist_threshold = 1.4,
-                                      consec_days_threshold = 2) {
+                                      enc_threshold_low      = 10,
+                                      enc_threshold_high     = 50,
+                                      min_dist_threshold     = 0.66,
+                                      consec_days_threshold  = 2,
+                                      probable_threshold_low = 50,
+                                      probable_threshold_high = 100,
+                                      final_days_window      = 2) {
   
-  # Aggregate by day
-  daily_encounters <- distances_df %>%
+  # Daily summaries
+  daily_summary <- distances_df %>%
     group_by(Prey_ID, Pred_ID, Date) %>%
     summarise(
-      encounter_count_high_conf = sum(encounter_high_conf, na.rm = TRUE),
-      encounter_count_probable = sum(encounter_probable, na.rm = TRUE),
-      encounter_count_probable_confirmed = sum(
-        encounter_probable == 1 & lag(encounter_probable, default = 0) == 1,
-        na.rm = TRUE
-      ),
-      daily_min_dist = min(est, na.rm = TRUE),
+      n_encounters_high_conf = sum(encounter_type == "high_confidence", na.rm = TRUE),
+      n_encounters_probable  = sum(encounter_type == "probable",        na.rm = TRUE),
+      min_distance           = min(est, na.rm = TRUE),
+      mean_distance          = mean(est, na.rm = TRUE),
+      # "at zero" = within combined GPS error for Muddyfoot (0.707m)
+      n_at_zero              = sum(est < 0.707, na.rm = TRUE),
+      pct_at_zero            = n_at_zero / n() * 100,
       .groups = "drop"
-    )
+    ) %>%
+    arrange(Prey_ID, Pred_ID, Date)
   
-  # Filter for high-risk days
-  high_risk_days <- daily_encounters %>%
-    filter(
-      encounter_count_high_conf >= enc_threshold_low |
-        encounter_count_probable_confirmed >= enc_threshold_low |
-        daily_min_dist < min_dist_threshold
-    )
+  # Sustained contact flagging (thresholds scaled * 1.32 from BT)
+  predation_windows <- daily_summary %>%
+    group_by(Prey_ID, Pred_ID) %>%
+    arrange(Date) %>%
+    mutate(
+      # A day qualifies as sustained contact only if distances are CONSISTENTLY
+      # small — not just briefly. mean_distance < 4.0m rules out days where the
+      # prey-predator distance swings widely (low min but high mean), which
+      # indicate the prey is still moving freely and has not been predated.
+      # This prevents brief close approaches within an otherwise large-distance
+      # day from triggering a false sustained-contact window.
+      sustained_contact = (
+        (min_distance < 0.66 & mean_distance < 4.0 & n_encounters_high_conf > 10) |
+          (min_distance < 0.13 & mean_distance < 4.0 & n_encounters_high_conf > 5)  |
+          (pct_at_zero > 40    & mean_distance < 4.0 & n_encounters_high_conf > 5)  |
+          (min_distance < 1.32 & mean_distance < 4.0 & n_encounters_high_conf > 50) |
+          (min_distance < 2.0  & mean_distance < 4.0 & n_encounters_high_conf > 100)|
+          (min_distance < 2.0  & mean_distance < 4.0 & n_encounters_high_conf > 20  & n_encounters_probable > 50) |
+          (min_distance < 2.64 & mean_distance < 4.0 & n_encounters_probable > 150)
+      ),
+      
+      day_diff = as.numeric(difftime(Date, lag(Date), units = "days")),
+      is_consecutive_contact = (day_diff == 1 & sustained_contact & lag(sustained_contact)),
+      contact_group = cumsum(!is_consecutive_contact | is.na(is_consecutive_contact))
+    ) %>%
+    group_by(Prey_ID, Pred_ID, contact_group) %>%
+    mutate(
+      consecutive_contact_days = if_else(sustained_contact, n(), 0L),
+      contact_period_start     = if_else(sustained_contact, min(Date), as.Date(NA)),
+      contact_period_end       = if_else(sustained_contact, max(Date), as.Date(NA))
+    ) %>%
+    ungroup()
   
-  # Summarize predation patterns
-  predation_summary <- high_risk_days %>%
+  # Consecutive encounter days
+  consecutive_info <- predation_windows %>%
+    group_by(Prey_ID, Pred_ID) %>%
+    arrange(Date) %>%
+    mutate(
+      high_conf_flag      = n_encounters_high_conf >= enc_threshold_low,
+      is_consecutive      = (day_diff == 1 & high_conf_flag & lag(high_conf_flag)),
+      consec_group        = cumsum(!is_consecutive | is.na(is_consecutive)),
+      probable_flag       = n_encounters_probable >= probable_threshold_low,
+      is_consecutive_prob = (day_diff == 1 & probable_flag & lag(probable_flag)),
+      consec_group_prob   = cumsum(!is_consecutive_prob | is.na(is_consecutive_prob))
+    ) %>%
+    group_by(Prey_ID, Pred_ID, consec_group) %>%
+    mutate(consecutive_days_high_conf = if_else(high_conf_flag, n(), 0L)) %>%
+    group_by(Prey_ID, Pred_ID, consec_group_prob) %>%
+    mutate(consecutive_days_probable  = if_else(probable_flag,  n(), 0L)) %>%
+    ungroup()
+  
+  # Aggregate by pair
+  consecutive_info %>%
     group_by(Prey_ID, Pred_ID) %>%
     summarise(
-      # Count days with different encounter intensities
-      num_days_high_conf_10 = sum(encounter_count_high_conf >= 10),
-      num_days_high_conf_50 = sum(encounter_count_high_conf >= 50),
-      num_days_probable_confirmed_10 = sum(encounter_count_probable_confirmed >= 10),
-      
-      # Distance-based metrics
-      num_days_min_dist_less_1.5m = sum(daily_min_dist < 1.5),
-      num_days_min_dist_less_0.5m = sum(daily_min_dist < 0.5),
-      
-      # First occurrence dates
-      first_date_high_conf = if(any(encounter_count_high_conf >= enc_threshold_low)) {
-        min(Date[encounter_count_high_conf >= enc_threshold_low])
-      } else {
-        as.Date(NA)
-      },
-      first_date_probable = if(any(encounter_count_probable_confirmed >= enc_threshold_low)) {
-        min(Date[encounter_count_probable_confirmed >= enc_threshold_low])
-      } else {
-        as.Date(NA)
-      },
-      
-      # Consecutive days patterns
-      consecutive_days_high_conf = calc_max_consecutive(
-        Date[encounter_count_high_conf >= enc_threshold_low]
-      ),
-      consecutive_days_probable = calc_max_consecutive(
-        Date[encounter_count_probable_confirmed >= enc_threshold_low]
-      ),
-      
-      # Store encounter dates
-      encounter_dates_high_conf = paste(
-        format(Date[encounter_count_high_conf >= 10], "%d/%m/%Y"),
-        collapse = ", "
-      ),
-      encounter_dates_probable = paste(
-        format(Date[encounter_count_probable_confirmed >= 10], "%d/%m/%Y"),
-        collapse = ", "
-      ),
-      
+      total_encounters_high_conf        = sum(n_encounters_high_conf, na.rm = TRUE),
+      num_days_high_conf_10             = sum(n_encounters_high_conf >= enc_threshold_low,  na.rm = TRUE),
+      num_days_high_conf_50             = sum(n_encounters_high_conf >= enc_threshold_high, na.rm = TRUE),
+      num_days_high_conf_100            = sum(n_encounters_high_conf >= 100, na.rm = TRUE),
+      max_consecutive_days_high_conf    = max(consecutive_days_high_conf, na.rm = TRUE),
+      total_encounters_probable         = sum(n_encounters_probable,  na.rm = TRUE),
+      num_days_probable_50              = sum(n_encounters_probable >= probable_threshold_low,  na.rm = TRUE),
+      num_days_probable_100             = sum(n_encounters_probable >= probable_threshold_high, na.rm = TRUE),
+      num_days_probable_200             = sum(n_encounters_probable >= 200, na.rm = TRUE),
+      max_consecutive_days_probable     = max(consecutive_days_probable, na.rm = TRUE),
+      num_days_sustained_contact        = sum(sustained_contact, na.rm = TRUE),
+      max_consecutive_contact_days      = max(consecutive_contact_days, na.rm = TRUE),
+      sustained_contact_start           = { v <- contact_period_start[!is.na(contact_period_start)]; if (length(v)) min(v) else as.Date(NA) },
+      sustained_contact_end             = { v <- contact_period_end[!is.na(contact_period_end)];     if (length(v)) max(v) else as.Date(NA) },
+      # "at zero" = within combined GPS error (0.707m for Muddyfoot)
+      total_points_at_zero              = sum(n_at_zero, na.rm = TRUE),
+      overall_min_distance              = min(min_distance,  na.rm = TRUE),
+      mean_of_daily_min_distance        = mean(min_distance, na.rm = TRUE),
+      # Distance thresholds scaled * 1.32 from BT
+      num_days_under_0.66m              = sum(min_distance < 0.66, na.rm = TRUE),
+      num_days_under_1.32m              = sum(min_distance < 1.32, na.rm = TRUE),
+      num_days_under_2.0m               = sum(min_distance < 2.0,  na.rm = TRUE),
+      first_encounter_date              = min(Date, na.rm = TRUE),
+      last_encounter_date               = max(Date, na.rm = TRUE),
+      tracking_duration_days            = as.numeric(difftime(max(Date), min(Date), units = "days")) + 1,
+      total_days_with_encounters        = n_distinct(Date),
+      encounters_final_2days_high_conf  = sum(n_encounters_high_conf[Date >= (max(Date) - final_days_window)], na.rm = TRUE),
+      encounters_final_2days_probable   = sum(n_encounters_probable[ Date >= (max(Date) - final_days_window)], na.rm = TRUE),
+      high_conf_intensity               = total_encounters_high_conf / tracking_duration_days,
+      probable_intensity                = total_encounters_probable  / tracking_duration_days,
       .groups = "drop"
     ) %>%
     mutate(
-      # Binary predation flag based on strong evidence
+      combined_encounter_score = (total_encounters_high_conf * 1.0) +
+        (total_encounters_probable * 0.5),
+      
+      # Predation likelihood — mirrors BT/Cow logic with Muddyfoot distance values
       likely_predated = case_when(
-        consecutive_days_high_conf >= consec_days_threshold ~ 1,
-        num_days_high_conf_50 >= 2 ~ 1,
-        num_days_min_dist_less_0.5m >= 2 ~ 1,
-        TRUE ~ 0
+        (num_days_sustained_contact >= 3 & max_consecutive_contact_days >= 2) ~ "very_likely",
+        (max_consecutive_contact_days >= 5)                                   ~ "very_likely",
+        (total_points_at_zero > 100 & num_days_sustained_contact >= 2)       ~ "very_likely",
+        (num_days_sustained_contact >= 2 & overall_min_distance < 0.66)      ~ "likely",
+        (num_days_high_conf_50 > 1      & overall_min_distance < 0.66)       ~ "likely",
+        (num_days_probable_100 > 1      & overall_min_distance < 0.99)       ~ "likely",
+        num_days_sustained_contact >= 2                                        ~ "likely",
+        (num_days_high_conf_10 > 2      & total_encounters_probable > 250)   ~ "possible",
+        (num_days_probable_50 > 1       & overall_min_distance < 1.32)       ~ "possible",
+        (total_encounters_high_conf > 200 & num_days_under_1.32m > 0)        ~ "possible",
+        num_days_sustained_contact >= 1                                        ~ "possible",
+        (total_encounters_high_conf > 150 | total_encounters_probable > 400) ~ "weak_signal",
+        TRUE                                                                   ~ "unlikely"
       )
     )
-  
-  return(predation_summary)
 }
 
 
 #' Plot Distance Time Series for Prey-Predator Pair
-#' 
-#' Creates time series plot of separation distance with annotations for:
-#' - Encounter thresholds
-#' - First date with 50+ high-confidence encounters
-#' - Date with maximum encounters (if total > 100)
-#' 
-#' @param distances_df Data frame with distance calculations
+#'
+#' Creates time series of separation distance with:
+#'   - Tiered threshold lines (high-confidence and probable only)
+#'   - Highlighted sustained-contact periods (potential predation windows)
+#' This mirrors the BT and Cow Paradise plot style.
+#'
+#' @param distances_df Data frame from calculate_pairwise_distances()
 #' @param prey_id Prey individual ID
 #' @param pred_id Predator individual ID
 #' @param species Species name
-#' @param output_dir Directory to save plot
+#' @param output_dir Directory to save plot (NULL = no save)
 #' @param threshold_lines Add threshold lines?
-#' 
+#' @param predation_summary Output from identify_predation_events() for this species
+#'
 #' @return ggplot object
-plot_distance_timeseries <- function(distances_df,
-                                     prey_id,
-                                     pred_id,
-                                     species,
-                                     output_dir,
-                                     threshold_lines = TRUE) {
+plot_distance_timeseries <- function(distances_df, prey_id, pred_id, species,
+                                     output_dir = NULL, threshold_lines = TRUE,
+                                     predation_summary = NULL) {
   
-  # Filter for this pair
   pair_data <- distances_df %>%
     filter(Prey_ID == prey_id, Pred_ID == pred_id) %>%
     arrange(timestamp)
@@ -626,131 +500,94 @@ plot_distance_timeseries <- function(distances_df,
     return(NULL)
   }
   
-  # Calculate summary statistics
-  n_encounters_high <- sum(pair_data$encounter_high_conf)
-  n_encounters_prob <- sum(pair_data$encounter_probable)
-  mean_dist <- mean(pair_data$est, na.rm = TRUE)
-  min_dist <- min(pair_data$est, na.rm = TRUE)
-  
-  # Calculate daily high-confidence encounter counts
-  daily_high_conf <- pair_data %>%
-    group_by(Date) %>%
-    summarise(
-      daily_high_conf_count = sum(encounter_high_conf, na.rm = TRUE),
-      timestamp = first(timestamp),
-      .groups = "drop"
-    )
-  
-  # Find first date with 50+ encounters
-  first_50_date <- daily_high_conf %>%
-    filter(daily_high_conf_count >= 50) %>%
-    slice_min(Date, n = 1)
-  
-  # Find date with most encounters (only if total > 100)
-  max_encounter_date <- NULL
-  if (n_encounters_high > 100) {
-    max_encounter_date <- daily_high_conf %>%
-      slice_max(daily_high_conf_count, n = 1)
+  # Look up predation info for this pair
+  predation_info <- NULL
+  if (!is.null(predation_summary)) {
+    col_check <- if ("Pike_ID" %in% colnames(predation_summary)) "Pike_ID" else "Pred_ID"
+    predation_info <- predation_summary %>%
+      filter(Prey_ID == prey_id, .data[[col_check]] == pred_id)
   }
   
-  # Set up x-axis breaks (every 2 days)
-  date_range <- range(pair_data$Date, na.rm = TRUE)
-  all_dates <- seq(from = date_range[1], to = date_range[2], by = "day")
-  date_breaks <- all_dates[seq(1, length(all_dates), by = 2)]
+  n_encounters_high <- sum(pair_data$encounter_high_conf)
+  n_encounters_prob <- sum(pair_data$encounter_probable)
+  mean_dist         <- mean(pair_data$est, na.rm = TRUE)
+  min_dist          <- min(pair_data$est,  na.rm = TRUE)
   
-  # Create base plot
+  # X-axis breaks (every 2 days)
+  date_range  <- range(pair_data$Date, na.rm = TRUE)
+  date_breaks <- seq(from = date_range[1], to = date_range[2], by = "day")
+  date_breaks <- date_breaks[seq(1, length(date_breaks), by = 2)]
+  
   p <- ggplot(pair_data, aes(x = timestamp, y = est)) +
-    geom_line(color = "#5e548e", alpha = 0.7, linewidth = 0.5) +
-    scale_x_datetime(
-      breaks = as.POSIXct(paste(date_breaks, "12:00:00"), tz = "Europe/Stockholm"),
-      date_labels = "%d %b",
-      expand = c(0.02, 0)
+    geom_line(color = "gray50", alpha = 0.5) +
+    geom_point(aes(color = encounter_type), size = 1, alpha = 0.6) +
+    scale_color_manual(
+      values = c("high_confidence" = "#d62728", "probable" = "#ff7f0e",
+                 "no_encounter" = "gray80"),
+      labels = c("high_confidence" = "High Confidence (<=1.4m)",
+                 "probable"        = "Probable (1.4-2.8m)",
+                 "no_encounter"    = "No Encounter"),
+      name = "Encounter Type"
     ) +
     labs(
-      title = sprintf("%s: %s vs Pike %s", species, prey_id, pred_id),
-      subtitle = sprintf(
-        "High-conf encounters: %d | Probable: %d | Mean dist: %.1fm | Min dist: %.2fm",
-        n_encounters_high, n_encounters_prob, mean_dist, min_dist
-      ),
+      title    = sprintf("%s: %s vs Pike %s", species, prey_id, pred_id),
+      subtitle = if (!is.null(predation_info) && nrow(predation_info) > 0) {
+        sprintf("Predation likelihood: %s | Sustained contact days: %d | High-conf: %d | Probable: %d",
+                predation_info$likely_predated,
+                predation_info$num_days_sustained_contact,
+                n_encounters_high, n_encounters_prob)
+      } else {
+        sprintf("High-conf encounters: %d | Probable: %d | Mean dist: %.1fm | Min dist: %.2fm",
+                n_encounters_high, n_encounters_prob, mean_dist, min_dist)
+      },
       x = "Date",
       y = "Separation distance (m)"
     ) +
     theme_classic() +
     theme(
-      plot.title = element_text(face = "bold", size = 12),
+      legend.position = "bottom",
+      plot.title    = element_text(face = "bold", size = 12),
       plot.subtitle = element_text(size = 9, color = "gray30"),
-      axis.text = element_text(size = 9),
-      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+      axis.text     = element_text(size = 9),
+      axis.text.x   = element_text(angle = 45, hjust = 1, vjust = 1)
     )
   
-  # Add threshold lines
   if (threshold_lines) {
     p <- p +
-      geom_hline(yintercept = 1.4, linetype = "dashed",
-                 color = "#d73027", alpha = 0.7, linewidth = 0.8) +
-      geom_hline(yintercept = 2.8, linetype = "dashed",
-                 color = "#fee090", alpha = 0.7, linewidth = 0.8) +
+      geom_hline(yintercept = 0.45, linetype = "dashed", color = "#d62728", alpha = 0.7) +
+      geom_hline(yintercept = 1.4,  linetype = "dashed", color = "#ff7f0e", alpha = 0.7) +
+      annotate("text", x = min(pair_data$timestamp), y = 0.45,
+               label = "0.45m (strike dist)", hjust = 0, vjust = -0.5, size = 3, color = "#d62728") +
       annotate("text", x = min(pair_data$timestamp), y = 1.4,
-               label = "High-conf (1.4m)", hjust = 0, vjust = -0.5,
-               size = 3, color = "#d73027") +
-      annotate("text", x = min(pair_data$timestamp), y = 2.8,
-               label = "Probable (2.8m)", hjust = 0, vjust = -0.5,
-               size = 3, color = "#fee090")
+               label = "1.4m (high-conf limit)", hjust = 0, vjust = -0.5, size = 3, color = "#ff7f0e")
   }
   
-  # Add first 50+ encounter date
-  if (nrow(first_50_date) > 0) {
-    p <- p +
-      geom_vline(xintercept = as.numeric(first_50_date$timestamp[1]),
-                 linetype = "dotted", color = "#e63946", linewidth = 1) +
-      annotate("text",
-               x = first_50_date$timestamp[1],
-               y = max(pair_data$est, na.rm = TRUE) * 0.95,
-               label = sprintf("First 50+ encounters\n%s (%d)",
-                               format(first_50_date$Date[1], "%d %b"),
-                               first_50_date$daily_high_conf_count[1]),
-               hjust = -0.05,
-               vjust = 1,
-               size = 3,
-               color = "#e63946",
-               fontface = "bold")
-  }
-  
-  # Add max encounter date (if different and total > 100)
-  if (!is.null(max_encounter_date) && nrow(max_encounter_date) > 0) {
-    is_different <- nrow(first_50_date) == 0 ||
-      max_encounter_date$Date[1] != first_50_date$Date[1]
+  # Highlight sustained contact period (potential predation window)
+  if (!is.null(predation_info) && nrow(predation_info) > 0 &&
+      !is.na(predation_info$sustained_contact_start) &&
+      !is.na(predation_info$sustained_contact_end) &&
+      !is.infinite(predation_info$sustained_contact_start) &&
+      !is.infinite(predation_info$sustained_contact_end) &&
+      predation_info$num_days_sustained_contact > 0) {
     
-    if (is_different) {
-      p <- p +
-        geom_vline(xintercept = as.numeric(max_encounter_date$timestamp[1]),
-                   linetype = "dotdash", color = "#f77f00", linewidth = 1) +
-        annotate("text",
-                 x = max_encounter_date$timestamp[1],
-                 y = max(pair_data$est, na.rm = TRUE) * 0.85,
-                 label = sprintf("Max encounters\n%s (%d)",
-                                 format(max_encounter_date$Date[1], "%d %b"),
-                                 max_encounter_date$daily_high_conf_count[1]),
-                 hjust = -0.05,
-                 vjust = 1,
-                 size = 3,
-                 color = "#f77f00",
-                 fontface = "bold")
-    }
+    p <- p +
+      annotate("rect",
+               xmin = as.POSIXct(predation_info$sustained_contact_start),
+               xmax = as.POSIXct(predation_info$sustained_contact_end + 1),
+               ymin = -Inf, ymax = Inf, fill = "red", alpha = 0.15) +
+      annotate("text",
+               x     = as.POSIXct(predation_info$sustained_contact_end),
+               y     = max(pair_data$est, na.rm = TRUE) * 0.9,
+               label = "Sustained\nContact\n(Likely Predation)",
+               hjust = 1, vjust = 1, size = 3.5, fontface = "bold", color = "#d62728")
   }
   
-  # Save plot
-  filename <- sprintf("%s_%s_%s_distance_timeseries.png",
-                      species, prey_id, pred_id)
-  ggsave(
-    filename = file.path(output_dir, filename),
-    plot = p,
-    width = 12,
-    height = 6,
-    dpi = 300
-  )
-  
-  message(sprintf("  Saved distance plot: %s", filename))
+  if (!is.null(output_dir)) {
+    if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+    filename <- sprintf("%s_%s_vs_%s_distances.png", species, prey_id, pred_id)
+    ggsave(file.path(output_dir, filename), plot = p, width = 10, height = 6, dpi = 300)
+    message(sprintf("  Saved distance plot: %s", filename))
+  }
   
   return(p)
 }
@@ -1151,6 +988,7 @@ plot_movement_metrics <- function(telemetry_obj,
 }
 
 
+
 # =================================================================-
 # 3. DATA LOADING ####
 # =================================================================-
@@ -1214,7 +1052,6 @@ if (file.exists(roach_pike_file)) {
     strike_dist = params$strike_distance,
     high_conf_threshold = params$high_confidence_threshold,
     probable_threshold = params$probable_threshold,
-    possible_threshold = params$possible_threshold,
     parallel = TRUE,
     n_cores = 16
   )
@@ -1238,7 +1075,6 @@ if (file.exists(perch_pike_file)) {
     strike_dist = params$strike_distance,
     high_conf_threshold = params$high_confidence_threshold,
     probable_threshold = params$probable_threshold,
-    possible_threshold = params$possible_threshold,
     parallel = TRUE,
     n_cores = 16
   )
@@ -1249,11 +1085,8 @@ message(sprintf("Loaded distances: %d roach-pike, %d perch-pike observations",
                 nrow(roach_pike_distances_df), nrow(perch_pike_distances_df)))
 
 
-
-#load in pike-prey distances if required
-roach_pike_distances_df <- readRDS(paste0(paths$encounters, "muddyfoot_pike_roach_distances_tiered_df.rds"))
 perch_pike_distances_df <- readRDS(paste0(paths$encounters, "muddyfoot_pike_perch_distances_tiered_df.rds"))
-
+roach_pike_distances_df <- readRDS(paste0(paths$encounters, "muddyfoot_pike_roach_distances_tiered_df.rds"))
 
 ## 4.3 Print Encounter Summary ----
 message("\n=== ENCOUNTER TYPE DISTRIBUTION ===")
@@ -1278,30 +1111,77 @@ print(encounter_summary)
 message("\n=== CALCULATING ENCOUNTER SUMMARIES ===")
 
 ## 5.1 Daily Encounter Summaries ----
-roach_daily <- summarize_daily_encounters(roach_pike_distances_df) %>%
+# Groups by prey-predator pair and date, counting encounters in each tier
+# and calculating daily distance metrics for each pair x day combination.
+roach_daily <- roach_pike_distances_df %>%
+  group_by(Prey_ID, Pred_ID, Date) %>%
+  summarise(
+    Species                   = first(Species),
+    encounter_count_high_conf = sum(encounter_high_conf, na.rm = TRUE),
+    encounter_count_probable  = sum(encounter_probable,  na.rm = TRUE),
+    daily_avg_dist            = mean(est, na.rm = TRUE),
+    daily_min_dist            = min(est,  na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
   rename(Pike_ID = Pred_ID)
 
-perch_daily <- summarize_daily_encounters(perch_pike_distances_df) %>%
+perch_daily <- perch_pike_distances_df %>%
+  group_by(Prey_ID, Pred_ID, Date) %>%
+  summarise(
+    Species                   = first(Species),
+    encounter_count_high_conf = sum(encounter_high_conf, na.rm = TRUE),
+    encounter_count_probable  = sum(encounter_probable,  na.rm = TRUE),
+    daily_avg_dist            = mean(est, na.rm = TRUE),
+    daily_min_dist            = min(est,  na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
   rename(Pike_ID = Pred_ID)
 
+#combine
 prey_daily_encounters <- bind_rows(roach_daily, perch_daily)
 
-message(sprintf("Daily encounters summarized: %d days", nrow(prey_daily_encounters)))
 
 ## 5.2 Calculate Total Encounters ----
-roach_total <- calculate_total_encounters(roach_pike_distances_df)
-perch_total <- calculate_total_encounters(perch_pike_distances_df)
+# Aggregates across all observations for each prey-predator pair, giving
+# total encounter counts, distance metrics, and temporal spread (n_days).
+roach_total <- roach_pike_distances_df %>%
+  group_by(Prey_ID, Pred_ID, Species) %>%
+  summarise(
+    total_encounters_high_conf = sum(encounter_high_conf, na.rm = TRUE),
+    total_encounters_probable  = sum(encounter_probable,  na.rm = TRUE),
+    total_encounters_legacy    = sum(encounter,           na.rm = TRUE),
+    min_distance               = min(est, na.rm = TRUE),
+    mean_distance              = mean(est, na.rm = TRUE),
+    n_days                     = n_distinct(Date),
+    n_days_high_conf           = n_distinct(Date[encounter_high_conf == 1]),
+    n_days_probable            = n_distinct(Date[encounter_probable  == 1]),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_encounters_high_conf))
 
+perch_total <- perch_pike_distances_df %>%
+  group_by(Prey_ID, Pred_ID, Species) %>%
+  summarise(
+    total_encounters_high_conf = sum(encounter_high_conf, na.rm = TRUE),
+    total_encounters_probable  = sum(encounter_probable,  na.rm = TRUE),
+    total_encounters_legacy    = sum(encounter,           na.rm = TRUE),
+    min_distance               = min(est, na.rm = TRUE),
+    mean_distance              = mean(est, na.rm = TRUE),
+    n_days                     = n_distinct(Date),
+    n_days_high_conf           = n_distinct(Date[encounter_high_conf == 1]),
+    n_days_probable            = n_distinct(Date[encounter_probable  == 1]),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_encounters_high_conf))
+
+#combine
 all_encounters <- bind_rows(roach_total, perch_total)
-
-message(sprintf("Total encounter pairs: %d", nrow(all_encounters)))
 
 total_encounters_ID <- all_encounters %>% 
   group_by(Prey_ID, Species) %>%
   summarise(
     total_encounters_high_conf = sum(total_encounters_high_conf),
     total_encounters_probable = sum(total_encounters_probable),
-    total_encounters_possible = sum(total_encounters_possible),
     n_predators = n_distinct(Pred_ID),
     .groups = 'drop'
   ) %>%
@@ -1316,9 +1196,7 @@ total_encounters_ID <- total_encounters_ID %>%
     by = c("Prey_ID" = "individual_ID")
   )
 
-  
 saveRDS(total_encounters_ID, paste0(paths$encounters, "muddyfoot_total_encounters_ID.rds"))
-
 
 # =================================================================-
 # 6. IDENTIFY SUSPECTED PREDATION EVENTS ####
@@ -1335,44 +1213,46 @@ message("\n=== IDENTIFYING SUSPECTED PREDATION EVENTS ===")
 ## 6.1 Roach Predation Events ----
 roach_predation <- identify_predation_events(
   roach_pike_distances_df,
-  enc_threshold_low = params$encounter_threshold_low,
-  enc_threshold_high = params$encounter_threshold_high,
-  min_dist_threshold = params$min_distance_threshold,
+  enc_threshold_low     = params$encounter_threshold_low,
+  enc_threshold_high    = params$encounter_threshold_high,
   consec_days_threshold = params$consecutive_days_threshold
-) %>%
-  rename(Pike_ID = Pred_ID) %>%
-  mutate(Species = "Roach")
+) %>% rename(Pike_ID = Pred_ID) %>% mutate(Species = "Roach")
 
 ## 6.2 Perch Predation Events ----
 perch_predation <- identify_predation_events(
   perch_pike_distances_df,
-  enc_threshold_low = params$encounter_threshold_low,
-  enc_threshold_high = params$encounter_threshold_high,
-  min_dist_threshold = params$min_distance_threshold,
+  enc_threshold_low     = params$encounter_threshold_low,
+  enc_threshold_high    = params$encounter_threshold_high,
   consec_days_threshold = params$consecutive_days_threshold
-) %>%
-  rename(Pike_ID = Pred_ID) %>%
-  mutate(Species = "Perch")
+) %>% rename(Pike_ID = Pred_ID) %>% mutate(Species = "Perch")
 
 ## 6.3 Combine and Filter ----
-# Filter for individuals not found alive AND with substantial encounters
+# Less restrictive filter to capture brief predation events where a pike may have
+# regurgitated the prey tag shortly after ingestion — these may appear as only a
+# short window of near-zero distances rather than sustained multi-day contact.
 suspected_predation_distance <- bind_rows(roach_predation, perch_predation) %>%
   left_join(post_biometric_cols, by = c("Prey_ID" = "individual_ID")) %>%
   filter(
-    found_alive == 0,           # Not recovered alive
-    num_days_high_conf_50 > 1   # At least 2 days with 50+ encounters
-  )
-
-message(sprintf("Suspected predation events identified: %d",
-                nrow(suspected_predation_distance)))
+    found_alive == 0,
+    (num_days_high_conf_50 > 1 | num_days_probable_50 > 1 | num_days_probable_100 > 0 |
+       total_encounters_high_conf > 200 | total_encounters_probable > 500 |
+       combined_encounter_score > 400   | overall_min_distance < 0.99 |
+       num_days_under_1.32m > 2         | encounters_final_2days_high_conf > 100 |
+       encounters_final_2days_probable > 200 |
+       (num_days_high_conf_10 > 2 & total_encounters_probable > 250) |
+       likely_predated %in% c("very_likely", "likely", "possible"))
+  ) %>%
+  arrange(desc(likely_predated), desc(combined_encounter_score))
 
 # Print summary
 predation_summary_table <- suspected_predation_distance %>%
   group_by(Species, likely_predated) %>%
   summarise(
-    n_cases = n(),
-    mean_high_conf_days = mean(num_days_high_conf_10, na.rm = TRUE),
-    mean_consecutive_days = mean(consecutive_days_high_conf, na.rm = TRUE),
+    n_cases                    = n(),
+    mean_high_conf_encounters  = mean(total_encounters_high_conf, na.rm = TRUE),
+    mean_probable_encounters   = mean(total_encounters_probable,  na.rm = TRUE),
+    mean_min_distance          = mean(overall_min_distance,       na.rm = TRUE),
+    mean_sustained_days        = mean(num_days_sustained_contact, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -1381,7 +1261,7 @@ print(predation_summary_table)
 
 
 # =================================================================-
-# 7. DISTANCE TIME SERIES PLOTS (OPTIONAL) ####
+# 7. DISTANCE TIME SERIES PLOTS  ####
 # =================================================================-
 # 
 # Creates time series plots showing prey-predator separation distances
@@ -1391,46 +1271,33 @@ print(predation_summary_table)
 if (params$create_distance_plots) {
   message("\n=== CREATING DISTANCE TIME SERIES PLOTS ===")
   
-  # Get pairs with sufficient encounters for plotting
   high_encounter_pairs <- suspected_predation_distance %>%
-    filter(
-      num_days_high_conf_10 >= 2 |
-        num_days_high_conf_50 >= 1
-    ) %>%
-    select(Prey_ID, Pike_ID, Species) %>%
-    rename(Pred_ID = Pike_ID)
+    filter(num_days_high_conf_10 >= 2 | num_days_high_conf_50 >= 1 |
+             num_days_sustained_contact >= 1) %>%
+    select(Prey_ID, Pike_ID, Species)
   
   message(sprintf("Creating distance plots for %d pairs", nrow(high_encounter_pairs)))
   
-  # Create plots
-  plot_list <- list()
-  
   for (i in 1:nrow(high_encounter_pairs)) {
-    prey_id <- high_encounter_pairs$Prey_ID[i]
-    pred_id <- high_encounter_pairs$Pred_ID[i]
-    species <- high_encounter_pairs$Species[i]
+    prey_id  <- high_encounter_pairs$Prey_ID[i]
+    pred_id  <- high_encounter_pairs$Pike_ID[i]
+    species  <- high_encounter_pairs$Species[i]
     
-    # Get appropriate distance data
-    if (species == "Roach") {
-      dist_data <- roach_pike_distances_df
-    } else {
-      dist_data <- perch_pike_distances_df
-    }
+    dist_data <- if (species == "Roach") roach_pike_distances_df else perch_pike_distances_df
+    pred_data <- if (species == "Roach") roach_predation         else perch_predation
     
-    # Create plot
-    p <- plot_distance_timeseries(
-      distances_df = dist_data,
-      prey_id = prey_id,
-      pred_id = pred_id,
-      species = species,
-      output_dir = paths$distance_plots,
-      threshold_lines = TRUE
+    plot_distance_timeseries(
+      distances_df      = dist_data,
+      prey_id           = prey_id,
+      pred_id           = pred_id,
+      species           = species,
+      output_dir        = paths$distance_plots,
+      threshold_lines   = TRUE,
+      predation_summary = pred_data
     )
-    
-    plot_list[[i]] <- p
   }
   
-  message(sprintf("Distance plots complete: %d plots created", length(plot_list)))
+  message(sprintf("Distance plots complete: %d plots created", nrow(high_encounter_pairs)))
 }
 
 
@@ -1532,714 +1399,4 @@ if (nrow(missing_perch) > 0) {
       movement_plot_results[[ind_id]] <- result
     }
   }
-}
-
-## Compile Results ----
-
-# Compile daily metrics
-all_daily_metrics <- bind_rows(
-  lapply(names(movement_plot_results), function(ind_id) {
-    result <- movement_plot_results[[ind_id]]
-    if (!is.null(result) && !is.null(result$metrics)) {
-      result$metrics %>%
-        mutate(
-          individual_ID = ind_id,
-          species = ifelse(ind_id %in% names(roach_tel), "Roach", "Perch")
-        )
-    }
-  })
-)
-
-# Compile mortality information
-mortality_summary <- bind_rows(
-  lapply(names(movement_plot_results), function(ind_id) {
-    result <- movement_plot_results[[ind_id]]
-    species <- ifelse(ind_id %in% names(roach_tel), "Roach", "Perch")
-    
-    if (!is.null(result)) {
-      if (!is.null(result$mortality_info)) {
-        data.frame(
-          individual_ID = ind_id,
-          species = species,
-          potential_mortality_date = result$mortality_info$date,
-          days_tracked_after = result$mortality_info$days_tracked_after,
-          baseline_distance = result$baseline_distance,
-          baseline_speed = result$baseline_speed,
-          mean_distance_after = result$mortality_info$mean_distance_after,
-          mean_speed_after = result$mortality_info$mean_speed_after,
-          reduction_distance_pct = result$mortality_info$reduction_distance,
-          reduction_speed_pct = result$mortality_info$reduction_speed,
-          gps_noise_threshold = result$gps_noise_threshold,
-          movement_vs_gps_noise = result$mortality_info$movement_vs_gps_noise,
-          mortality_threshold = result$cessation_threshold,
-          stringsAsFactors = FALSE
-        )
-      } else {
-        data.frame(
-          individual_ID = ind_id,
-          species = species,
-          potential_mortality_date = as.Date(NA),
-          days_tracked_after = NA,
-          baseline_distance = result$baseline_distance,
-          baseline_speed = result$baseline_speed,
-          mean_distance_after = NA,
-          mean_speed_after = NA,
-          reduction_distance_pct = NA,
-          reduction_speed_pct = NA,
-          gps_noise_threshold = result$gps_noise_threshold,
-          movement_vs_gps_noise = NA,
-          mortality_threshold = result$cessation_threshold,
-          stringsAsFactors = FALSE
-        )
-      }
-    }
-  })
-)
-
-# Save compiled metrics
-if (nrow(all_daily_metrics) > 0) {
-  write.csv(all_daily_metrics,
-            file.path(paths$tables, "missing_individuals_daily_movement_metrics.csv"),
-            row.names = FALSE)
-  
-  write.csv(mortality_summary,
-            file.path(paths$tables, "missing_individuals_mortality_dates.csv"),
-            row.names = FALSE)
-  
-  message(sprintf("\nMovement metrics complete: %d individuals processed",
-                  length(movement_plot_results)))
-  
-  # Summary statistics
-  summary_stats <- all_daily_metrics %>%
-    group_by(individual_ID, species) %>%
-    summarise(
-      n_days = n(),
-      mean_daily_distance = mean(total_distance, na.rm = TRUE),
-      sd_daily_distance = sd(total_distance, na.rm = TRUE),
-      median_daily_distance = median(total_distance, na.rm = TRUE),
-      mean_speed = mean(mean_speed, na.rm = TRUE),
-      sd_speed = sd(mean_speed, na.rm = TRUE),
-      first_observation = min(Date, na.rm = TRUE),
-      last_observation = max(Date, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    left_join(
-      mortality_summary %>%
-        select(individual_ID, potential_mortality_date, movement_vs_gps_noise,
-               gps_noise_threshold, mortality_threshold),
-      by = "individual_ID"
-    )
-  
-  write.csv(summary_stats,
-            file.path(paths$tables, "missing_individuals_movement_summary.csv"),
-            row.names = FALSE)
-  
-  message("\n=== Movement Summary Statistics ===")
-  print(summary_stats %>%
-          select(individual_ID, species, n_days, mean_daily_distance,
-                 potential_mortality_date, movement_vs_gps_noise))
-  
-  # Mortality detection summary
-  message("\n=== Mortality Detection Summary ===")
-  mortality_detected <- sum(!is.na(mortality_summary$potential_mortality_date))
-  message(sprintf("Individuals with detected mortality signal: %d / %d (%.1f%%)",
-                  mortality_detected,
-                  nrow(mortality_summary),
-                  100 * mortality_detected / nrow(mortality_summary)))
-  
-  if (mortality_detected > 0) {
-    message("\nDetected mortality events:")
-    mortality_table <- mortality_summary %>%
-      filter(!is.na(potential_mortality_date)) %>%
-      arrange(potential_mortality_date) %>%
-      select(individual_ID, species, potential_mortality_date,
-             reduction_distance_pct, movement_vs_gps_noise) %>%
-      mutate(
-        interpretation = case_when(
-          movement_vs_gps_noise < 1.0 ~ "Very likely dead (< GPS noise)",
-          movement_vs_gps_noise < 2.0 ~ "Possibly dead (< 2x GPS noise)",
-          TRUE ~ "Uncertain (> 2x GPS noise)"
-        )
-      )
-    
-    print(mortality_table)
-    
-    # Summary by interpretation
-    message("\nMortality confidence breakdown:")
-    interp_summary <- mortality_table %>%
-      group_by(interpretation) %>%
-      summarise(
-        n = n(),
-        mean_reduction = mean(reduction_distance_pct, na.rm = TRUE),
-        .groups = "drop"
-      )
-    print(interp_summary)
-  } else {
-    message("No mortality signals detected above GPS noise threshold")
-  }
-  
-  # Species comparison
-  message("\n=== Species Comparison ===")
-  species_summary <- mortality_summary %>%
-    group_by(species) %>%
-    summarise(
-      n_individuals = n(),
-      n_mortality_detected = sum(!is.na(potential_mortality_date)),
-      pct_mortality_detected = 100 * mean(!is.na(potential_mortality_date)),
-      mean_baseline_distance = mean(baseline_distance, na.rm = TRUE),
-      mean_gps_threshold = mean(gps_noise_threshold, na.rm = TRUE),
-      .groups = "drop"
-    )
-  print(species_summary)
-  
-  # Temporal pattern
-  if (mortality_detected > 0) {
-    message("\n=== Temporal Pattern of Mortality Events ===")
-    mortality_timeline <- mortality_summary %>%
-      filter(!is.na(potential_mortality_date)) %>%
-      arrange(potential_mortality_date) %>%
-      mutate(
-        week = floor(as.numeric(potential_mortality_date - min(potential_mortality_date)) / 7) + 1
-      ) %>%
-      group_by(week, species) %>%
-      summarise(n_events = n(), .groups = "drop")
-    
-    print(mortality_timeline)
-  }
-  
-  # Save detailed mortality summary
-  if (mortality_detected > 0) {
-    detailed_mortality <- mortality_summary %>%
-      filter(!is.na(potential_mortality_date)) %>%
-      arrange(potential_mortality_date) %>%
-      mutate(
-        interpretation = case_when(
-          movement_vs_gps_noise < 1.0 ~ "Very likely dead",
-          movement_vs_gps_noise < 2.0 ~ "Possibly dead",
-          TRUE ~ "Uncertain"
-        ),
-        days_since_start = as.numeric(potential_mortality_date -
-                                        min(potential_mortality_date))
-      )
-    
-    write.csv(detailed_mortality,
-              file.path(paths$tables, "detailed_mortality_events.csv"),
-              row.names = FALSE)
-  }
-  
-} else {
-  message("\nWarning: No movement metrics were successfully calculated")
-}
-
-message("\n=== Movement Metrics Analysis Complete ===")
-message(sprintf("Output directory: %s", movement_plots_dir))
-message("Generated files:")
-message("  - Individual movement plots (distance and speed)")
-message("  - missing_individuals_daily_movement_metrics.csv")
-message("  - missing_individuals_mortality_dates.csv")
-message("  - missing_individuals_movement_summary.csv")
-if (exists("detailed_mortality") && nrow(detailed_mortality) > 0) {
-  message("  - detailed_mortality_events.csv")
-}
-message("========================================\n")
-
-
-# =================================================================-
-# 8. PROXIMITY ANALYSIS (OPTIONAL) ####
-# =================================================================-
-# 
-# OPTIONAL: Uses ctmm::proximity() to test if prey-predator movements
-# are statistically independent. Computationally expensive, so disabled
-# by default. Enable by setting run_proximity_analysis = TRUE in params.
-#
-# Proximity ratio interpretation:
-# - < 1: Animals closer than expected (potential predation/attraction)
-# - = 1: Independent movement (null hypothesis)
-# - > 1: Animals farther than expected (avoidance)
-# - CI contains 1: Cannot reject independence
-# =================================================================-
-
-#If I want to conduct proximity analysis, I need to identify the stretch of time that 
-#I believe a individual was predated, because the whole track could be non-independent (due to the size of the lakes)
-#Focus only on individuals that were identified as being likely predated.
-#This needs to be thought through as how to deal with the tracking data.
-
-if (params$run_proximity_analysis) {
-  message("\n=== PROXIMITY ANALYSIS (OPTIONAL COMPONENT) ===")
-  
-  ## 8.1 Identify Candidate Pairs ----
-  candidate_pairs <- all_encounters %>%
-    left_join(post_biometric_cols, by = c("Prey_ID" = "individual_ID")) %>%
-    filter(
-      found_alive == 0,
-      (total_encounters_high_conf > 50 |
-         total_encounters_probable > params$proximity_encounter_threshold)
-    ) %>%
-    arrange(desc(total_encounters_high_conf))
-  
-  message(sprintf("Identified %d candidate pairs for proximity analysis",
-                  nrow(candidate_pairs)))
-  
-  if (nrow(candidate_pairs) > 0) {
-    ## 8.2 Run Proximity Analysis ----
-    all_proximity_results <- list()
-    
-    for (i in 1:nrow(candidate_pairs)) {
-      prey_id <- candidate_pairs$Prey_ID[i]
-      pred_id <- candidate_pairs$Pred_ID[i]
-      species <- candidate_pairs$Species[i]
-      
-      if (i %% 10 == 0 || i == 1) {
-        message(sprintf("Progress: %d/%d (%.1f%%)",
-                        i, nrow(candidate_pairs), 100*i/nrow(candidate_pairs)))
-      }
-      
-      # Get telemetry objects
-      if (species == "Roach") {
-        prey_tel_single <- roach_tel[[prey_id]]
-        prey_fit_single <- roach_fits[[prey_id]]
-      } else {
-        prey_tel_single <- perch_tel[[prey_id]]
-        prey_fit_single <- perch_fits[[prey_id]]
-      }
-      
-      pred_tel_single <- pike_tel[[pred_id]]
-      pred_fit_single <- pike_fits[[pred_id]]
-      
-      # Run proximity analysis
-      prox_result <- perform_proximity_analysis(
-        prey_tel_single, pred_tel_single,
-        prey_fit_single, pred_fit_single,
-        prey_id, pred_id
-      )
-      
-      all_proximity_results[[i]] <- prox_result
-    }
-    
-    ## 8.3 Compile Proximity Results ----
-    proximity_df <- do.call(rbind, lapply(all_proximity_results, function(x) {
-      if (!is.null(x) && !is.na(x$proximity_ratio_est)) {
-        data.frame(
-          Prey_ID = x$prey_id,
-          Pred_ID = x$pred_id,
-          proximity_ratio_est = x$proximity_ratio_est,
-          proximity_ratio_low = x$proximity_ratio_low,
-          proximity_ratio_high = x$proximity_ratio_high,
-          independent = x$independent,
-          stringsAsFactors = FALSE
-        )
-      } else {
-        NULL
-      }
-    }))
-    
-    if (!is.null(proximity_df) && nrow(proximity_df) > 0) {
-      # Merge with encounter data
-      proximity_with_encounters <- proximity_df %>%
-        left_join(candidate_pairs, by = c("Prey_ID", "Pred_ID"))
-      
-      # Save results
-      saveRDS(all_proximity_results,
-              file.path(paths$proximity, "proximity_results_detailed_tiered.rds"))
-      saveRDS(proximity_with_encounters,
-              file.path(paths$proximity, "proximity_results_with_encounters_tiered.rds"))
-      write.csv(proximity_with_encounters,
-                file.path(paths$proximity, "proximity_results_tiered.csv"),
-                row.names = FALSE)
-      
-      message(sprintf("Proximity analysis complete: %d pairs analyzed",
-                      nrow(proximity_df)))
-      
-      ## 8.4 Integrate Proximity with Predation Classification ----
-      suspected_predation_enhanced <- suspected_predation_distance %>%
-        left_join(
-          proximity_with_encounters %>%
-            select(Prey_ID, Pred_ID, proximity_ratio_est, proximity_ratio_low,
-                   proximity_ratio_high, independent),
-          by = c("Prey_ID", "Pike_ID" = "Pred_ID")
-        ) %>%
-        mutate(
-          # Proximity suggests predation if ratio < 1 (closer than expected)
-          proximity_suggests_predation = !is.na(independent) & !independent,
-          
-          # Enhanced scoring system
-          combined_predation_score = case_when(
-            # Very strong: distance + proximity + high encounters
-            likely_predated == 1 & proximity_suggests_predation &
-              num_days_high_conf_50 >= 2 ~ 4,
-            
-            # Strong evidence
-            likely_predated == 1 & proximity_suggests_predation ~ 3,
-            likely_predated == 1 & num_days_high_conf_50 >= 3 ~ 3,
-            
-            # Moderate evidence
-            likely_predated == 1 ~ 2,
-            proximity_suggests_predation ~ 2,
-            num_days_high_conf_10 >= 3 ~ 2,
-            
-            # Weak evidence
-            TRUE ~ 1
-          ),
-          
-          # Classification
-          classification = case_when(
-            combined_predation_score == 4 ~ "Very high confidence",
-            combined_predation_score == 3 ~ "High confidence",
-            combined_predation_score == 2 ~ "Moderate confidence",
-            TRUE ~ "Low confidence"
-          ),
-          
-          # Encounter tier summary
-          primary_encounter_tier = case_when(
-            num_days_high_conf_50 >= 2 ~ "High-confidence (≤1.4m)",
-            num_days_high_conf_10 >= 2 ~ "High-confidence (≤1.4m)",
-            num_days_probable_confirmed_10 >= 2 ~ "Probable (1.4-2.8m)",
-            TRUE ~ "Uncertain"
-          )
-        )
-    } else {
-      message("No successful proximity analyses completed")
-      suspected_predation_enhanced <- suspected_predation_distance %>%
-        mutate(
-          proximity_suggests_predation = NA,
-          combined_predation_score = case_when(
-            likely_predated == 1 & num_days_high_conf_50 >= 3 ~ 3,
-            likely_predated == 1 ~ 2,
-            num_days_high_conf_10 >= 3 ~ 2,
-            TRUE ~ 1
-          ),
-          classification = case_when(
-            combined_predation_score == 3 ~ "High confidence",
-            combined_predation_score == 2 ~ "Moderate confidence",
-            TRUE ~ "Low confidence"
-          ),
-          primary_encounter_tier = case_when(
-            num_days_high_conf_50 >= 2 ~ "High-confidence (≤1.4m)",
-            num_days_high_conf_10 >= 2 ~ "High-confidence (≤1.4m)",
-            num_days_probable_confirmed_10 >= 2 ~ "Probable (1.4-2.8m)",
-            TRUE ~ "Uncertain"
-          )
-        )
-    }
-  } else {
-    message("No candidate pairs for proximity analysis")
-    suspected_predation_enhanced <- suspected_predation_distance %>%
-      mutate(
-        proximity_suggests_predation = NA,
-        combined_predation_score = case_when(
-          likely_predated == 1 & num_days_high_conf_50 >= 3 ~ 3,
-          likely_predated == 1 ~ 2,
-          num_days_high_conf_10 >= 3 ~ 2,
-          TRUE ~ 1
-        ),
-        classification = case_when(
-          combined_predation_score == 3 ~ "High confidence",
-          combined_predation_score == 2 ~ "Moderate confidence",
-          TRUE ~ "Low confidence"
-        ),
-        primary_encounter_tier = case_when(
-          num_days_high_conf_50 >= 2 ~ "High-confidence (≤1.4m)",
-          num_days_high_conf_10 >= 2 ~ "High-confidence (≤1.4m)",
-          num_days_probable_confirmed_10 >= 2 ~ "Probable (1.4-2.8m)",
-          TRUE ~ "Uncertain"
-        )
-      )
-  }
-  
-} else {
-  message("\n=== PROXIMITY ANALYSIS SKIPPED (disabled in params) ===")
-  
-  # Classification without proximity
-  suspected_predation_enhanced <- suspected_predation_distance %>%
-    mutate(
-      proximity_suggests_predation = NA,
-      combined_predation_score = case_when(
-        likely_predated == 1 & num_days_high_conf_50 >= 3 ~ 3,
-        likely_predated == 1 ~ 2,
-        num_days_high_conf_10 >= 3 ~ 2,
-        TRUE ~ 1
-      ),
-      classification = case_when(
-        combined_predation_score == 3 ~ "High confidence",
-        combined_predation_score == 2 ~ "Moderate confidence",
-        TRUE ~ "Low confidence"
-      ),
-      primary_encounter_tier = case_when(
-        num_days_high_conf_50 >= 2 ~ "High-confidence (≤1.4m)",
-        num_days_high_conf_10 >= 2 ~ "High-confidence (≤1.4m)",
-        num_days_probable_confirmed_10 >= 2 ~ "Probable (1.4-2.8m)",
-        TRUE ~ "Uncertain"
-      )
-    )
-}
-
-# Save enhanced results
-saveRDS(suspected_predation_enhanced,
-        file.path(paths$encounters, "suspected_predation_enhanced_tiered.rds"))
-
-# Classification summary
-classification_summary <- suspected_predation_enhanced %>%
-  group_by(Species, classification, primary_encounter_tier) %>%
-  summarise(
-    n_events = n(),
-    mean_high_conf_days = mean(num_days_high_conf_10, na.rm = TRUE),
-    mean_consecutive_days = mean(consecutive_days_high_conf, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-message("\nFinal Classification Summary:")
-print(classification_summary)
-
-
-# =================================================================-
-# 9. VISUALIZATIONS ####
-# =================================================================-
-
-message("\n=== CREATING VISUALIZATIONS ===")
-
-## 9.1 Encounter Type Distribution ----
-p1 <- ggplot(combined_distances %>% filter(encounter_type != "no_encounter"),
-             aes(x = encounter_type, fill = Species)) +
-  geom_bar(position = "dodge", alpha = 0.8) +
-  scale_fill_brewer(palette = "Set2") +
-  labs(
-    title = "Distribution of Encounter Types",
-    subtitle = sprintf("High-confidence (≤%.1fm), Probable (%.1f-%.1fm), Possible (%.1f-%.1fm)",
-                       params$high_confidence_threshold,
-                       params$high_confidence_threshold, params$probable_threshold,
-                       params$probable_threshold, params$possible_threshold),
-    x = "Encounter Type",
-    y = "Count",
-    fill = "Prey Species"
-  ) +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave(file.path(paths$figures, "encounter_type_distribution.png"),
-       p1, width = 10, height = 6, dpi = 300)
-
-## 9.2 Predation Classification ----
-p2 <- ggplot(suspected_predation_enhanced,
-             aes(x = classification, fill = primary_encounter_tier)) +
-  geom_bar(position = "stack", alpha = 0.8) +
-  facet_wrap(~Species) +
-  scale_fill_brewer(palette = "RdYlGn", direction = -1) +
-  labs(
-    title = "Predation Events by Confidence Level",
-    x = "Classification",
-    y = "Number of Events",
-    fill = "Primary Encounter Type"
-  ) +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave(file.path(paths$figures, "predation_classification.png"),
-       p2, width = 12, height = 7, dpi = 300)
-
-## 9.3 Distance Distribution ----
-p3 <- ggplot(combined_distances %>%
-               filter(encounter_type != "no_encounter") %>%
-               sample_n(min(50000, n())),
-             aes(x = est, fill = encounter_type)) +
-  geom_histogram(bins = 50, alpha = 0.7) +
-  geom_vline(xintercept = params$high_confidence_threshold,
-             linetype = "dashed", color = "red") +
-  geom_vline(xintercept = params$probable_threshold,
-             linetype = "dashed", color = "orange") +
-  scale_fill_manual(
-    values = c("high_confidence" = "#d73027",
-               "probable" = "#fee090",
-               "possible" = "#91bfdb"),
-    labels = c("High-confidence", "Probable", "Possible")
-  ) +
-  labs(
-    title = "Distance Distribution by Encounter Type",
-    subtitle = sprintf("Thresholds: %.1fm (high-conf), %.1fm (probable)",
-                       params$high_confidence_threshold, params$probable_threshold),
-    x = "Distance (m)",
-    y = "Count",
-    fill = "Encounter Type"
-  ) +
-  xlim(0, 5) +
-  theme_classic()
-
-ggsave(file.path(paths$figures, "distance_distribution_by_tier.png"),
-       p3, width = 10, height = 6, dpi = 300)
-
-## 9.4 Proximity Results (if available) ----
-if (params$run_proximity_analysis && exists("proximity_with_encounters")) {
-  
-  p4 <- ggplot(proximity_with_encounters,
-               aes(x = total_encounters_high_conf, y = proximity_ratio_est)) +
-    geom_point(aes(color = independent), size = 3, alpha = 0.6) +
-    geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
-    scale_color_manual(
-      values = c("TRUE" = "darkgreen", "FALSE" = "darkred"),
-      labels = c("TRUE" = "Independent", "FALSE" = "Non-independent"),
-      name = "Movement Pattern"
-    ) +
-    labs(
-      title = "Proximity Ratio vs High-Confidence Encounters",
-      subtitle = "Ratio < 1: closer than expected | Ratio > 1: farther than expected",
-      x = "Total High-Confidence Encounters",
-      y = "Proximity Ratio"
-    ) +
-    theme_classic() +
-    theme(legend.position = "bottom")
-  
-  ggsave(file.path(paths$proximity, "proximity_ratio_vs_encounters.png"),
-         p4, width = 10, height = 7, dpi = 300)
-}
-
-message("Visualizations complete!")
-
-
-# =================================================================-
-# 10. EXPORT RESULTS ####
-# =================================================================-
-
-message("\n=== EXPORTING RESULTS ===")
-
-## 10.1 Create Excel Workbook ----
-wb <- createWorkbook()
-
-# Encounter summary
-addWorksheet(wb, "Encounter Summary")
-tier_summary <- combined_distances %>%
-  group_by(Species, encounter_type) %>%
-  summarise(
-    n_observations = n(),
-    median_distance = median(est),
-    mean_distance = mean(est),
-    min_distance = min(est),
-    max_distance = max(est),
-    .groups = "drop"
-  )
-writeData(wb, "Encounter Summary", tier_summary)
-
-# Daily encounters
-addWorksheet(wb, "Daily Encounters")
-writeData(wb, "Daily Encounters", prey_daily_encounters)
-
-# Total encounters
-addWorksheet(wb, "Total Encounters")
-writeData(wb, "Total Encounters", all_encounters)
-
-# Suspected predation
-addWorksheet(wb, "Suspected Predation")
-writeData(wb, "Suspected Predation", suspected_predation_enhanced)
-
-# Classification summary
-addWorksheet(wb, "Classification Summary")
-writeData(wb, "Classification Summary", classification_summary)
-
-# Proximity results (if available)
-if (params$run_proximity_analysis && exists("proximity_with_encounters")) {
-  addWorksheet(wb, "Proximity Results")
-  writeData(wb, "Proximity Results", proximity_with_encounters)
-}
-
-#Save workbook
-saveWorkbook(wb,
-             file.path(paths$tables, "muddyfoot_predation_analysis_complete.xlsx"),
-             overwrite = TRUE)
-message("Excel workbook saved!")
-
-# 10.2 Save Individual CSV Files ----
-  write.csv(suspected_predation_enhanced,
-            file.path(paths$tables, "suspected_predation_events.csv"),
-            row.names = FALSE)
-write.csv(all_encounters,
-          file.path(paths$tables, "all_encounter_totals.csv"),
-          row.names = FALSE)
-write.csv(prey_daily_encounters,
-          file.path(paths$tables, "daily_encounters.csv"),
-          row.names = FALSE)
-
-#=================================================================-
-# 11. SUMMARY REPORT ####
-#=================================================================-
-
-  message("\n", paste(rep("=", 70), collapse = ""))
-message("ANALYSIS COMPLETE - SUMMARY")
-message(paste(rep("=", 70), collapse = ""))
-Total observations
-total_obs <- nrow(combined_distances)
-message(sprintf("\nTotal observations: %s", format(total_obs, big.mark = ",")))
-
-#Encounter distribution
-message("\nEncounter distribution:")
-enc_dist <- table(combined_distances$encounter_type)
-for (type in names(enc_dist)) {
-  pct <- 100 * enc_dist[type] / total_obs
-  message(sprintf("  %s: %s (%.2f%%)",
-                  type, format(enc_dist[type], big.mark = ","), pct))
-}
-
-#Suspected predation
-message(sprintf("\nSuspected predation events: %d",
-                nrow(suspected_predation_enhanced)))
-message("\nClassification breakdown:")
-class_table <- table(suspected_predation_enhanced$classification)
-for (class in names(class_table)) {
-  message(sprintf("  %s: %d", class, class_table[class]))
-}
-
-#Proximity analysis
-if (params$run_proximity_analysis && exists("proximity_with_encounters")) {
-  n_non_indep <- sum(!proximity_with_encounters$independent, na.rm = TRUE)
-  pct_non_indep <- 100 * mean(!proximity_with_encounters$independent, na.rm = TRUE)
-  message(sprintf("\nProximity analysis:"))
-  message(sprintf("  Pairs analyzed: %d", nrow(proximity_with_encounters)))
-  message(sprintf("  Non-independent movement: %d (%.1f%%)",
-                  n_non_indep, pct_non_indep))
-} else {
-  message("\nProximity analysis: Not performed")
-}
-
-#Output locations
-message("\nOutput locations:")
-message(sprintf("  Figures: %s", paths$figures))
-message(sprintf("  Tables: %s", paths$tables))
-message(sprintf("  Encounters: %s", paths$encounters))
-if (params$create_distance_plots) {
-  message(sprintf("  Distance plots: %s", paths$distance_plots))
-}
-if (params$run_proximity_analysis) {
-  message(sprintf("  Proximity: %s", paths$proximity))
-}
-message("\n", paste(rep("=", 70), collapse = ""))
-
-#=================================================================-
-# 12. SESSION INFO ####
-#=================================================================-
-
-sink(file.path(paths$tables, "session_info.txt"))
-cat("Predation Analysis Session Info\n")
-cat(paste(rep("=", 50), collapse = ""), "\n\n")
-cat("Analysis Parameters:\n")
-cat(sprintf("  GPS error: %.2fm\n", params$gps_error_sd))
-cat(sprintf("  Fixes per day: %d\n", params$fixes_per_day))
-cat(sprintf("  High-confidence threshold: %.1fm\n", params$high_confidence_threshold))
-cat(sprintf("  Probable threshold: %.1fm\n", params$probable_threshold))
-cat(sprintf("  Possible threshold: %.1fm\n", params$possible_threshold))
-cat(sprintf("  Proximity analysis: %s\n",
-            ifelse(params$run_proximity_analysis, "Enabled", "Disabled")))
-cat(sprintf("  Distance plots: %s\n",
-            ifelse(params$create_distance_plots, "Enabled", "Disabled")))
-cat("\n")
-print(sessionInfo())
-sink()
-message("\nAll analyses complete!")
-message("\nKey files to review:")
-message("  - muddyfoot_predation_analysis_complete.xlsx")
-message("  - suspected_predation_events.csv")
-message("  - encounter_type_distribution.png")
-message("  - predation_classification.png")
-if (params$create_distance_plots) {
-  message("  - Individual distance plots in: distance_plots/")
-}
-if (exists("detailed_mortality") && nrow(detailed_mortality) > 0) {
-  message("  - detailed_mortality_events.csv")
-  message("  - Individual movement plots in: movement_metrics/")
 }

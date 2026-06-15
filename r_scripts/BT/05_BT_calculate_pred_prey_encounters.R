@@ -1,62 +1,93 @@
 # =================================================================-
-# Predator-Prey Interaction Analysis - BT ####
+# Predator-Prey Interactions and encounter rate - BT ####
 # =================================================================-
-# Identifies potential predation events using GPS tracking data
-# Key approach: Sustained contact detection (distances ~0m for multiple days)
-# Author: Marcus Michelangeli | Date: 2024
+#
+# ANALYSIS OVERVIEW:
+# This script identifies potential predation events by analyzing movement
+# tracking data for prey (roach/perch) and predators (pike), and calculates
+# encounter summaries used by the downstream encounter rate analysis script.
+#
+# METHODOLOGY:
+# 1. TIERED ENCOUNTER DETECTION based on GPS error (0.379m)
+#    - High-confidence: ≤1.4m (within 95% combined GPS error)
+#    - Probable:        1.4-2.8m (requires temporal confirmation)
+#    - Possible:        2.8-4.2m (additional tier, 3x combined GPS error)
+#
+# 2. MOVEMENT CESSATION DETECTION
+#
+## OUTPUTS USED DOWNSTREAM:
+#   data/encounters/BT/BT_pike_roach_distances_tiered_df.rds
+#   data/encounters/BT/BT_pike_perch_distances_tiered_df.rds
+#   -> Read by 07_BT_encounter_rate_analysis.R
+#
 # =================================================================-
 
 # =================================================================-
-# 1. SETUP ####
+# 1. SETUP & CONFIGURATION ####
 # =================================================================-
 
-## Libraries ----
+## 1.1 Load Required Libraries ----
 suppressPackageStartupMessages({
-  library(dplyr); library(ctmm); library(lubridate); library(data.table)
-  library(sf); library(parallel); library(ggplot2); library(openxlsx); library(patchwork)
+  library(dplyr)        # Data manipulation
+  library(ctmm)         # Movement modeling and distance calculations
+  library(lubridate)    # Date/time handling
+  library(data.table)   # Fast data operations
+  library(sf)           # Spatial data
+  library(parallel)     # Parallel processing
+  library(ggplot2)      # Plotting
+  library(openxlsx)     # Excel export
+  library(patchwork)    # Combining plots
 })
+
 Sys.setenv(TZ = 'Europe/Stockholm')
 
-## Paths ----
+## 1.2 Define Directory Paths ----
 paths <- list(
-  filtered_data = "./data/tracks_filtered/BT/",
-  ctmm = "./data/ctmm_fits/",
-  telem = "./data/telem_obj/BT/",
-  encounters = "./data/encounters/BT/",
-  size = "./data/fish_biometrics/",
-  tables = "./tables/BT/",
-  figures = "./figures/BT/",
+  filtered_data  = "./data/tracks_filtered/BT/",
+  ctmm           = "./data/ctmm_fits/",
+  telem          = "./data/telem_obj/BT/",
+  encounters     = "./data/encounters/BT/",
+  size           = "./data/fish_biometrics/",
+  tables         = "./tables/BT/",
+  figures        = "./figures/BT/",
   distance_plots = "./figures/BT/distance_plots/"
 )
 for (path in paths) if (!dir.exists(path)) dir.create(path, recursive = TRUE)
 
-## Parameters ----
+## 1.3 Define Analysis Parameters ----
+# GPS error for BT is σ = 0.379m.
+# Combined pairwise error: √(0.379² + 0.379²) = 0.536m → 95% CI ≈ 1.07m.
+# Thresholds kept at 1.4m / 2.8m / 4.2m for cross-lake comparability and
+# because the 1.4m threshold also covers spatial uncertainty from animal movement.
 params <- list(
-  gps_error_sd = 0.379,                    # GPS error SD (meters)
-  fixes_per_day = 2880,                    # 30-second fixes
-  high_confidence_threshold = 1.4,         # ≤1.4m: Within 95% GPS error
-  probable_threshold = 2.8,                # ≤2.8m: 2x GPS error
-  possible_threshold = 4.2,                # ≤4.2m: 3x GPS error
-  strike_distance = 0.45,                  # Pike strike distance
-  encounter_threshold_low = 10,            # Min encounters/day
-  encounter_threshold_high = 50,           # High encounter threshold
-  min_distance_threshold = 1.4,            # Min distance for high-conf
-  consecutive_days_threshold = 2,          # Days for predation signal
+  gps_error_sd                  = 0.379,   # GPS error SD (meters) — BT specific
+  fixes_per_day                 = 2880,    # 30-second fix intervals
+  # Tiered distance thresholds (meters)
+  high_confidence_threshold     = 1.4,     # ≤1.4m: Within 95% combined GPS error
+  probable_threshold            = 2.8,     # ≤2.8m: 2x combined GPS error
+  possible_threshold            = 4.2,     # ≤4.2m: 3x combined GPS error (BT only)
+  strike_distance               = 0.45,    # Pike max strike distance
+  # Encounter count thresholds
+  encounter_threshold_low       = 10,      # Min encounters/day to flag a day
+  encounter_threshold_high      = 50,      # High encounter threshold (stricter flag)
+  min_distance_threshold        = 1.4,     # Min distance for high-conf flagging
+  consecutive_days_threshold    = 2,       # Consecutive days required for predation signal
+  # Mortality detection settings
   mortality_cessation_threshold = 0.15,    # 15% of baseline movement
-  mortality_consecutive_days = 2,          # Days for mortality signal
-  create_distance_plots = TRUE             # Generate time series plots
+  mortality_consecutive_days    = 2,       # Consecutive low-movement days required
+  create_distance_plots         = TRUE     # Generate time series plots
 )
 
 message("\n=== ENCOUNTER DETECTION STRATEGY ===")
-message(sprintf("GPS error: %.3fm | Combined: %.3fm", 
+message(sprintf("GPS error: %.3fm | Combined: %.3fm",
                 params$gps_error_sd, sqrt(2) * params$gps_error_sd))
 message(sprintf("High-confidence: ≤%.1fm | Probable: %.1f-%.1fm | Possible: %.1f-%.1fm",
-                params$high_confidence_threshold, params$high_confidence_threshold, 
+                params$high_confidence_threshold, params$high_confidence_threshold,
                 params$probable_threshold, params$probable_threshold, params$possible_threshold))
 
 
 # =================================================================-
-# 2. FUNCTIONS ####
+# 2. CUSTOM FUNCTIONS ####
 # =================================================================-
 
 ## GPS Noise Threshold ----
