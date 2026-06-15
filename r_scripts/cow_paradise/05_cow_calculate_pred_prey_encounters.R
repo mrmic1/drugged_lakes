@@ -18,10 +18,6 @@
 #    GPS noise (~80m/day) and mortality threshold (~200m/day) are also
 #    scaled up from BT (~30m/day and ~75m/day respectively).
 #
-## OUTPUTS USED DOWNSTREAM:
-#   data/encounters/cow_paradise/cow_pike_roach_distances_tiered_df.rds
-#   data/encounters/cow_paradise/cow_pike_perch_distances_tiered_df.rds
-#   -> Read by 07_cow_encounter_rate_analysis.R
 #
 # =================================================================-
 
