@@ -970,9 +970,8 @@ message(sprintf("Perch lag-1 autocorrelation (rho): %.2f", perch_rho))
 perch_mod <- bam(
   n_encounters_high_conf ~
     treatment + exp_day_z + weight_z +
-    s(hour, k = 15, bs = "cc") +              # single shared curve
-    s(hour, individual_ID, bs = "fs",
-      xt = list(bs = "cc")),
+    s(hour, by = treatment, k = 15, bs = "cc") +
+    s(hour, individual_ID, bs = "fs", xt = list(bs = "cc")),
   data     = perch_h,
   method   = "fREML",
   rho      = round(perch_rho, 1),

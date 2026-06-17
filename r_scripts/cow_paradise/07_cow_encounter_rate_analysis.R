@@ -171,9 +171,6 @@ roach_pike_distances_df <- roach_pike_distances_df %>%
   filter(is.na(death_date) | Date < death_date) %>%
   select(-death_date)
 
-#before: 6819358
-#after: 6704862
-
 ## 3.3 Filter perch-pike distance data ----
 perch_pike_distances_df <- perch_pike_distances_df %>%
   left_join(
@@ -182,10 +179,6 @@ perch_pike_distances_df <- perch_pike_distances_df %>%
   ) %>%
   filter(is.na(death_date) | Date < death_date) %>%
   select(-death_date)
-
-#before: 8402633
-#after: 8043628
-
 
 # =================================================================-
 # 4. BUILD ANALYSIS DATASETS ####
@@ -483,6 +476,8 @@ enc_mod_roach_hc <- glmmTMB(
 )
 
 print(summary(enc_mod_roach_hc))
+
+
 
 sim_res_roach_hc <- simulateResiduals(enc_mod_roach_hc, n = 500)
 png(file.path(paths$figures, "glmm_dharma_roach_high_conf.png"),
@@ -805,8 +800,8 @@ roach_rho <- estimate_rho(roach_h, roach_gamm_init)
 ## 6.6 Roach — AR-corrected GAMM ----
 roach_mod <- bam(
   n_encounters_high_conf ~
-    treatment + exp_day_z + weight_z +
-    s(hour, k = 15, bs = "cc") +          # single shared smooth
+    treatment + exp_day_z + weight_z +    # single shared smooth
+    s(hour, by = treatment, k = 15, bs = "cc") +
     s(hour, individual_ID, bs = "fs",
       xt = list(bs = "cc")),
   data     = roach_h,
@@ -943,9 +938,10 @@ perch_h <- perch_h %>% add_ar_start()
 
 perch_gamm_init <- bam(
   n_encounters_high_conf ~
-    treatment + exp_day_z + weight_z +
+    treatment + exp_day_z + weight_z +    # single shared smooth
     s(hour, by = treatment, k = 15, bs = "cc") +
-    s(hour, individual_ID, bs = "fs", xt = list(bs = "cc")),
+    s(hour, individual_ID, bs = "fs",
+      xt = list(bs = "cc")),,
   data     = perch_h,
   method   = "fREML",
   discrete = TRUE,
@@ -959,9 +955,10 @@ message(sprintf("Perch lag-1 autocorrelation (rho): %.2f", perch_rho))
 ## 6.12 Perch — AR-corrected GAMM ----
 perch_mod <- bam(
   n_encounters_high_conf ~
-    treatment + exp_day_z + weight_z +
+    treatment + exp_day_z + weight_z +    # single shared smooth
     s(hour, by = treatment, k = 15, bs = "cc") +
-    s(hour, individual_ID, bs = "fs", xt = list(bs = "cc")),
+    s(hour, individual_ID, bs = "fs",
+      xt = list(bs = "cc")),
   data     = perch_h,
   method   = "fREML",
   rho      = round(perch_rho, 1),

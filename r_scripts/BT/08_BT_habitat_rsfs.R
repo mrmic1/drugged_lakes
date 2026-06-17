@@ -13,6 +13,8 @@ library(data.table)
 library(parallel)
 library(foreach)
 library(doParallel)
+library(flextable)
+library(officer)
 
 ### DIRECTORIES ###
 polygon_path      <- "./data/lake_params/polygons/"
@@ -29,7 +31,6 @@ figure_path       <- "./figures/BT/"
 
 # Receiver and habitat locations
 BT_rec_locs_kml <- paste0(rec_data_path, "BT_rec_hab_locations_corrected.kml")
-BT_rec_locs <- st_read(BT_rec_locs_kml)
 BT_rec_locs     <- st_read(BT_rec_locs_kml)[1:5,]
 BT_hab_locs     <- st_read(BT_rec_locs_kml)[6:9,]
 
@@ -64,13 +65,20 @@ BT_polygon <- st_read(paste0(polygon_path, "BT_polygon.gpkg"))
 # 1. Plot population AKDEs with habitats ####
 #-----------------------------------------#
 
+# The UD is extracted as a CDF (cumulative distribution function), where high
+# values near the centre represent the most-used core areas. Inverting with
+# (1 - value) flips this so that core areas appear bright and peripheral areas
+# appear dark — matching the visual convention for utilization distributions.
+# Habitat structures are overlaid as crosses (shape = 3) so the symbol does not
+# obscure the underlying UD density while remaining clearly visible.
+
 generate_ud_plot_whabitats <- function(pkde_data, bbox, hab_locs) {
   ud_raster        <- raster(pkde_data, DF = "CDF")
   masked_ud_raster <- mask(ud_raster, bbox)
   ud_df            <- as.data.frame(masked_ud_raster, xy = TRUE, na.rm = TRUE)
   colnames(ud_df)  <- c("x", "y", "value")
   ud_df$value      <- 1 - ud_df$value
-  
+
   ggplot() +
     geom_sf(data = bbox, color = "black") +
     geom_tile(data = ud_df, aes(x = x, y = y, fill = value), alpha = 0.6) +
@@ -137,9 +145,18 @@ ggsave(paste0(figure_path, "UD_plots/pike_total_UD_habitats_BT.png"),
 # 2. Create habitat raster ####
 #-----------------------------------------#
 
-# NOTE: rsf.fit() uses longitude/latitude columns from telemetry internally,
-# so the raster must be in WGS84 (EPSG:4326). We build in UTM for accuracy,
-# then transform to WGS84.
+# Raster construction rationale:
+# - Habitat point locations are buffered to 2m x 2m squares because the physical
+#   footprint of the pallet structures is approximately 1.5m x 1.5m; we use 2m
+#   to account for GPS positional uncertainty around refuge edges.
+# - We build the raster in UTM (EPSG:32633) before projecting to WGS84 because
+#   UTM preserves metric distances, ensuring accurate square geometry. rsf.fit()
+#   requires WGS84 internally (it uses longitude/latitude columns from telemetry).
+# - After nearest-neighbour reprojection to WGS84, intermediate values can appear
+#   at patch edges due to resampling; we force binary values (0/1) to ensure the
+#   covariate remains a clean binary habitat indicator.
+# - A positive RSF coefficient indicates selection for refuges above what is
+#   expected from the AKDE availability; a negative coefficient indicates avoidance.
 
 # Helper function to create square buffers
 create_square_buffer <- function(points, size = 2) {
@@ -162,13 +179,13 @@ polyProj_buffered <- st_buffer(st_transform(BT_polygon, "EPSG:32633"), dist = 2)
 lake_raster <- rast(ext(polyProj_buffered), res = 0.25, crs = "EPSG:32633")
 lake_raster <- rasterize(polyProj_buffered, lake_raster, background = NA)
 
-# Create 2m × 2m square habitat patches in UTM
+# Create 2m x 2m square habitat patches in UTM
 BT_hab_locs_utm      <- st_transform(BT_hab_locs, crs = "EPSG:32633")
 habitat_patches      <- create_square_buffer(BT_hab_locs_utm, size = 2.0)
 habitat_patches_vect <- vect(habitat_patches)
 
 # Rasterize habitats
-habitat_raster_utm <- rasterize(habitat_patches_vect, lake_raster, 
+habitat_raster_utm <- rasterize(habitat_patches_vect, lake_raster,
                                 field = 1, background = 0)
 habitat_raster_utm <- mask(habitat_raster_utm, polyProj_buffered)
 
@@ -201,23 +218,31 @@ raster::writeRaster(habitat_raster_final,
 # 3. Split telemetry and AKDEs by treatment ####
 #-----------------------------------------#
 
+# Treatment assignment is verified by the printed sapply output below.
+# The stopifnot guards will catch any unexpected mismatches (e.g. if list order
+# changes or a fish was assigned to the wrong treatment group).
+
 #> 3.1 Perch ####
 perch_treatments <- sapply(perch_BT_tel, function(tel) unique(tel$treatment))
 print(perch_treatments)
 
-perch_control_tel  <- perch_BT_tel[1:15]
-perch_mix_tel      <- perch_BT_tel[16:30]
-perch_control_akdes <- perch_BT_akdes[1:15]
-perch_mix_akdes     <- perch_BT_akdes[16:30]
+perch_control_tel   <- perch_BT_tel[perch_treatments == "control"]
+perch_mix_tel       <- perch_BT_tel[perch_treatments == "exposed"]
+perch_control_akdes <- perch_BT_akdes[perch_treatments == "control"]
+perch_mix_akdes     <- perch_BT_akdes[perch_treatments == "exposed"]
+
+stopifnot(length(perch_control_tel) > 0, length(perch_mix_tel) > 0)
 
 #> 3.2 Roach ####
 roach_treatments <- sapply(roach_BT_tel, function(tel) unique(tel$treatment))
 print(roach_treatments)
 
-roach_control_tel  <- roach_BT_tel[1:15]
-roach_mix_tel      <- roach_BT_tel[16:30]
-roach_control_akdes <- roach_BT_akdes[1:15]
-roach_mix_akdes     <- roach_BT_akdes[16:30]
+roach_control_tel   <- roach_BT_tel[roach_treatments == "control"]
+roach_mix_tel       <- roach_BT_tel[roach_treatments == "exposed"]
+roach_control_akdes <- roach_BT_akdes[roach_treatments == "control"]
+roach_mix_akdes     <- roach_BT_akdes[roach_treatments == "exposed"]
+
+stopifnot(length(roach_control_tel) > 0, length(roach_mix_tel) > 0)
 
 
 #-----------------------#
@@ -247,14 +272,14 @@ cat("\n=== Fitting Perch RSFs ===\n")
 
 #Identified problematic individual that needs to be removed from analysis
 #remove F59753 from telemetry and AKDE lists
-perch_control_tel_filtered <- perch_control_tel[names(perch_control_tel) != "F59753"]
+perch_control_tel_filtered   <- perch_control_tel[names(perch_control_tel) != "F59753"]
 perch_control_akdes_filtered <- perch_control_akdes[names(perch_control_akdes) != "F59753"]
 
 cat("Original n:", length(perch_control_tel), "\n")
 cat("Filtered n:", length(perch_control_tel_filtered), "\n\n")
 
 # Replace the main objects
-perch_control_tel <- perch_control_tel_filtered
+perch_control_tel   <- perch_control_tel_filtered
 perch_control_akdes <- perch_control_akdes_filtered
 
 # Delete the old F59753 RSF file
@@ -264,7 +289,12 @@ if(file.exists(old_file)) {
   cat("✓ Deleted old F59753 RSF file\n\n")
 }
 
-
+# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
+# and a habitat selection coefficient for each individual independently.
+# Population-level inference is obtained by averaging across individuals
+# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
+# the loop to complete even if individual fits fail; check_rsf_results() reports
+# which individuals failed.
 
 # Control
 cl <- makeCluster(length(perch_control_tel))
@@ -285,6 +315,13 @@ failed_perch_control <- check_rsf_results(rsf_perch_control_list, perch_control_
 rsf_perch_control_list <- rsf_perch_control_list[!failed_perch_control]
 names(rsf_perch_control_list) <- names(perch_control_tel)[!failed_perch_control]
 saveRDS(rsf_perch_control_list, paste0(rsf_path, "BT_perch/rsf_perch_control_list.rds"))
+
+# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
+# and a habitat selection coefficient for each individual independently.
+# Population-level inference is obtained by averaging across individuals
+# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
+# the loop to complete even if individual fits fail; check_rsf_results() reports
+# which individuals failed.
 
 # Exposed
 cl <- makeCluster(length(perch_mix_tel))
@@ -309,6 +346,13 @@ saveRDS(rsf_perch_mix_list, paste0(rsf_path, "BT_perch/rsf_perch_mix_list.rds"))
 #> 4.2 Roach ####
 cat("\n=== Fitting Roach RSFs ===\n")
 
+# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
+# and a habitat selection coefficient for each individual independently.
+# Population-level inference is obtained by averaging across individuals
+# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
+# the loop to complete even if individual fits fail; check_rsf_results() reports
+# which individuals failed.
+
 # Control
 cl <- makeCluster(length(roach_control_tel))
 registerDoParallel(cl)
@@ -328,6 +372,13 @@ failed_roach_control <- check_rsf_results(rsf_roach_control_list, roach_control_
 rsf_roach_control_list <- rsf_roach_control_list[!failed_roach_control]
 names(rsf_roach_control_list) <- names(roach_control_tel)[!failed_roach_control]
 saveRDS(rsf_roach_control_list, paste0(rsf_path, "BT_roach/rsf_roach_control_list.rds"))
+
+# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
+# and a habitat selection coefficient for each individual independently.
+# Population-level inference is obtained by averaging across individuals
+# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
+# the loop to complete even if individual fits fail; check_rsf_results() reports
+# which individuals failed.
 
 # Exposed
 cl <- makeCluster(length(roach_mix_tel))
@@ -351,6 +402,18 @@ saveRDS(rsf_roach_mix_list, paste0(rsf_path, "BT_roach/rsf_roach_mix_list.rds"))
 
 #> 4.3 Pike ####
 cat("\n=== Fitting Pike RSFs ===\n")
+
+# NOTE: Pike are analysed as a single combined group across all three lakes.
+# Although Muddyfoot had 3 pike per treatment, we treat pike consistently
+# as a single group to maintain comparability across lakes and because pike
+# are the predator rather than the focal prey species of interest.
+
+# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
+# and a habitat selection coefficient for each individual independently.
+# Population-level inference is obtained by averaging across individuals
+# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
+# the loop to complete even if individual fits fail; check_rsf_results() reports
+# which individuals failed.
 
 # All pike together (too few for treatment split)
 cl <- makeCluster(length(pike_BT_tel))
@@ -383,6 +446,11 @@ cat("Pike:", length(rsf_pike_list), "models\n")
 # 5. Explore RSF results ####
 #-----------------------------------------#
 
+# Population mean and SE are computed across individual-level point estimates,
+# treating each fish as an independent replicate. The 95% CI is approximated as
+# mean ± 1.96 * SE. If the CI does not overlap zero, the population shows
+# significant selection (>0) or avoidance (<0) of artificial refuges.
+
 #> 5.1 Perch ####
 cat("\n=== PERCH ANALYSIS ===\n")
 
@@ -397,7 +465,7 @@ perch_control_coefs <- data.frame(
 for(i in seq_along(rsf_perch_control_list)) {
   summ <- summary(rsf_perch_control_list[[i]])
   coef <- summ$CI["habitat1 (1/habitat1)",]
-  perch_control_coefs <- rbind(perch_control_coefs, 
+  perch_control_coefs <- rbind(perch_control_coefs,
                                data.frame(id = names(rsf_perch_control_list)[i],
                                           est = coef["est"],
                                           low = coef["low"],
@@ -406,12 +474,12 @@ for(i in seq_along(rsf_perch_control_list)) {
 
 # Manual population mean - CONTROL
 mean_est <- mean(perch_control_coefs$est)
-se_est <- sd(perch_control_coefs$est) / sqrt(nrow(perch_control_coefs))
+se_est   <- sd(perch_control_coefs$est) / sqrt(nrow(perch_control_coefs))
 
 rsf_coef_control_perch <- data.frame(
-  low = mean_est - 1.96 * se_est,
-  est = mean_est,
-  high = mean_est + 1.96 * se_est,
+  low       = mean_est - 1.96 * se_est,
+  est       = mean_est,
+  high      = mean_est + 1.96 * se_est,
   treatment = "Control"
 )
 
@@ -423,7 +491,7 @@ perch_exposed_coefs <- data.frame(
 for(i in seq_along(rsf_perch_mix_list)) {
   summ <- summary(rsf_perch_mix_list[[i]])
   coef <- summ$CI["habitat1 (1/habitat1)",]
-  perch_exposed_coefs <- rbind(perch_exposed_coefs, 
+  perch_exposed_coefs <- rbind(perch_exposed_coefs,
                                data.frame(id = names(rsf_perch_mix_list)[i],
                                           est = coef["est"],
                                           low = coef["low"],
@@ -432,12 +500,12 @@ for(i in seq_along(rsf_perch_mix_list)) {
 
 # Manual population mean - EXPOSED
 mean_est_exp <- mean(perch_exposed_coefs$est)
-se_est_exp <- sd(perch_exposed_coefs$est) / sqrt(nrow(perch_exposed_coefs))
+se_est_exp   <- sd(perch_exposed_coefs$est) / sqrt(nrow(perch_exposed_coefs))
 
 rsf_coef_exposed_perch <- data.frame(
-  low = mean_est_exp - 1.96 * se_est_exp,
-  est = mean_est_exp,
-  high = mean_est_exp + 1.96 * se_est_exp,
+  low       = mean_est_exp - 1.96 * se_est_exp,
+  est       = mean_est_exp,
+  high      = mean_est_exp + 1.96 * se_est_exp,
   treatment = "Exposed"
 )
 
@@ -493,7 +561,7 @@ roach_control_coefs <- data.frame(
 for(i in seq_along(rsf_roach_control_list)) {
   summ <- summary(rsf_roach_control_list[[i]])
   coef <- summ$CI["habitat1 (1/habitat1)",]
-  roach_control_coefs <- rbind(roach_control_coefs, 
+  roach_control_coefs <- rbind(roach_control_coefs,
                                data.frame(id = names(rsf_roach_control_list)[i],
                                           est = coef["est"],
                                           low = coef["low"],
@@ -502,12 +570,12 @@ for(i in seq_along(rsf_roach_control_list)) {
 
 # Manual population mean - CONTROL
 mean_est <- mean(roach_control_coefs$est)
-se_est <- sd(roach_control_coefs$est) / sqrt(nrow(roach_control_coefs))
+se_est   <- sd(roach_control_coefs$est) / sqrt(nrow(roach_control_coefs))
 
 rsf_coef_control_roach <- data.frame(
-  low = mean_est - 1.96 * se_est,
-  est = mean_est,
-  high = mean_est + 1.96 * se_est,
+  low       = mean_est - 1.96 * se_est,
+  est       = mean_est,
+  high      = mean_est + 1.96 * se_est,
   treatment = "Control"
 )
 
@@ -519,7 +587,7 @@ roach_exposed_coefs <- data.frame(
 for(i in seq_along(rsf_roach_mix_list)) {
   summ <- summary(rsf_roach_mix_list[[i]])
   coef <- summ$CI["habitat1 (1/habitat1)",]
-  roach_exposed_coefs <- rbind(roach_exposed_coefs, 
+  roach_exposed_coefs <- rbind(roach_exposed_coefs,
                                data.frame(id = names(rsf_roach_mix_list)[i],
                                           est = coef["est"],
                                           low = coef["low"],
@@ -528,12 +596,12 @@ for(i in seq_along(rsf_roach_mix_list)) {
 
 # Manual population mean - EXPOSED
 mean_est_exp <- mean(roach_exposed_coefs$est)
-se_est_exp <- sd(roach_exposed_coefs$est) / sqrt(nrow(roach_exposed_coefs))
+se_est_exp   <- sd(roach_exposed_coefs$est) / sqrt(nrow(roach_exposed_coefs))
 
 rsf_coef_exposed_roach <- data.frame(
-  low = mean_est_exp - 1.96 * se_est_exp,
-  est = mean_est_exp,
-  high = mean_est_exp + 1.96 * se_est_exp,
+  low       = mean_est_exp - 1.96 * se_est_exp,
+  est       = mean_est_exp,
+  high      = mean_est_exp + 1.96 * se_est_exp,
   treatment = "Exposed"
 )
 
@@ -576,6 +644,11 @@ ggsave(paste0(figure_path, "rsf_plots/roach_habitats_rsf_BT.pdf"),
 #> 5.3 Pike ####
 cat("\n=== PIKE ANALYSIS (Overall) ===\n")
 
+# NOTE: Pike are analysed as a single combined group across all three lakes.
+# Although Muddyfoot had 3 pike per treatment, we treat pike consistently
+# as a single group to maintain comparability across lakes and because pike
+# are the predator rather than the focal prey species of interest.
+
 rsf_pike_list <- readRDS(paste0(rsf_path, "BT_pike/rsf_pike_list.rds"))
 
 # Extract individual coefficients - ALL PIKE
@@ -586,7 +659,7 @@ pike_all_coefs <- data.frame(
 for(i in seq_along(rsf_pike_list)) {
   summ <- summary(rsf_pike_list[[i]])
   coef <- summ$CI["habitat1 (1/habitat1)",]
-  pike_all_coefs <- rbind(pike_all_coefs, 
+  pike_all_coefs <- rbind(pike_all_coefs,
                           data.frame(id = names(rsf_pike_list)[i],
                                      est = coef["est"],
                                      low = coef["low"],
@@ -595,12 +668,12 @@ for(i in seq_along(rsf_pike_list)) {
 
 # Manual population mean - ALL PIKE
 mean_est <- mean(pike_all_coefs$est)
-se_est <- sd(pike_all_coefs$est) / sqrt(nrow(pike_all_coefs))
+se_est   <- sd(pike_all_coefs$est) / sqrt(nrow(pike_all_coefs))
 
 rsf_coef_pike <- data.frame(
-  low = mean_est - 1.96 * se_est,
-  est = mean_est,
-  high = mean_est + 1.96 * se_est,
+  low     = mean_est - 1.96 * se_est,
+  est     = mean_est,
+  high    = mean_est + 1.96 * se_est,
   species = "Pike"
 )
 
@@ -627,3 +700,90 @@ ggsave(paste0(figure_path, "pike_habitats_rsf_BT.png"),
        pike_habitat_rsf_plot, width = 8, height = 8, units = 'cm', dpi = 300)
 
 cat("\n=== ANALYSIS COMPLETE ===\n")
+
+#-----------------------------------------#
+# 6. Export supplementary tables (flextable) ####
+#-----------------------------------------#
+
+dir.create("./outputs/tables/", recursive = TRUE, showWarnings = FALSE)
+
+border_hline <- officer::fp_border(width = 1)
+
+fmt_ft <- function(ft) {
+  ft |>
+    bold(part = "header") |>
+    fontsize(size = 10, part = "all") |>
+    font(fontname = "Times New Roman", part = "all") |>
+    align(align = "center", part = "all") |>
+    align(j = 1, align = "left", part = "body") |>
+    border_remove() |>
+    hline_top(part = "header", border = border_hline) |>
+    hline_bottom(part = "header", border = border_hline) |>
+    hline_bottom(part = "body", border = border_hline) |>
+    autofit()
+}
+
+# --- Table 1: Individual-level coefficients ---
+
+pike_all_coefs$treatment <- "All"
+pike_all_coefs$species   <- "Pike"
+
+ind_table <- bind_rows(
+  mutate(ind_coefs_perch, species = "Perch"),
+  mutate(ind_coefs_roach, species = "Roach"),
+  pike_all_coefs[, c("id", "est", "low", "high", "treatment", "species")]
+) |>
+  mutate(across(c(est, low, high), \(x) round(x, 3))) |>
+  arrange(species, treatment, id) |>
+  select(id, species, treatment, est, low, high)
+
+ft_individuals <- flextable(ind_table) |>
+  set_header_labels(
+    id        = "Fish ID",
+    species   = "Species",
+    treatment = "Treatment",
+    est       = "RSF Estimate",
+    low       = "Lower 95% CI",
+    high      = "Upper 95% CI"
+  ) |>
+  fmt_ft()
+
+# --- Table 2: Population-level summary ---
+
+pop_table <- bind_rows(
+  mutate(rsf_coef_control_perch, species = "Perch"),
+  mutate(rsf_coef_exposed_perch, species = "Perch"),
+  mutate(rsf_coef_control_roach, species = "Roach"),
+  mutate(rsf_coef_exposed_roach, species = "Roach"),
+  mutate(rsf_coef_pike, treatment = "All")
+) |>
+  mutate(across(c(est, low, high), \(x) round(x, 3))) |>
+  select(species, treatment, est, low, high)
+
+ft_population <- flextable(pop_table) |>
+  set_header_labels(
+    species   = "Species",
+    treatment = "Treatment",
+    est       = "Mean RSF Estimate",
+    low       = "Lower 95% CI",
+    high      = "Upper 95% CI"
+  ) |>
+  fmt_ft()
+
+# --- Export ---
+
+doc <- read_docx() |>
+  body_add_par(
+    "Table S1. Individual-level RSF selection coefficients for artificial refuges in BT lake. Positive values indicate selection; negative values indicate avoidance. CI = confidence interval.",
+    style = "caption"
+  ) |>
+  body_add_flextable(ft_individuals) |>
+  body_add_par("") |>
+  body_add_par(
+    "Table S2. Population-level RSF summary for artificial refuges in BT lake. Estimates are means across individual-level point estimates ± 1.96 SE. CI = confidence interval.",
+    style = "caption"
+  ) |>
+  body_add_flextable(ft_population)
+
+print(doc, target = "./outputs/tables/BT_rsf_tables.docx")
+cat("Tables exported to ./outputs/tables/BT_rsf_tables.docx\n")

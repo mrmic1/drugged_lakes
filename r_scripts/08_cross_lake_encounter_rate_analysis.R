@@ -93,15 +93,17 @@ roach_cow <- readRDS(file.path(paths$enc_cow, "cow_pike_roach_distances_tiered_d
 perch_cow <- readRDS(file.path(paths$enc_cow, "cow_pike_perch_distances_tiered_df.rds"))
 
 ## 2.2 Load metadata ----
-meta_bt  <- readRDS(file.path(paths$filt_bt,  "05_BT_sub.rds")) %>%
-  select(individual_ID, treatment, weight) %>% distinct()
+meta_bt <- readRDS(file.path(paths$filt_bt, "05_BT_sub.rds")) %>%
+  select(individual_ID, treatment, weight, species) %>%
+  distinct()
 
-meta_mf  <- readRDS(file.path(paths$filt_mf,  "05_muddyfoot_sub.rds")) %>%
-  select(individual_ID, treatment, weight) %>% distinct()
+meta_mf <- readRDS(file.path(paths$filt_mf, "05_muddyfoot_sub.rds")) %>%
+  select(individual_ID, treatment, weight, species) %>%
+  distinct()
 
 meta_cow <- readRDS(file.path(paths$filt_cow, "05_cow_sub.rds")) %>%
-  select(individual_ID, treatment, weight) %>% distinct()
-
+  select(individual_ID, treatment, weight, species) %>%
+  distinct()
 
 # =================================================================-
 # 3. FILTER OUT POST-PREDATION ENCOUNTER RECORDS ####
@@ -137,8 +139,6 @@ perch_mf  <- filter_post_predation(perch_mf,  death_mf)
 roach_cow <- filter_post_predation(roach_cow, death_cow)
 perch_cow <- filter_post_predation(perch_cow, death_cow)
 
-message("Post-predation filtering complete.")
-
 
 # =================================================================-
 # 4. BUILD COMBINED ANALYSIS DATASETS ####
@@ -157,7 +157,10 @@ make_enc_total <- function(distances_df, meta, lake_name, species_name) {
       n_days                     = n_distinct(Date),
       .groups = "drop"
     ) %>%
-    left_join(meta, by = "individual_ID") %>%
+    left_join(
+      meta %>% filter(species == species_name),  # <-- key fix
+      by = "individual_ID"
+    ) %>%
     filter(!is.na(treatment)) %>%
     mutate(
       Species       = species_name,
@@ -170,15 +173,15 @@ make_enc_total <- function(distances_df, meta, lake_name, species_name) {
 
 ## 4.2 Build per-lake totals and combine ----
 enc_roach_total <- bind_rows(
-  make_enc_total(roach_bt,  meta_bt,  "BT",           "Roach"),
-  make_enc_total(roach_mf,  meta_mf,  "Muddyfoot",    "Roach"),
-  make_enc_total(roach_cow, meta_cow, "Cow Paradise",  "Roach")
+  make_enc_total(roach_bt,  meta_bt,  "B",  "Roach"),
+  make_enc_total(roach_mf,  meta_mf,  "A",  "Roach"),
+  make_enc_total(roach_cow, meta_cow, "C",  "Roach")
 ) %>% mutate(Lake = factor(Lake))
 
 enc_perch_total <- bind_rows(
-  make_enc_total(perch_bt,  meta_bt,  "BT",           "Perch"),
-  make_enc_total(perch_mf,  meta_mf,  "Muddyfoot",    "Perch"),
-  make_enc_total(perch_cow, meta_cow, "Cow Paradise",  "Perch")
+  make_enc_total(perch_bt,  meta_bt,  "B",  "Perch"),
+  make_enc_total(perch_mf,  meta_mf,  "A",  "Perch"),
+  make_enc_total(perch_cow, meta_cow, "C",  "Perch")
 ) %>% mutate(Lake = factor(Lake))
 
 message(sprintf("Combined totals: %d roach, %d perch individuals across lakes",
@@ -210,8 +213,8 @@ message("\nCross-lake encounter rate summary:")
 print(enc_rate_summary)
 
 ## 4.4 Helper: hourly encounter dataset ----
-# Experiment start dates: BT = 2022-09-25, Muddyfoot = 2022-09-25, Cow = 2022-09-27
-exp_starts <- c(BT = "2022-09-25", Muddyfoot = "2022-09-25", "Cow Paradise" = "2022-09-27")
+# Experiment start dates: A (Muddyfoot) = 2022-09-25, B (BT) = 2022-09-26, C (Cow Paradise) = 2022-09-27
+exp_starts <- c(A = "2022-09-25", B = "2022-09-26", C = "2022-09-27")
 
 make_hourly <- function(distances_df, meta, lake_name, species_name) {
   distances_df %>%
@@ -242,15 +245,15 @@ make_hourly <- function(distances_df, meta, lake_name, species_name) {
 }
 
 roach_hourly_all <- bind_rows(
-  make_hourly(roach_bt,  meta_bt,  "BT",           "Roach"),
-  make_hourly(roach_mf,  meta_mf,  "Muddyfoot",    "Roach"),
-  make_hourly(roach_cow, meta_cow, "Cow Paradise",  "Roach")
+  make_hourly(roach_bt,  meta_bt,  "B",  "Roach"),
+  make_hourly(roach_mf,  meta_mf,  "A",  "Roach"),
+  make_hourly(roach_cow, meta_cow, "C",  "Roach")
 )
 
 perch_hourly_all <- bind_rows(
-  make_hourly(perch_bt,  meta_bt,  "BT",           "Perch"),
-  make_hourly(perch_mf,  meta_mf,  "Muddyfoot",    "Perch"),
-  make_hourly(perch_cow, meta_cow, "Cow Paradise",  "Perch")
+  make_hourly(perch_bt,  meta_bt,  "B",  "Perch"),
+  make_hourly(perch_mf,  meta_mf,  "A",  "Perch"),
+  make_hourly(perch_cow, meta_cow, "C",  "Perch")
 )
 
 
@@ -273,7 +276,7 @@ message("\n=== Q1: CROSS-LAKE ENCOUNTER RATE GLMMs ===")
 # ---- A: HIGH-CONFIDENCE ENCOUNTERS ONLY ----
 
 message("\n--- A: High-confidence encounters only ---")
-message("(≤1.4m for BT/Muddyfoot; ≤2.0m for Cow Paradise)")
+message("(≤1.4m for all three lakes)")
 
 ## 5.1 Roach — high-confidence ----
 message("\nRoach:")
@@ -282,13 +285,16 @@ enc_mod_roach_hc <- glmmTMB(
   total_encounters_high_conf ~
     treatment +
     weight_z +
-    (1 | Lake / individual_ID),
+    Lake,
   data   = enc_roach_total,
   family = nbinom2(link = "log"),
   offset = log(n_days)
 )
 
-print(summary(enc_mod_roach_hc))
+summary(enc_mod_roach_hc)
+
+# Then recheck overdispersion
+sum(residuals(enc_mod_roach_hc, type = "pearson")^2) / df.residual(enc_mod_roach_hc)
 
 sim_res_roach_hc <- simulateResiduals(enc_mod_roach_hc, n = 500)
 png(file.path(paths$figures, "glmm_dharma_roach_high_conf.png"),
@@ -296,23 +302,32 @@ png(file.path(paths$figures, "glmm_dharma_roach_high_conf.png"),
 plot(sim_res_roach_hc)
 dev.off()
 
+
+#Average treatment encounters (lakes pooled)
 emm_roach_hc <- emmeans(enc_mod_roach_hc,
                         specs  = ~ treatment,
                         type   = "response",
                         offset = log(1))
-message("\nRoach marginal means — high-confidence (encounters / day):")
 print(emm_roach_hc)
-message("\nRoach contrast — high-confidence (Mix vs Control):")
 print(pairs(emm_roach_hc))
 
+#Average Lake encounters (treatment pooled)
+emm_roach_lake_hc <- emmeans(enc_mod_roach_hc,
+                        specs  = ~ Lake,
+                        type   = "response",
+                        offset = log(1))
+print(emm_roach_lake_hc)
+#As expected Muddyfoot a lot more encounters
+print(pairs(emm_roach_lake_hc))
+
+
 ## 5.2 Perch — high-confidence ----
-message("\nPerch:")
 
 enc_mod_perch_hc <- glmmTMB(
   total_encounters_high_conf ~
     treatment +
     weight_z +
-    (1 | Lake / individual_ID),
+    Lake,
   data   = enc_perch_total,
   family = nbinom2(link = "log"),
   offset = log(n_days)
@@ -326,100 +341,47 @@ png(file.path(paths$figures, "glmm_dharma_perch_high_conf.png"),
 plot(sim_res_perch_hc)
 dev.off()
 
+#Average treatment encounters (lakes pooled)
 emm_perch_hc <- emmeans(enc_mod_perch_hc,
                         specs  = ~ treatment,
                         type   = "response",
                         offset = log(1))
-message("\nPerch marginal means — high-confidence (encounters / day):")
 print(emm_perch_hc)
-message("\nPerch contrast — high-confidence (Mix vs Control):")
 print(pairs(emm_perch_hc))
 
-# ---- B: COMBINED ENCOUNTERS ----
-
-message("\n--- B: Combined encounters (high-confidence + probable) ---")
-message("(≤2.8m for BT/Muddyfoot; ≤4.0m for Cow Paradise)")
-
-## 5.3 Roach — combined ----
-message("\nRoach:")
-
-enc_mod_roach_comb <- glmmTMB(
-  total_encounters_combined ~
-    treatment +
-    weight_z +
-    (1 | Lake / individual_ID),
-  data   = enc_roach_total,
-  family = nbinom2(link = "log"),
-  offset = log(n_days)
-)
-
-print(summary(enc_mod_roach_comb))
-
-sim_res_roach_comb <- simulateResiduals(enc_mod_roach_comb, n = 500)
-png(file.path(paths$figures, "glmm_dharma_roach_combined.png"),
-    width = 1200, height = 600)
-plot(sim_res_roach_comb)
-dev.off()
-
-emm_roach_comb <- emmeans(enc_mod_roach_comb,
-                          specs  = ~ treatment,
-                          type   = "response",
-                          offset = log(1))
-message("\nRoach marginal means — combined (encounters / day):")
-print(emm_roach_comb)
-message("\nRoach contrast — combined (Mix vs Control):")
-print(pairs(emm_roach_comb))
-
-## 5.4 Perch — combined ----
-message("\nPerch:")
-
-enc_mod_perch_comb <- glmmTMB(
-  total_encounters_combined ~
-    treatment +
-    weight_z +
-    (1 | Lake / individual_ID),
-  data   = enc_perch_total,
-  family = nbinom2(link = "log"),
-  offset = log(n_days)
-)
-
-print(summary(enc_mod_perch_comb))
-
-sim_res_perch_comb <- simulateResiduals(enc_mod_perch_comb, n = 500)
-png(file.path(paths$figures, "glmm_dharma_perch_combined.png"),
-    width = 1200, height = 600)
-plot(sim_res_perch_comb)
-dev.off()
-
-emm_perch_comb <- emmeans(enc_mod_perch_comb,
-                          specs  = ~ treatment,
-                          type   = "response",
-                          offset = log(1))
-message("\nPerch marginal means — combined (encounters / day):")
-print(emm_perch_comb)
-message("\nPerch contrast — combined (Mix vs Control):")
-print(pairs(emm_perch_comb))
 
 ## 5.5 Cross-lake encounter rate plot ----
 # Faceted by Lake x Species to show between-lake variation.
+
+# Register Times New Roman for Windows graphics device
+windowsFonts("Times New Roman" = windowsFont("Times New Roman"))
+
 p_enc_hc_cross <- bind_rows(enc_roach_total, enc_perch_total) %>%
   mutate(rate = total_encounters_high_conf / n_days) %>%
   ggplot(aes(x = treatment, y = rate, fill = treatment)) +
   geom_boxplot(alpha = 0.75, outlier.size = 1) +
-  scale_fill_manual(values = enc_colours, name = "Treatment") +
-  facet_grid(Species ~ Lake, scales = "free_y") +
+  scale_fill_manual(values = enc_colours, name = "Treatment", labels = c("Control", "Exposed")) +
+  scale_x_discrete(labels = c("Control" = "Control", "Mix" = "Exposed")) +
+  ggh4x::facet_grid2(Species ~ Lake, scales = "free_y", independent = "y") +
   labs(x = NULL, y = "Encounters per day") +
   theme_classic(base_family = "Times New Roman") +
   theme(
     legend.position  = "none",
     axis.title.y     = element_text(size = 12),
-    axis.text.y      = element_text(size = 10),
-    axis.text.x      = element_text(size = 10),
-    strip.text       = element_text(size = 11, family = "Times New Roman"),
+    axis.text.y      = element_text(size = 12),
+    axis.text.x      = element_text(size = 12),
+    strip.text       = element_text(size = 12, family = "Times New Roman", face = 'bold'),
     strip.background = element_rect(fill = "grey95", colour = "black"),
     panel.border     = element_rect(colour = "black", fill = NA)
   )
 
+print(p_enc_hc_cross)
+
+# Save as PDF using cairo_pdf device (handles Windows fonts correctly)
+ggsave(file.path(paths$figures, "cross_lake_encounter_rates_high_conf.pdf"),
+       p_enc_hc_cross, width = 12, height = 7, device = cairo_pdf)
+
+# Also save as PNG for quick viewing
 ggsave(file.path(paths$figures, "cross_lake_encounter_rates_high_conf.png"),
        p_enc_hc_cross, width = 12, height = 7, dpi = 300)
 
@@ -433,8 +395,6 @@ ggsave(file.path(paths$figures, "cross_lake_encounter_rates_high_conf.png"),
 # via s(hour, Lake, bs="fs") to allow lake-specific diel shapes,
 # while s(hour, by=treatment) tests the population-level treatment
 # difference in diel patterns.
-
-message("\n=== Q2/Q3: CROSS-LAKE DIEL ENCOUNTER PATTERN GAMMs ===")
 
 ## 6.1 Prepare hourly datasets ----
 prepare_hourly_gamm <- function(hourly_df) {
@@ -493,41 +453,65 @@ add_diel_lines <- function(p) {
     geom_vline(xintercept = nauticalDusk, linetype = "dashed", alpha = 0.45)
 }
 
-plot_diel_enc_cross <- function(pred_summary, species) {
+plot_diel_enc_cross <- function(pred_summary) {
   p <- ggplot(pred_summary,
               aes(x = hour, y = encounters, colour = treatment, group = treatment)) +
     geom_ribbon(aes(x = hour, ymin = lower, ymax = upper, group = treatment),
                 fill = "black", alpha = 0.08, inherit.aes = FALSE) +
     geom_line(linewidth = 1.5) +
     scale_colour_manual(values = enc_colours, name = "Treatment") +
-    facet_wrap(~Lake, scales = "free_y") +
-    enc_x_scale +
-    labs(title = species,
-         y     = "Predicted encounters\nwith pike per hour\n",
-         x     = "\nTime of day") +
-    theme_few()
+    facet_wrap(~Lake, scales = "free_y",
+               labeller = labeller(Lake = c("A" = "Lake A", "B" = "Lake B", "C" = "Lake C"))) +
+    scale_x_continuous(
+      breaks = seq(0, 24, by = 6),
+      labels = seq(0, 24, by = 6),
+      limits = c(0, 24)
+    ) +
+    labs(y = "Predicted encounters\nwith pike per hour\n",
+         x = "\nTime of day") +
+    theme_classic(base_family = "Times New Roman") +
+    theme(
+      axis.title.y     = element_text(size = 12),
+      axis.title.x     = element_text(size = 12),
+      axis.text.y      = element_text(size = 12),
+      axis.text.x      = element_text(size = 12),
+      strip.text       = element_text(size = 12, family = "Times New Roman", face = "bold"),
+      strip.background = element_rect(fill = "grey95", colour = "black"),
+      panel.border     = element_rect(colour = "black", fill = NA),
+      legend.position  = "none"
+    )
   add_diel_lines(p)
 }
 
-plot_enc_contrast_cross <- function(contrasts_df, species) {
+plot_enc_contrast_cross <- function(contrasts_df) {
   p <- ggplot(contrasts_df,
               aes(x = hour, y = estimate, ymin = conf.low, ymax = conf.high)) +
     geom_ribbon(fill = "grey80", alpha = 0.5) +
     geom_line(linewidth = 2) +
     geom_hline(yintercept = 0, linetype = "dashed") +
-    enc_x_scale +
-    labs(title = species,
-         y     = "Predicted difference\nbetween treatments\n(Mix – Control)\n",
-         x     = "\nTime of day") +
-    theme_few()
+    scale_x_continuous(
+      breaks = seq(0, 24, by = 6),
+      labels = seq(0, 24, by = 6),
+      limits = c(0, 24)
+    ) +
+    labs(y = "Treatment difference\n(Exposed – Control)",
+         x = "\nTime of day") +
+    theme_classic(base_family = "Times New Roman") +
+    theme(
+      axis.title.y     = element_text(size = 12, margin = margin(r = 5)),
+      axis.title.x     = element_text(size = 12),
+      axis.text.y      = element_text(size = 12),
+      axis.text.x      = element_text(size = 12),
+      strip.text       = element_text(size = 12, family = "Times New Roman", face = "bold"),
+      strip.background = element_rect(fill = "grey95", colour = "black"),
+      panel.border     = element_rect(colour = "black", fill = NA)
+    )
   add_diel_lines(p)
 }
 
 # ----------------------------------------------------------------
 # ROACH GAMM — CROSS-LAKE
 # ----------------------------------------------------------------
-
-message("\n--- Q2/Q3: Roach cross-lake diel encounter GAMM ---")
 
 ## 6.5 Roach — first-pass model ----
 roach_h <- roach_h %>% add_ar_start()
@@ -551,15 +535,15 @@ message(sprintf("Roach lag-1 autocorrelation (rho): %.2f", roach_rho))
 ## 6.6 Roach — AR-corrected GAMM ----
 # Model structure:
 #   treatment            — fixed effect: overall treatment difference (Q1/Q3)
-#   Lake                 — fixed effect: mean encounter level per lake
 #   exp_day_z            — fixed effect: linear trend over experiment
 #   weight_z             — fixed effect: body size covariate
 #   s(hour, by=treatment)— separate diel curves per treatment (Q2/Q3)
 #   s(hour, Lake, bs=fs) — lake-specific deviation in diel shape (random smooth)
 #   s(hour, individual_ID, bs=fs) — individual-level diel variation
+
 roach_mod <- bam(
   n_encounters_high_conf ~
-    treatment + Lake + exp_day_z + weight_z +
+    treatment + exp_day_z + weight_z +
     s(hour, by = treatment, k = 15, bs = "cc") +
     s(hour, Lake, bs = "fs", xt = list(bs = "cc")) +
     s(hour, individual_ID, bs = "fs", xt = list(bs = "cc")),
@@ -571,6 +555,13 @@ roach_mod <- bam(
   knots    = list(hour = c(0, 24)),
   family   = nb(link = "log")
 )
+
+
+check_resid(roach_mod, ask = FALSE)
+print(appraise(roach_mod))
+summary(roach_mod)
+anova.gam(roach_mod)
+
 
 ## 6.7 Roach — diagnostics ----
 check_resid(roach_mod, ask = FALSE)
@@ -649,7 +640,7 @@ roach_period_summary <- roach_period_raw %>%
             upper_95ci      = mean(upper), .groups = "drop") %>%
   arrange(desc(mean_encounters))
 
-message("\nRoach — mean predicted encounters by diel period (cross-lake, pooled):")
+#Mean predicted encounters per diel period
 print(roach_period_summary)
 
 roach_period_preds <- avg_predictions(
@@ -662,13 +653,11 @@ roach_period_pairs <- hypotheses(
   hypothesis = c("b1-b2=0", "b1-b3=0", "b1-b4=0",
                  "b2-b3=0", "b2-b4=0", "b3-b4=0")
 )
-
-message("\nRoach — pairwise diel period contrasts (cross-lake):")
 print(roach_period_pairs)
 
 ## 6.10 Roach — figures ----
 # Diel curves faceted by lake + pooled contrast panel
-roach_diel_plot     <- plot_diel_enc_cross(roach_pred_summary, "Roach")
+roach_diel_plot     <- plot_diel_enc_cross(roach_pred_summary)
 
 # Pooled-across-lakes contrast
 roach_comp_pooled <- roach_comp %>%
@@ -679,27 +668,32 @@ roach_comp_pooled <- roach_comp %>%
             conf.high = mean(conf.high), .groups = "drop") %>%
   rename(hour = hour_int)
 
-roach_contrast_plot <- plot_enc_contrast_cross(roach_comp_pooled, "Roach (pooled across lakes)")
+roach_contrast_plot <- plot_enc_contrast_cross(roach_comp_pooled)
 
 roach_figure <- ggarrange(roach_diel_plot, roach_contrast_plot,
                           labels = c("A", "B"), ncol = 2, widths = c(2, 1))
 
+print(roach_figure)
+
+
 ggsave(file.path(paths$figures, "cross_lake_roach_diel_encounter_figure.png"),
-       roach_figure, width = 16, height = 6, dpi = 300)
-message("Saved: cross_lake_roach_diel_encounter_figure.png")
+       roach_figure, width = 16, height = 3.5, dpi = 300)
+
+ggsave(file.path(paths$figures, "cross_lake_roach_diel_encounter_figure.pdf"),
+       roach_figure, width = 10.1, height = 3.5, dpi = 300,
+       device = cairo_pdf)
 
 # ----------------------------------------------------------------
 # PERCH GAMM — CROSS-LAKE
 # ----------------------------------------------------------------
 
-message("\n--- Q2/Q3: Perch cross-lake diel encounter GAMM ---")
 
 ## 6.11 Perch — first-pass model ----
 perch_h <- perch_h %>% add_ar_start()
 
 perch_gamm_init <- bam(
   n_encounters_high_conf ~
-    treatment + Lake + exp_day_z + weight_z +
+    treatment + exp_day_z + weight_z +
     s(hour, by = treatment, k = 15, bs = "cc") +
     s(hour, Lake, bs = "fs", xt = list(bs = "cc")) +
     s(hour, individual_ID, bs = "fs", xt = list(bs = "cc")),
@@ -716,7 +710,7 @@ message(sprintf("Perch lag-1 autocorrelation (rho): %.2f", perch_rho))
 ## 6.12 Perch — AR-corrected GAMM ----
 perch_mod <- bam(
   n_encounters_high_conf ~
-    treatment + Lake + exp_day_z + weight_z +
+    treatment + exp_day_z + weight_z +
     s(hour, by = treatment, k = 15, bs = "cc") +
     s(hour, Lake, bs = "fs", xt = list(bs = "cc")) +
     s(hour, individual_ID, bs = "fs", xt = list(bs = "cc")),
@@ -804,9 +798,7 @@ perch_period_summary <- perch_period_raw %>%
             upper_95ci      = mean(upper), .groups = "drop") %>%
   arrange(desc(mean_encounters))
 
-message("\nPerch — mean predicted encounters by diel period (cross-lake, pooled):")
 print(perch_period_summary)
-
 perch_period_preds <- avg_predictions(
   perch_mod, newdata = newdata_perch_periods,
   by = "diel_period", type = "response"
@@ -818,11 +810,10 @@ perch_period_pairs <- hypotheses(
                  "b2-b3=0", "b2-b4=0", "b3-b4=0")
 )
 
-message("\nPerch — pairwise diel period contrasts (cross-lake):")
 print(perch_period_pairs)
 
 ## 6.16 Perch — figures ----
-perch_diel_plot <- plot_diel_enc_cross(perch_pred_summary, "Perch")
+perch_diel_plot <- plot_diel_enc_cross(perch_pred_summary)
 
 perch_comp_pooled <- perch_comp %>%
   mutate(hour_int = round(hour, 2)) %>%
@@ -832,14 +823,39 @@ perch_comp_pooled <- perch_comp %>%
             conf.high = mean(conf.high), .groups = "drop") %>%
   rename(hour = hour_int)
 
-perch_contrast_plot <- plot_enc_contrast_cross(perch_comp_pooled, "Perch (pooled across lakes)")
+perch_contrast_plot <- plot_enc_contrast_cross(perch_comp_pooled)
 
 perch_figure <- ggarrange(perch_diel_plot, perch_contrast_plot,
-                          labels = c("A", "B"), ncol = 2, widths = c(2, 1))
+                          labels = c("C", "D"), ncol = 2, widths = c(2, 1))
+
+print(perch_figure)
+
 
 ggsave(file.path(paths$figures, "cross_lake_perch_diel_encounter_figure.png"),
-       perch_figure, width = 16, height = 6, dpi = 300)
-message("Saved: cross_lake_perch_diel_encounter_figure.png")
+       perch_figure, width = 16, height = 3.5, dpi = 300)
+
+ggsave(file.path(paths$figures, "cross_lake_perch_diel_encounter_figure.pdf"),
+       perch_figure, width = 10.1, height = 3.5, dpi = 300,
+       device = cairo_pdf)
+
+#Join both roach an perch figures into single figure
+combined_figure <- ggarrange(
+  roach_diel_plot, roach_contrast_plot,
+  perch_diel_plot, perch_contrast_plot,
+  labels  = c("A", "B", "C", "D"),
+  ncol    = 2,
+  nrow    = 2,
+  widths  = c(2, 1)
+)
+
+print(combined_figure)
+
+ggsave(file.path(paths$figures, "cross_lake_diel_encounter_figure.pdf"),
+       combined_figure, width = 10.1, height = 7, device = cairo_pdf)
+
+ggsave(file.path(paths$figures, "cross_lake_diel_encounter_figure.png"),
+       combined_figure, width = 10.1, height = 7, dpi = 300)
+
 
 ## 6.17 Combined cross-lake diel overview ----
 enc_diel_summary <- bind_rows(
@@ -866,6 +882,9 @@ p_diel_cross <- ggplot(enc_diel_summary,
     x        = "\nTime of day"
   ) +
   theme_few()
+
+print(p_diel_cross)
+
 
 ggsave(file.path(paths$figures, "cross_lake_combined_diel_overview.png"),
        p_diel_cross, width = 16, height = 8, dpi = 300)
