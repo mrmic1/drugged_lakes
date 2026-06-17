@@ -251,10 +251,10 @@ raster::writeRaster(habitat_raster_final,
 perch_treatments <- sapply(perch_muddyfoot_tel, function(tel) unique(tel$treatment))
 print(perch_treatments)
 
-perch_control_tel   <- perch_muddyfoot_tel[perch_treatments == "control"]
-perch_mix_tel       <- perch_muddyfoot_tel[perch_treatments == "exposed"]
-perch_control_akdes <- perch_muddyfoot_akdes[perch_treatments == "control"]
-perch_mix_akdes     <- perch_muddyfoot_akdes[perch_treatments == "exposed"]
+perch_control_tel   <- perch_muddyfoot_tel[perch_treatments == "Control"]
+perch_mix_tel       <- perch_muddyfoot_tel[perch_treatments == "Mix"]
+perch_control_akdes <- perch_muddyfoot_akdes[perch_treatments == "Control"]
+perch_mix_akdes     <- perch_muddyfoot_akdes[perch_treatments == "Mix"]
 
 stopifnot(length(perch_control_tel) > 0, length(perch_mix_tel) > 0)
 
@@ -262,10 +262,10 @@ stopifnot(length(perch_control_tel) > 0, length(perch_mix_tel) > 0)
 roach_treatments <- sapply(roach_muddyfoot_tel, function(tel) unique(tel$treatment))
 print(roach_treatments)
 
-roach_control_tel   <- roach_muddyfoot_tel[roach_treatments == "control"]
-roach_mix_tel       <- roach_muddyfoot_tel[roach_treatments == "exposed"]
-roach_control_akdes <- roach_muddyfoot_akdes[roach_treatments == "control"]
-roach_mix_akdes     <- roach_muddyfoot_akdes[roach_treatments == "exposed"]
+roach_control_tel   <- roach_muddyfoot_tel[roach_treatments == "Control"]
+roach_mix_tel       <- roach_muddyfoot_tel[roach_treatments == "Mix"]
+roach_control_akdes <- roach_muddyfoot_akdes[roach_treatments == "Control"]
+roach_mix_akdes     <- roach_muddyfoot_akdes[roach_treatments == "Mix"]
 
 stopifnot(length(roach_control_tel) > 0, length(roach_mix_tel) > 0)
 
@@ -294,8 +294,6 @@ check_rsf_results <- function(rsf_list, tel_list, label) {
 }
 
 #> 4.1 Perch ####
-cat("\n=== Fitting Perch RSFs ===\n")
-
 # rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
 # and a habitat selection coefficient for each individual independently.
 # Population-level inference is obtained by averaging across individuals
@@ -323,12 +321,6 @@ rsf_perch_control_list <- rsf_perch_control_list[!failed_perch_control]
 names(rsf_perch_control_list) <- names(perch_control_tel)[!failed_perch_control]
 saveRDS(rsf_perch_control_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
 
-# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
-# and a habitat selection coefficient for each individual independently.
-# Population-level inference is obtained by averaging across individuals
-# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
-# the loop to complete even if individual fits fail; check_rsf_results() reports
-# which individuals failed.
 
 # Exposed
 cl <- makeCluster(length(perch_mix_tel))
@@ -351,14 +343,6 @@ names(rsf_perch_mix_list) <- names(perch_mix_tel)[!failed_perch_mix]
 saveRDS(rsf_perch_mix_list, paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
 
 #> 4.2 Roach ####
-cat("\n=== Fitting Roach RSFs ===\n")
-
-# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
-# and a habitat selection coefficient for each individual independently.
-# Population-level inference is obtained by averaging across individuals
-# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
-# the loop to complete even if individual fits fail; check_rsf_results() reports
-# which individuals failed.
 
 # Control
 cl <- makeCluster(length(roach_control_tel))
@@ -380,12 +364,6 @@ rsf_roach_control_list <- rsf_roach_control_list[!failed_roach_control]
 names(rsf_roach_control_list) <- names(roach_control_tel)[!failed_roach_control]
 saveRDS(rsf_roach_control_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
 
-# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
-# and a habitat selection coefficient for each individual independently.
-# Population-level inference is obtained by averaging across individuals
-# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
-# the loop to complete even if individual fits fail; check_rsf_results() reports
-# which individuals failed.
 
 # Exposed
 cl <- makeCluster(length(roach_mix_tel))
@@ -408,19 +386,11 @@ names(rsf_roach_mix_list) <- names(roach_mix_tel)[!failed_roach_mix]
 saveRDS(rsf_roach_mix_list, paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
 
 #> 4.3 Pike ####
-cat("\n=== Fitting Pike RSFs ===\n")
 
 # NOTE: Pike are analysed as a single combined group across all three lakes.
 # Although Muddyfoot had 3 pike per treatment, we treat pike consistently
 # as a single group to maintain comparability across lakes and because pike
 # are the predator rather than the focal prey species of interest.
-
-# rsf.fit() jointly estimates a movement model (inherited from the supplied AKDE)
-# and a habitat selection coefficient for each individual independently.
-# Population-level inference is obtained by averaging across individuals
-# (step 3 of the Alston et al. 2022 framework). .errorhandling = "pass" allows
-# the loop to complete even if individual fits fail; check_rsf_results() reports
-# which individuals failed.
 
 # All pike together as a single undivided group
 cl <- makeCluster(length(pike_muddyfoot_tel))
@@ -459,7 +429,6 @@ cat("Pike:", length(rsf_pike_list), "models\n")
 # significant selection (>0) or avoidance (<0) of artificial refuges.
 
 #> 5.1 Perch ####
-cat("\n=== PERCH ANALYSIS ===\n")
 rsf_perch_control_list <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_control_list.rds"))
 rsf_perch_mix_list     <- readRDS(paste0(rsf_path, "muddyfoot_perch/rsf_perch_mix_list.rds"))
 
@@ -553,7 +522,6 @@ ggsave(paste0(figure_path, "rsf_plots/perch_habitats_rsf_muddyfoot.pdf"),
        perch_habitat_rsf_plot, width = 8, height = 7, units = 'cm', dpi = 300)
 
 #> 5.2 Roach ####
-cat("\n=== ROACH ANALYSIS ===\n")
 rsf_roach_control_list <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_control_list.rds"))
 rsf_roach_mix_list     <- readRDS(paste0(rsf_path, "muddyfoot_roach/rsf_roach_mix_list.rds"))
 
